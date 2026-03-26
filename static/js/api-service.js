@@ -1,0 +1,838 @@
+/**
+ * API Service Layer
+ * Menyediakan interface untuk komunikasi dengan backend MongoDB
+ * BACKEND-FIRST (MongoDB ONLY) - NO localStorage fallback
+ * Semua data WAJIB tersimpan di MongoDB via Flask API
+ */
+
+// Badge color helpers untuk jenis kopi & kualitas (selalu tersedia)
+window.getJenisKopiBadgeClass = function (jenisKopi) {
+  const j = (jenisKopi || "").toLowerCase();
+  if (j === "arabica" || j === "arabika") return "bg-primary";
+  if (j === "robusta") return "bg-info";
+  return "bg-secondary";
+};
+window.getKualitasBadgeClass = function (kualitas) {
+  const k = (kualitas || "").toLowerCase();
+  if (k === "premium") return "bg-success";
+  if (k === "grade a") return "bg-info";
+  if (k === "grade b") return "bg-warning text-dark";
+  if (k === "grade c") return "bg-danger";
+  return "bg-secondary";
+};
+window.getProsesPengolahanBadgeClass = function (proses) {
+  const p = (proses || "").toLowerCase();
+  if (p.includes("honey wine")) return "bg-purple";
+  if (p.includes("wet honey")) return "bg-warning text-dark";
+  if (p.includes("natural wine")) return "bg-indigo";
+  if (p.includes("double fermentation")) return "bg-info";
+  if (p.includes("carbonic") || p.includes("maceration")) return "bg-light text-dark";
+  if (p.includes("anaerobic")) return "bg-dark";
+  if (p.includes("semi-washed") || p.includes("wet hulled")) return "bg-success";
+  if (p.includes("honey")) return "bg-brown";
+  if (p.includes("natural")) return "bg-secondary";
+  if (p.includes("washed") || p.includes("full wash")) return "bg-info";
+  return "bg-primary";
+};
+window.getStatusTahapanBadgeClass = function (tahapan) {
+  const t = (tahapan || "").toLowerCase();
+  if (t.includes("sortasi")) return "bg-info";
+  if (t.includes("fermentasi")) return "bg-secondary";
+  if (t.includes("pencucian")) return "bg-primary";
+  if (t.includes("pengeringan")) return "bg-warning text-dark";
+  if (t.includes("hulling") || t.includes("pengupasan")) return "bg-dark";
+  if (t.includes("roasting")) return "bg-danger";
+  if (t.includes("grinding")) return "bg-light text-dark";
+  if (t.includes("pengemasan")) return "bg-success";
+  return "bg-secondary";
+};
+
+// Prevent duplicate execution - jika sudah dieksekusi, langsung return
+// Pemesanan & Ordering wajib dicek untuk halaman kelola pemesanan
+if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users && window.API.Pemesanan && window.API.Ordering) {
+  console.log("⚠️ api-service.js already loaded, skipping re-execution");
+  // Dispatch event anyway in case modules are waiting
+  window.dispatchEvent(
+    new CustomEvent("APIReady", { detail: { API: window.API } }),
+  );
+} else {
+  // Initialize window.API early to prevent race conditions
+  window.API = window.API || {};
+
+  // Use same origin as current page to ensure cookies are sent correctly
+  // Check if already declared to avoid duplicate declaration errors
+  if (typeof window.API_BASE_URL === "undefined") {
+    window.API_BASE_URL = window.location.origin
+      ? `${window.location.origin}/api`
+      : "http://localhost:5002/api";
+  }
+
+  // Use window property directly - no const/let to avoid redeclaration errors
+  var API_BASE_URL = (function () {
+    if (typeof window.API_BASE_URL !== "undefined") {
+      return window.API_BASE_URL;
+    }
+    // Fallback (should not reach here)
+    return window.location.origin
+      ? `${window.location.origin}/api`
+      : "http://localhost:5002/api";
+  })();
+
+  let backendAvailable = false;
+
+  // Check backend availability on load
+  (async function checkBackend() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`);
+      if (response.ok) {
+        backendAvailable = true;
+        console.log("✅ Backend MongoDB tersedia");
+      } else {
+        console.warn("⚠️ Backend tidak merespon dengan baik");
+      }
+    } catch (error) {
+      console.warn(
+        "⚠️ Backend tidak tersedia saat ini. Pastikan backend Flask aktif untuk menggunakan sistem.",
+      );
+      console.warn("Error:", error.message);
+    }
+  })();
+
+  // Generic API call function
+  async function apiCall(endpoint, method = "GET", data = null) {
+    // Always try API first, even if backendAvailable is false
+    // This allows recovery if backend comes online later
+
+    const options = {
+      method: method,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include", // Important for cookies
+    };
+
+    if (data && (method === "POST" || method === "PUT")) {
+      options.body = JSON.stringify(data);
+    }
+
+    try {
+      console.log(
+        `🔵 API Call: ${method} ${API_BASE_URL}${endpoint}`,
+        data ? "(with data)" : "",
+      );
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+
+      if (response.ok) {
+        // Mark backend as available on successful response
+        backendAvailable = true;
+        const result = await response.json();
+        console.log(`✅ API Success: ${method} ${endpoint}`);
+        return result;
+      } else {
+        // Try to parse error as JSON first
+        let errorData = null;
+        let errorText = "";
+        try {
+          errorText = await response.text();
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          // If not JSON, use text as is
+          errorData = { error: errorText || response.statusText };
+        }
+
+        console.error(
+          `❌ API Error: ${method} ${endpoint} - Status ${response.status}`,
+          errorData,
+        );
+
+        // Create error object with response data
+        const error = new Error(
+          errorData.error || errorText || response.statusText,
+        );
+        error.status = response.status;
+        error.data = errorData;
+        throw error;
+      }
+    } catch (error) {
+      console.error(`❌ API Call Failed: ${method} ${endpoint}`, error);
+      // Mark backend as unavailable on network error
+      if (
+        error.message &&
+        (error.message.includes("Failed to fetch") ||
+          error.message.includes("NetworkError"))
+      ) {
+        backendAvailable = false;
+        console.warn("⚠️ Backend marked as unavailable");
+      }
+      throw error;
+    }
+  }
+
+  // ==================== PRODUKSI API ====================
+  // ==================== PRODUKSI API (MONGODB ONLY - NO localStorage fallback) ====================
+  const ProduksiAPI = {
+    async getAll() {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/produksi");
+    },
+
+    async getNextId() {
+      // Get next auto-generated idProduksi (PRD-YYYYMM-XXXX) for preview
+      const res = await apiCall("/produksi/next-id");
+      return res?.idProduksi || null;
+    },
+
+    async getById(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/produksi/${id}`);
+    },
+
+    async create(data) {
+      // MONGODB ONLY - NO FALLBACK
+      // Backend will generate id and idProduksi automatically
+      // Frontend should NOT send 'id' or 'idProduksi' (backend generates idProduksi)
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id;
+      delete dataWithoutId.idProduksi; // Backend auto-generates idProduksi
+      return await apiCall("/produksi", "POST", dataWithoutId);
+    },
+
+    async update(id, data) {
+      // MONGODB ONLY - NO FALLBACK
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id from update data
+      return await apiCall(`/produksi/${id}`, "PUT", dataWithoutId);
+    },
+
+    async delete(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/produksi/${id}`, "DELETE");
+    },
+
+    async getPengemasan() {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/produksi/pengemasan");
+    },
+
+    async getSisa(idProduksi) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/produksi/${idProduksi}/sisa`);
+    },
+  };
+
+  // ==================== HASIL PRODUKSI API ====================
+  // ==================== HASIL PRODUKSI API (MONGODB ONLY - NO localStorage fallback) ====================
+  const HasilProduksiAPI = {
+    async getAll() {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/hasil-produksi");
+    },
+
+    async getById(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/hasil-produksi/${id}`);
+    },
+
+    async create(data) {
+      // MONGODB ONLY - NO FALLBACK
+      // Backend will generate ID automatically via get_next_id('hasilProduksi')
+      // Frontend should NOT send 'id' field
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id if present (backend will generate)
+      return await apiCall("/hasil-produksi", "POST", dataWithoutId);
+    },
+
+    async update(id, data) {
+      // MONGODB ONLY - NO FALLBACK
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id from update data
+      return await apiCall(`/hasil-produksi/${id}`, "PUT", dataWithoutId);
+    },
+
+    async delete(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/hasil-produksi/${id}`, "DELETE");
+    },
+
+    async getByProduksi(idProduksi) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/hasil-produksi/produksi/${idProduksi}`);
+    },
+  };
+
+  // ==================== BAHAN API ====================
+  // ==================== BAHAN API (MONGODB ONLY - NO localStorage fallback) ====================
+  const BahanAPI = {
+    async getAll() {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/bahan");
+    },
+
+    async getById(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/bahan/${id}`);
+    },
+
+    async create(data) {
+      // MONGODB ONLY - NO FALLBACK
+      // Backend will generate ID automatically via get_next_id('bahan')
+      // Frontend should NOT send 'id' field
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id if present (backend will generate)
+      return await apiCall("/bahan", "POST", dataWithoutId);
+    },
+
+    async update(id, data) {
+      // MONGODB ONLY - NO FALLBACK
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id from update data
+      return await apiCall(`/bahan/${id}`, "PUT", dataWithoutId);
+    },
+
+    async delete(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/bahan/${id}`, "DELETE");
+    },
+
+    async getSisa(idBahan) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/bahan/sisa/${idBahan}`);
+    },
+
+    async getNextId() {
+      // Get next auto-generated idBahan (BHN001, BHN002, ...)
+      const res = await apiCall("/bahan/next-id");
+      return res?.idBahan || null;
+    },
+  };
+
+  // ==================== PEMASOK API (MONGODB ONLY - NO localStorage fallback) ====================
+  const PemasokAPI = {
+    async getAll() {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/pemasok");
+    },
+
+    async getById(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/pemasok/${id}`);
+    },
+
+    async create(data) {
+      // MONGODB ONLY - NO FALLBACK
+      // NOTE: Backend will generate ID automatically via get_next_id('pemasok')
+      // Frontend should NOT send 'id' field
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id if present (backend will generate)
+      return await apiCall("/pemasok", "POST", dataWithoutId);
+    },
+
+    async update(id, data) {
+      // MONGODB ONLY - NO FALLBACK
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id from update data
+      return await apiCall(`/pemasok/${id}`, "PUT", dataWithoutId);
+    },
+
+    async delete(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/pemasok/${id}`, "DELETE");
+    },
+  };
+
+  // ==================== STOK API (MONGODB ONLY - NO localStorage fallback) ====================
+  const StokAPI = {
+    async getAll(params = {}) {
+      const q = new URLSearchParams();
+      if (params.tipeProduk) q.set("tipeProduk", params.tipeProduk);
+      if (params.tanggalPengemasan) q.set("tanggalPengemasan", params.tanggalPengemasan);
+      const query = q.toString();
+      const endpoint = query ? `/stok?${query}` : "/stok";
+      return await apiCall(endpoint);
+    },
+    async getFilterOptions() {
+      return await apiCall("/stok/filter-options");
+    },
+    async getBahan() {
+      return await apiCall("/stok/bahan");
+    },
+  };
+
+  // ==================== MASTER DATA API (MONGODB ONLY - NO localStorage fallback) ====================
+  function createMasterDataAPI(collectionName) {
+    return {
+      async getAll() {
+        // MONGODB ONLY - NO FALLBACK
+        return await apiCall(`/${collectionName}`);
+      },
+
+      async getById(id) {
+        // MONGODB ONLY - NO FALLBACK
+        return await apiCall(`/${collectionName}/${id}`);
+      },
+
+      async create(data) {
+        // MONGODB ONLY - NO FALLBACK
+        // NOTE: Backend will generate ID automatically via get_next_id()
+        // Frontend should NOT send 'id' field
+        const dataWithoutId = { ...data };
+        delete dataWithoutId.id; // Remove id if present (backend will generate)
+        return await apiCall(`/${collectionName}`, "POST", dataWithoutId);
+      },
+
+      async update(id, data) {
+        // MONGODB ONLY - NO FALLBACK
+        const dataWithoutId = { ...data };
+        delete dataWithoutId.id; // Remove id from update data
+        return await apiCall(`/${collectionName}/${id}`, "PUT", dataWithoutId);
+      },
+
+      async delete(id) {
+        // MONGODB ONLY - NO FALLBACK
+        return await apiCall(`/${collectionName}/${id}`, "DELETE");
+      },
+    };
+  }
+
+  const MasterDataAPI = {
+    jenisKopi: createMasterDataAPI("dataJenisKopi"),
+    varietas: createMasterDataAPI("dataVarietas"),
+    proses: createMasterDataAPI("dataProses"),
+    roasting: createMasterDataAPI("dataRoasting"),
+    kemasan: createMasterDataAPI("dataKemasan"),
+    produk: createMasterDataAPI("dataProduk"),
+  };
+
+  // ==================== USERS API ====================
+  // ==================== USERS API (MONGODB ONLY - NO localStorage fallback) ====================
+  const UsersAPI = {
+    async getAll() {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/users");
+    },
+
+    async getById(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/users/${id}`);
+    },
+
+    async create(data) {
+      // MONGODB ONLY - NO FALLBACK
+      // NOTE: Backend will generate ID automatically via get_next_id('users')
+      // Frontend should NOT send 'id' field
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id if present (backend will generate)
+      return await apiCall("/users", "POST", dataWithoutId);
+    },
+
+    async update(id, data) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/users/${id}`, "PUT", data);
+    },
+
+    async delete(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/users/${id}`, "DELETE");
+    },
+  };
+
+  // ==================== SANITASI API ====================
+  // ==================== SANITASI API (MONGODB ONLY - NO localStorage fallback) ====================
+  const SanitasiAPI = {
+    async getAll(excludeFotos = false) {
+      // MONGODB ONLY - NO FALLBACK
+      // excludeFotos: set to true to exclude large foto data for list view
+      const url = excludeFotos ? "/sanitasi?exclude_fotos=true" : "/sanitasi";
+      return await apiCall(url);
+    },
+
+    async getById(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/sanitasi/${id}`);
+    },
+
+    async create(data) {
+      // MONGODB ONLY - NO FALLBACK
+      // Backend will generate ID automatically via get_next_id('sanitasi')
+      // Frontend should NOT send 'id' field
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id if present (backend will generate)
+      return await apiCall("/sanitasi", "POST", dataWithoutId);
+    },
+
+    async update(id, data) {
+      // MONGODB ONLY - NO FALLBACK
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id from update data
+      return await apiCall(`/sanitasi/${id}`, "PUT", dataWithoutId);
+    },
+
+    async delete(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/sanitasi/${id}`, "DELETE");
+    },
+  };
+
+  // ==================== KEUANGAN API (MONGODB ONLY - NO localStorage fallback) ====================
+  const KeuanganAPI = {
+    async getAll() {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/keuangan");
+    },
+
+    async getById(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/keuangan/${id}`);
+    },
+
+    async create(data) {
+      // MONGODB ONLY - NO FALLBACK
+      // NOTE: Backend will generate ID automatically via get_next_id('keuangan')
+      // Frontend should NOT send 'id' field
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id if present (backend will generate)
+      return await apiCall("/keuangan", "POST", dataWithoutId);
+    },
+
+    async update(id, data) {
+      // MONGODB ONLY - NO FALLBACK
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id; // Remove id from update data
+      return await apiCall(`/keuangan/${id}`, "PUT", dataWithoutId);
+    },
+
+    async delete(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/keuangan/${id}`, "DELETE");
+    },
+  };
+
+  // ==================== SETTINGS API (MONGODB ONLY - NO localStorage fallback) ====================
+  const SettingsAPI = {
+    async get(userId) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/settings?userId=${userId}`);
+    },
+
+    async save(data) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/settings", "POST", data);
+    },
+  };
+
+  // ==================== AUTH API ====================
+  const AuthAPI = {
+    async login(username, password, role) {
+      try {
+        return await apiCall("/auth/login", "POST", {
+          username: username,
+          password: password,
+          role: role,
+        });
+      } catch (error) {
+        throw error;
+      }
+    },
+  };
+
+  // ==================== LAPORAN PDF API (MONGODB ONLY - NO localStorage fallback) ====================
+  const LaporanAPI = {
+    /**
+     * Upload PDF laporan ke backend
+     * @param {string} pdfData - Base64 encoded PDF data (dengan atau tanpa data: prefix)
+     * @param {string} type - Tipe laporan ('hasil-produksi', 'produksi', 'data-kemasan', dll)
+     * @param {string|number} id - ID item (hasil produksi, produksi, dll)
+     * @returns {Promise<{success: boolean, url: string, filename: string}>}
+     */
+    async uploadPdf(pdfData, type, id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/laporan/upload", "POST", {
+        pdfData: pdfData,
+        type: type,
+        id: String(id), // Convert to string for consistency
+      });
+    },
+
+    /**
+     * List semua PDF laporan
+     * @param {string} type - Filter by type (optional)
+     * @param {string|number} id - Filter by item ID (optional)
+     * @returns {Promise<Array>}
+     */
+    async list(type = null, id = null) {
+      // MONGODB ONLY - NO FALLBACK
+      let endpoint = "/laporan/list";
+      const params = [];
+      if (type) params.push(`type=${encodeURIComponent(type)}`);
+      if (id) params.push(`id=${encodeURIComponent(String(id))}`);
+      if (params.length > 0) endpoint += "?" + params.join("&");
+      return await apiCall(endpoint);
+    },
+  };
+
+  // ==================== PEMESANAN API (MONGODB ONLY - NO localStorage fallback) ====================
+  const PemesananAPI = {
+    async getAll() {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/pemesanan");
+    },
+
+    async getById(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/pemesanan/${id}`);
+    },
+
+    async create(data) {
+      // MONGODB ONLY - NO FALLBACK
+      // Backend will generate ID automatically via get_next_id('pemesanan')
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id;
+      return await apiCall("/pemesanan", "POST", dataWithoutId);
+    },
+
+    async update(id, data) {
+      // MONGODB ONLY - NO FALLBACK
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id;
+      return await apiCall(`/pemesanan/${id}`, "PUT", dataWithoutId);
+    },
+
+    async delete(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/pemesanan/${id}`, "DELETE");
+    },
+
+    async getStok() {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/pemesanan/stok");
+    },
+  };
+
+  // ==================== ORDERING API (MONGODB ONLY - NO localStorage fallback) ====================
+  const OrderingAPI = {
+    async getAll() {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall("/ordering");
+    },
+
+    async getById(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/ordering/${id}`);
+    },
+
+    async create(data) {
+      // DEPRECATED: Gunakan proses() untuk mengurangi stok
+      // MONGODB ONLY - NO FALLBACK
+      // Backend will generate ID automatically via get_next_id('ordering')
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id;
+      return await apiCall("/ordering", "POST", dataWithoutId);
+    },
+
+    async proses(data) {
+      // PROSES ORDERING - SATU-SATUNYA METHOD YANG MENGURANGI STOK
+      // MONGODB ONLY - NO FALLBACK
+      // Endpoint ini adalah titik eksekusi gudang yang mengurangi stok secara nyata
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id;
+      return await apiCall("/ordering/proses", "POST", dataWithoutId);
+    },
+
+    async update(id, data) {
+      // MONGODB ONLY - NO FALLBACK
+      const dataWithoutId = { ...data };
+      delete dataWithoutId.id;
+      return await apiCall(`/ordering/${id}`, "PUT", dataWithoutId);
+    },
+
+    async delete(id) {
+      // MONGODB ONLY - NO FALLBACK
+      return await apiCall(`/ordering/${id}`, "DELETE");
+    },
+  };
+
+  // Export for use in other scripts
+  // Initialize window.API if not exists (prevent overwrite)
+  if (!window.API) {
+    window.API = {};
+  }
+
+  // Register all API modules
+  window.API.Produksi = ProduksiAPI;
+  window.API.HasilProduksi = HasilProduksiAPI;
+  window.API.Bahan = BahanAPI;
+  window.API.Pemasok = PemasokAPI;
+  window.API.Stok = StokAPI;
+  window.API.MasterData = MasterDataAPI;
+  window.API.Users = UsersAPI;
+  window.API.Keuangan = KeuanganAPI;
+  window.API.Sanitasi = SanitasiAPI;
+  window.API.Settings = SettingsAPI;
+  window.API.Auth = AuthAPI;
+  window.API.Laporan = LaporanAPI;
+  window.API.Pemesanan = PemesananAPI;
+  window.API.Ordering = OrderingAPI;
+  
+  // ==================== NOTIFICATION SYSTEM ====================
+  /**
+   * Menampilkan notifikasi untuk aktivitas CRUD
+   * @param {string} type - Jenis operasi: 'create', 'update', 'delete'
+   * @param {string} module - Nama modul: 'Pengguna', 'Bahan', 'Produksi', 'Pemesanan', 'Sanitasi'
+   * @param {string} status - Status: 'success' atau 'error'
+   * @param {string} customMessage - Pesan custom (opsional)
+   */
+  window.showNotification = function(type, module, status = 'success', customMessage = null) {
+    // Hapus notifikasi sebelumnya jika ada
+    const existingNotifications = document.querySelectorAll('.crud-notification');
+    existingNotifications.forEach(n => {
+      n.classList.remove('show');
+      setTimeout(() => n.remove(), 300);
+    });
+
+    // Mapping pesan berdasarkan type dan module
+    const messages = {
+      create: {
+        Pengguna: 'Pengguna berhasil ditambahkan',
+        Bahan: 'Bahan berhasil ditambahkan',
+        Produksi: 'Produksi berhasil ditambahkan',
+        Pemesanan: 'Pemesanan berhasil ditambahkan',
+        Sanitasi: 'Data sanitasi berhasil ditambahkan'
+      },
+      update: {
+        Pengguna: 'Pengguna berhasil diperbarui',
+        Bahan: 'Bahan berhasil diperbarui',
+        Produksi: 'Produksi berhasil diperbarui',
+        Pemesanan: 'Pemesanan berhasil diperbarui',
+        Sanitasi: 'Data sanitasi berhasil diperbarui'
+      },
+      delete: {
+        Pengguna: 'Pengguna berhasil dihapus',
+        Bahan: 'Bahan berhasil dihapus',
+        Produksi: 'Produksi berhasil dihapus',
+        Pemesanan: 'Pemesanan berhasil dihapus',
+        Sanitasi: 'Data sanitasi berhasil dihapus'
+      }
+    };
+
+    const message = customMessage || (messages[type] && messages[type][module]) || 'Operasi berhasil';
+    const alertClass = status === 'success' ? 'alert-success' : 'alert-danger';
+    const icon = status === 'success' ? 'bi-check-circle' : 'bi-exclamation-triangle';
+
+    // Buat elemen notifikasi
+    const notification = document.createElement('div');
+    notification.className = `alert ${alertClass} alert-dismissible fade show position-fixed crud-notification`;
+    notification.style.cssText = 'top: 100px; right: 20px; z-index: 9999; min-width: 300px; max-width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
+    notification.innerHTML = `
+      <i class="bi ${icon} me-2"></i>${message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+
+    document.body.appendChild(notification);
+
+    // Auto-hide setelah 4 detik
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.classList.remove('show');
+        setTimeout(() => notification.remove(), 300);
+      }
+    }, 4000);
+  };
+
+  window.API.isBackendAvailable = () => backendAvailable;
+
+  // Make backendAvailable accessible globally
+  window.backendAvailable = () => backendAvailable;
+
+  // Log API registration for debugging
+  console.log("✅ window.API registered:", {
+    Bahan: !!window.API.Bahan,
+    Produksi: !!window.API.Produksi,
+    HasilProduksi: !!window.API.HasilProduksi,
+    Pemasok: !!window.API.Pemasok,
+    Sanitasi: !!window.API.Sanitasi,
+    Keuangan: !!window.API.Keuangan,
+    Users: !!window.API.Users,
+    MasterData: !!window.API.MasterData,
+    Settings: !!window.API.Settings,
+    Auth: !!window.API.Auth,
+    Laporan: !!window.API.Laporan,
+    Pemesanan: !!window.API.Pemesanan,
+    Ordering: !!window.API.Ordering,
+  });
+
+  // VERIFY API is properly registered
+  if (window.API.Bahan) {
+    console.log("✅ API.Bahan loaded:", {
+      getAll: typeof window.API.Bahan.getAll === "function",
+      getById: typeof window.API.Bahan.getById === "function",
+      create: typeof window.API.Bahan.create === "function",
+      update: typeof window.API.Bahan.update === "function",
+      delete: typeof window.API.Bahan.delete === "function",
+      getSisa: typeof window.API.Bahan.getSisa === "function",
+    });
+    console.log("✅ API.Bahan methods:", Object.keys(window.API.Bahan));
+  } else {
+    console.error("❌ API.Bahan is NOT registered in window.API!");
+  }
+
+  if (window.API.Sanitasi) {
+    console.log("✅ API.Sanitasi loaded:", {
+      getAll: typeof window.API.Sanitasi.getAll === "function",
+      getById: typeof window.API.Sanitasi.getById === "function",
+      create: typeof window.API.Sanitasi.create === "function",
+      update: typeof window.API.Sanitasi.update === "function",
+      delete: typeof window.API.Sanitasi.delete === "function",
+    });
+    console.log("✅ API.Sanitasi methods:", Object.keys(window.API.Sanitasi));
+  } else {
+    console.error("❌ API.Sanitasi is NOT registered in window.API!");
+  }
+
+  // VERIFY Users API is properly registered
+  if (window.API.Users) {
+    console.log("✅ API.Users loaded:", {
+      getAll: typeof window.API.Users.getAll === "function",
+      getById: typeof window.API.Users.getById === "function",
+      create: typeof window.API.Users.create === "function",
+      update: typeof window.API.Users.update === "function",
+      delete: typeof window.API.Users.delete === "function",
+    });
+    console.log("✅ API.Users methods:", Object.keys(window.API.Users));
+  } else {
+    console.error("❌ API.Users is NOT registered in window.API!");
+    console.error("Available APIs:", Object.keys(window.API || {}));
+  }
+
+  // VERIFY MasterData API is properly registered
+  if (window.API.MasterData) {
+    console.log("✅ API.MasterData loaded:", {
+      produk: !!window.API.MasterData.produk,
+      proses: !!window.API.MasterData.proses,
+      jenisKopi: !!window.API.MasterData.jenisKopi,
+      varietas: !!window.API.MasterData.varietas,
+      roasting: !!window.API.MasterData.roasting,
+      kemasan: !!window.API.MasterData.kemasan,
+    });
+    if (window.API.MasterData.produk) {
+      console.log(
+        "✅ API.MasterData.produk methods:",
+        Object.keys(window.API.MasterData.produk),
+      );
+      console.log(
+        "✅ API.MasterData.produk.getAll:",
+        typeof window.API.MasterData.produk.getAll === "function",
+      );
+    }
+  } else {
+    console.error("❌ API.MasterData is NOT registered in window.API!");
+    console.error("Available APIs:", Object.keys(window.API || {}));
+  }
+
+  // Dispatch custom event to notify that API is ready
+  window.dispatchEvent(
+    new CustomEvent("APIReady", { detail: { API: window.API } }),
+  );
+  console.log("🚀 API Ready event dispatched - window.API is now available");
+}
+
+// End of api-service.js execution guard

@@ -1,0 +1,202 @@
+/* Kelola Sanitasi Styles */
+.content {
+  margin-top: 70px;
+  padding: 20px;
+}
+
+.card {
+  border: none;
+  border-radius: 10px;
+}
+
+.table {
+  margin-bottom: 0;
+}
+
+.table thead th {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.table tbody tr {
+  transition: all 0.2s ease;
+}
+
+.table tbody tr:hover {
+  background-color: #f8f9fa;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.badge {
+  padding: 0.5em 0.75em;
+  font-weight: 500;
+}
+
+.btn-action {
+  padding: 0.25rem 0.5rem;
+  margin: 0 0.15rem;
+  font-size: 0.875rem;
+}
+
+.modal-content {
+  border-radius: 10px;
+  border: none;
+}
+
+.modal-header {
+  border-bottom: 1px solid #e9ecef;
+  padding: 1.25rem 1.5rem;
+}
+
+.modal-body {
+  padding: 1.5rem;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  border-top: 1px solid #e9ecef;
+  padding: 1.25rem 1.5rem;
+}
+
+.form-label {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #495057;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #00665D;
+  box-shadow: 0 0 0 0.2rem rgba(0, 102, 93, 0.15);
+}
+
+.text-danger {
+  color: #dc3545 !important;
+}
+
+/* Tab Styles */
+.nav-tabs {
+  border-bottom: 2px solid #dee2e6;
+}
+
+.nav-tabs .nav-link {
+  color: #6c757d;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: 0.75rem 1.5rem;
+  transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.nav-tabs .nav-link:hover {
+  color: #00665D;
+  border-bottom-color: #00665D;
+  background-color: #f8f9fa;
+}
+
+.nav-tabs .nav-link.active {
+  color: #00665D;
+  font-weight: 600;
+  border-bottom-color: #00665D;
+  background-color: transparent;
+}
+
+.tab-content {
+  padding-top: 1.5rem;
+}
+
+.tab-pane {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Checklist Styles */
+.checklist-item-container {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6 !important;
+  transition: all 0.2s ease;
+}
+
+.checklist-item-container:hover {
+  background-color: #e9ecef;
+  border-color: #00665D !important;
+}
+
+.checklist-item-container input[type="checkbox"]:checked ~ label {
+  color: #00665D;
+}
+
+.checklist-preview-img {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: 8px;
+  border: 2px solid #dee2e6;
+  padding: 4px;
+  background-color: #fff;
+  margin-top: 8px;
+}
+
+/* Image Preview untuk checklist items */
+.checklist-item-container .form-control-sm {
+  font-size: 0.875rem;
+}
+
+.checklist-item-container label.small {
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+/* Status Badge */
+.badge.bg-success {
+  background-color: #198754 !important;
+}
+
+.badge.bg-warning {
+  background-color: #ffc107 !important;
+  color: #000 !important;
+}
+
+.badge.bg-secondary {
+  background-color: #6c757d !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .content {
+    padding: 15px;
+  }
+
+  .table-responsive {
+    font-size: 0.875rem;
+  }
+
+  .btn-action {
+    padding: 0.2rem 0.4rem;
+    font-size: 0.75rem;
+  }
+
+  .nav-tabs .nav-link {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .modal-body {
+    max-height: 60vh;
+  }
+}

@@ -1,0 +1,439 @@
+@import url("https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@300;400;600;700;800&display=swap");
+
+* {
+  font-family: "Nunito Sans", sans-serif !important;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Pastikan Bootstrap Icons tidak ter-override oleh font-family global */
+i[class^="bi-"],
+i[class*=" bi-"],
+.bi {
+  font-family: "bootstrap-icons" !important;
+  font-style: normal !important;
+  font-weight: normal !important;
+  font-variant: normal !important;
+  text-transform: none !important;
+  line-height: 1 !important;
+
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+}
+
+:root {
+  --body-color: #e5e5e5;
+  --sidebar-color: #ffffff;
+  --primary-color: #00665d;
+  --primary-color-light: #f6f5ff;
+  --toggle-color: #ddd;
+  --text-color: #000;
+  --tran-03: all 0.3s ease;
+  --tran-04: all 0.4s ease;
+  --tran-05: all 0.5s ease;
+  /* Bootstrap Primary Color Override */
+  --bs-primary: #00665d;
+  --bs-primary-rgb: 0, 102, 93;
+}
+
+/* Body */
+body {
+  height: 100vh;
+  background: var(--body-color);
+  display: flex;
+}
+
+/* Sidebar */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 300px;
+  background: var(--sidebar-color);
+  padding: 10px 14px;
+  transition: var(--tran-05);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+}
+
+.sidebar.close {
+  width: 88px;
+}
+
+/* Header Sidebar */
+.sidebar header {
+  position: relative;
+}
+
+.sidebar .image-text {
+  display: flex;
+  align-items: center;
+}
+
+.sidebar .image-text a {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-decoration: none;
+  color: inherit;
+  transition: var(--tran-03);
+}
+
+.sidebar .image-text a:hover {
+  opacity: 0.8;
+}
+
+.sidebar .image img {
+  width: 50px;
+  border-radius: 6px;
+}
+
+.sidebar .text {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-color);
+  transition: var(--tran-03);
+  white-space: nowrap;
+  margin-left: 10px;
+}
+
+.sidebar.close .text {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Toggle Button */
+.sidebar header .toggle {
+  position: absolute;
+  top: 50%;
+  right: -25px;
+  transform: translateY(-50%) rotate(180deg);
+  height: 40px;
+  width: 40px;
+  background: var(--primary-color);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  cursor: pointer;
+  transition: var(--tran-05);
+}
+
+.sidebar.close header .toggle {
+  transform: translateY(-50%) rotate(0deg);
+}
+
+.sidebar header .toggle:hover {
+  background: #ffa60d;
+}
+
+/* Menu */
+.sidebar .menu-bar {
+  margin-top: 40px;
+}
+
+.sidebar ul {
+  padding-left: 0;
+}
+
+.sidebar ul li {
+  list-style: none;
+}
+
+.sidebar ul li a {
+  display: flex;
+  align-items: center;
+  height: 50px;
+  text-decoration: none;
+  color: var(--text-color);
+  border-radius: 8px;
+  transition: var(--tran-03);
+  padding: 0 10px;
+}
+
+/* Styling untuk icon di sidebar menu */
+.sidebar .menu-bar ul li a i,
+.sidebar ul li a i,
+.sidebar ul li a i.bi,
+.sidebar ul li a i[class^="bi-"],
+.sidebar ul li a i[class*=" bi-"] {
+  font-size: 1.2rem !important;
+  min-width: 24px;
+  width: 24px;
+  color: var(--text-color) !important;
+  transition: var(--tran-03);
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  font-family: "bootstrap-icons" !important;
+  font-style: normal !important;
+  font-weight: normal !important;
+  font-variant: normal !important;
+  text-transform: none !important;
+  line-height: 1 !important;
+
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+}
+
+/* Styling untuk text di sidebar menu */
+.sidebar .menu-bar ul li a .text,
+.sidebar ul li a .text {
+  color: var(--text-color);
+  transition: var(--tran-03);
+  margin-left: 10px;
+  font-size: 0.95rem;
+}
+
+/* Hover effect untuk menu items - background dan semua elemen menjadi putih */
+.sidebar ul li a:hover {
+  background: var(--primary-color);
+  color: #fff !important;
+}
+
+/* Memastikan text dan icon di dalam link sidebar berubah menjadi putih saat hover */
+.sidebar ul li a:hover .text,
+.sidebar ul li a:hover i,
+.sidebar ul li a:hover i.bi,
+.sidebar ul li a:hover span,
+.sidebar ul li a:hover * {
+  color: #fff !important;
+}
+
+/* Konten Utama */
+.home {
+  position: relative;
+  left: 300px;
+  width: calc(100% - 300px);
+  transition: var(--tran-05);
+  padding: 20px;
+  background: var(--body-color);
+  min-height: 100vh;
+}
+
+.sidebar.close ~ .home {
+  left: 88px;
+  width: calc(100% - 88px);
+}
+
+/* Navbar di dalam home */
+.home .navbar {
+  position: fixed;
+  top: 0;
+  left: 300px;
+  width: calc(100% - 300px);
+  z-index: 99;
+  transition: var(--tran-05);
+}
+
+.sidebar.close ~ .home .navbar {
+  left: 88px;
+  width: calc(100% - 88px);
+}
+
+/* Konten utama di bawah navbar */
+.content {
+  margin-top: 70px;
+}
+
+/* Responsif */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 220px;
+  }
+
+  .sidebar.close {
+    width: 70px;
+  }
+
+  .home {
+    left: 220px;
+    width: calc(100% - 220px);
+  }
+
+  .sidebar.close ~ .home {
+    left: 70px;
+    width: calc(100% - 70px);
+  }
+
+  .home .navbar {
+    left: 220px;
+    width: calc(100% - 220px);
+  }
+
+  .sidebar.close ~ .home .navbar {
+    left: 70px;
+    width: calc(100% - 70px);
+  }
+}
+.navbar form .form-control {
+  width: 280px; /* atur panjang input */
+  transition: width 0.3s ease;
+}
+
+.navbar form .form-control:focus {
+  width: 320px; /* membesar sedikit saat diklik */
+}
+
+/* Profession text in sidebar header */
+.sidebar .text.profession {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #6c757d;
+  margin-top: 2px;
+  display: block;
+}
+
+.sidebar.close .text.profession {
+  display: none;
+}
+
+/* Role Badge Styling for Dashboard */
+.role-badge-owner,
+.role-badge-karyawan {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+.role-badge-owner {
+  background: linear-gradient(135deg, #198754 0%, #0f5132 100%);
+}
+
+.role-badge-karyawan {
+  background: linear-gradient(135deg, #0dcaf0 0%, #087990 100%);
+}
+
+/* Dashboard Statistics Animations */
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+.statistic-card {
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.statistic-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15) !important;
+}
+
+.statistic-icon {
+  transition: transform 0.3s ease;
+}
+
+.statistic-card:hover .statistic-icon {
+  transform: scale(1.1);
+}
+
+/* Smooth number transitions */
+.statistic-value {
+  transition: color 0.3s ease;
+}
+
+.statistic-card:hover .statistic-value {
+  color: var(--primary-color);
+}
+
+/* Badge warna tambahan untuk membedakan tiap nilai (informasi lebih jelas) */
+.badge.bg-indigo {
+  background-color: #6366f1 !important;
+  color: #fff !important;
+}
+.badge.bg-purple {
+  background-color: #6f42c1 !important;
+  color: #fff !important;
+}
+.badge.bg-brown {
+  background-color: #795548 !important;
+  color: #fff !important;
+}
+
+/* Notification System Styles */
+.notification-item {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.notification-item:hover {
+  background-color: #f8f9fa !important;
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+#notificationDropdown {
+  cursor: pointer;
+}
+
+#notificationDropdown:hover {
+  opacity: 0.8;
+}
+
+#notificationBadge {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+}
+
+.dropdown-menu {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.dropdown-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dropdown-menu::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.dropdown-menu::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+.dropdown-menu::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

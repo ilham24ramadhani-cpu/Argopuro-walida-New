@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kelola Laporan - Argopuro Walida</title>
+    <!-- Boxicons -->
+    <link
+      href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/boxicons@2.1.3/dist/boxicons.js"></script>
+
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    />
+    <!-- Bootstrap Icons -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+      rel="stylesheet"
+    />
+    <!-- Custom CSS -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='kelola_laporan.css') }}"
+    />
+    <!-- JS - api-service.js HARUS di-load SEBELUM kelola_laporan.js -->
+    <!-- IMPORTANT: api-service.js WITHOUT defer untuk memastikan dieksekusi lebih dulu -->
+    <script src="{{ url_for('static', filename='js/api-service.js') }}"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script
+      src="{{ url_for('static', filename='js/kelola_laporan.js') }}"
+      defer
+    ></script>
+    <!-- Bootstrap JS -->
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+    ></script>
+    <!-- Bootstrap Primary Color Override -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='bootstrap-primary-override.css') }}"
+    />
+  </head>
+  <body>
+    <!-- ===== Sidebar Start ===== -->
+    <nav class="sidebar close">
+      <header>
+        <div class="image-text">
+          <a
+            href="{{ url_for('dashboard_owner') }}"
+            class="d-flex align-items-center text-decoration-none"
+            style="color: inherit"
+          >
+            <span class="image">
+              <img
+                src="{{ url_for('static', filename='img/logo.png') }}"
+                alt="logo"
+              />
+            </span>
+
+            <div class="text header-text">
+              <span class="name">Argopuro Walida</span>
+              <span class="text profession">Owner Dashboard</span>
+            </div>
+          </a>
+        </div>
+
+        <i class="bx bx-chevron-right toggle"></i>
+      </header>
+
+      <div class="menu-bar">
+        <ul class="menu-links">
+          <li>
+            <a href="{{ url_for('dashboard_owner') }}"
+              ><i class="bi bi-house-door"></i
+              ><span class="text">Dashboard</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_laporan_owner') }}"
+              ><i class="bi bi-file-text"></i
+              ><span class="text">Laporan</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('profile_owner') }}"
+              ><i class="bi bi-person-circle"></i
+              ><span class="text">Profil</span></a
+            >
+          </li>
+        </ul>
+      </div>
+    </nav>
+    <!-- ===== Sidebar End ===== -->
+    <section class="home">
+      <!-- Navbar -->
+      <nav class="navbar fixed-top bg-white shadow-sm px-3">
+        <div
+          class="container-fluid d-flex align-items-center justify-content-between"
+        >
+          <!-- Brand -->
+          <span class="fw-bold fs-5">Argopuro Walida System <span class="badge bg-warning text-dark ms-2">Owner</span></span>
+
+          <!-- Search Bar -->
+          <form class="d-flex ms-auto me-3" role="search">
+            <input
+              class="form-control me-2 search-input"
+              type="search"
+              placeholder="Search"
+              aria-label="Search"
+            />
+            <button class="btn btn-outline-primary" type="submit">
+              Search
+            </button>
+          </form>
+
+          <!-- Right Icons -->
+          <ul
+            class="navbar-icons d-flex align-items-center list-unstyled mb-0"
+            style="gap: 1rem"
+          >
+                        <!-- Notification Dropdown -->
+            <li class="nav-item dropdown">
+              <a
+                class="text-dark fs-4 position-relative dropdown-toggle"
+                href="#"
+                id="notificationDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i class="bi bi-bell"></i>
+                <span
+                  id="notificationBadge"
+                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                  style="font-size: 0.65rem; display: none;"
+                ></span>
+              </a>
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow"
+                style="width: 350px; max-height: 500px; overflow-y: auto;"
+                aria-labelledby="notificationDropdown"
+              >
+                <li>
+                  <h6 class="dropdown-header d-flex justify-content-between align-items-center">
+                    <span>Notifikasi</span>
+                    <button
+                      class="btn btn-sm btn-link text-decoration-none p-0"
+                      onclick="window.NotificationSystem.markAllAsRead()"
+                      style="font-size: 0.75rem;"
+                    >
+                      Tandai semua dibaca
+                    </button>
+                  </h6>
+                </li>
+                <li><hr class="dropdown-divider" /></li>
+                <li id="notificationEmptyState" style="display: none;">
+                  <div class="text-center text-muted p-3">
+                    <i class="bi bi-bell-slash fs-3 d-block mb-2"></i>
+                    <small>Tidak ada notifikasi</small>
+                  </div>
+                </li>
+                <ul id="notificationDropdownBody" class="list-unstyled mb-0"></ul>
+                <li><hr class="dropdown-divider" /></li>
+                <li>
+                  <a
+                    class="dropdown-item text-center text-danger small"
+                    href="#"
+                    onclick="window.NotificationSystem.clearAll(); return false;"
+                  >
+                    Hapus Semua Notifikasi
+                  </a>
+                </li>
+              </ul>
+            </li>
+
+            <!-- User Dropdown -->
+            <li class="nav-item dropdown">
+              <a
+                class="text-dark fs-4 dropdown-toggle d-flex align-items-center"
+                href="#"
+                id="userDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i class="bi bi-person-badge"></i>
+                <span class="ms-2 d-none d-md-inline" id="usernameDisplay"
+                  >Owner</span
+                >
+              </a>
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow"
+                aria-labelledby="userDropdown"
+              >
+                <li>
+                  <h6 class="dropdown-header">Akun Owner</h6>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('profile_owner') }}"
+                    >Profil Saya</a
+                  >
+                </li>
+                <li>
+                  <a
+                    class="dropdown-item"
+                    href="{{ url_for('pengaturan_owner') }}"
+                    >Pengaturan</a
+                  >
+                </li>
+                <li><hr class="dropdown-divider" /></li>
+                <li>
+                  <a
+                    class="dropdown-item text-danger"
+                    href="#"
+                    onclick="handleLogout(event)"
+                    >Logout</a
+                  >
+                </li>
+              </ul>
+            </li>
+
+            <!-- Language Dropdown -->
+            <li class="nav-item dropdown">
+              <a
+                class="text-dark fs-4 dropdown-toggle d-flex align-items-center"
+                href="#"
+                id="languageDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i class="bi bi-globe"></i>
+              </a>
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow"
+                aria-labelledby="languageDropdown"
+              >
+                <li><h6 class="dropdown-header">Pilih Bahasa</h6></li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img
+                      src="https://flagcdn.com/id.svg"
+                      width="20"
+                      class="me-2"
+                      alt="ID"
+                    />
+                    Indonesia
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img src="https://flagcdn.com/gb.svg" width="20" class="me-2" alt="EN" />
+                    English
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img src="https://flagcdn.com/ru.svg" width="20" class="me-2" alt="RU" />
+                    Russian
+                  </a>
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </nav>
+
+      <!-- Content -->
+      <div class="content">
+        <div class="container-fluid p-4">
+          <!-- Header -->
+          <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+              <h2 class="fw-bold mb-1">Kelola Laporan</h2>
+              <p class="text-muted mb-0">Rekap data dan laporan detail</p>
+            </div>
+          </div>
+
+          <!-- Weekly Recap -->
+          <div class="card shadow-sm mb-4">
+            <div class="card-body">
+              <div
+                class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3"
+              >
+                <div>
+                  <h5 class="fw-bold mb-1">Rekap Mingguan 12 Bulan Terakhir</h5>
+                  <p class="text-muted mb-0">
+                    Pantau ringkasan bahan, produksi, dan hasil per minggu untuk
+                    satu tahun.
+                  </p>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <label for="weeklyRecapYear" class="text-muted small mb-0"
+                    >Pilih Tahun</label
+                  >
+                  <select
+                    id="weeklyRecapYear"
+                    class="form-select form-select-sm"
+                    style="min-width: 130px"
+                  ></select>
+                </div>
+              </div>
+              <div id="weeklyRecapEmpty" class="alert alert-info d-none mb-0">
+                Belum ada data untuk tahun yang dipilih.
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th scope="col">Minggu</th>
+                      <th scope="col">Rentang Tanggal</th>
+                      <th scope="col">Total Bahan (kg)</th>
+                      <th scope="col">Pengeluaran Bahan</th>
+                      <th scope="col">Batch Produksi</th>
+                      <th scope="col">Output Hasil (kg)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="weeklyRecapTable">
+                    <tr>
+                      <td colspan="6" class="text-center text-muted py-4">
+                        Memuat ringkasan...
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabs Navigation -->
+          <ul class="nav nav-tabs mb-4" id="laporanTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link active"
+                id="bahan-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#bahan"
+                type="button"
+                role="tab"
+                aria-controls="bahan"
+                aria-selected="true"
+              >
+                <i class="bi bi-flower1 me-2"></i>Laporan Bahan Masuk
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="produksi-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#produksi"
+                type="button"
+                role="tab"
+                aria-controls="produksi"
+                aria-selected="false"
+              >
+                <i class="bi bi-building-gear me-2"></i>Laporan Produksi
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="hasil-produksi-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#hasil-produksi"
+                type="button"
+                role="tab"
+                aria-controls="hasil-produksi"
+                aria-selected="false"
+              >
+                <i class="bi bi-box-seam me-2"></i>Laporan Hasil Produksi
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="sanitasi-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#sanitasi"
+                type="button"
+                role="tab"
+                aria-controls="sanitasi"
+                aria-selected="false"
+              >
+                <i class="bi bi-shield-check me-2"></i>Laporan Sanitasi
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="pemasok-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#pemasok"
+                type="button"
+                role="tab"
+                aria-controls="pemasok"
+                aria-selected="false"
+              >
+                <i class="bi bi-person-heart me-2"></i>Laporan Pemasok
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="keuangan-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#keuangan"
+                type="button"
+                role="tab"
+                aria-controls="keuangan"
+                aria-selected="false"
+              >
+                <i class="bi bi-currency-dollar me-2"></i>Laporan Keuangan
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="stok-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#stok"
+                type="button"
+                role="tab"
+                aria-controls="stok"
+                aria-selected="false"
+              >
+                <i class="bi bi-boxes me-2"></i>Laporan Stok
+              </button>
+            </li>
+          </ul>
+
+          <!-- Tab Content -->
+          <div class="tab-content" id="laporanTabContent">
+            <!-- Tab Bahan Masuk -->
+            <div
+              class="tab-pane fade show active"
+              id="bahan"
+              role="tabpanel"
+              aria-labelledby="bahan-tab"
+            >
+              <div class="row gy-3 gx-3 align-items-end mb-3 filter-bar">
+                <div class="col-md-4">
+                  <label
+                    for="bahanFilterMode"
+                    class="form-label small text-muted mb-1"
+                    >Filter Waktu</label
+                  >
+                  <select
+                    id="bahanFilterMode"
+                    class="form-select form-select-sm"
+                    aria-label="Filter waktu bahan"
+                  >
+                    <option value="all">Semua</option>
+                    <option value="daily">Harian</option>
+                    <option value="monthly">Bulanan</option>
+                    <option value="yearly">Tahunan</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label
+                    for="bahanFilterValue"
+                    class="form-label small text-muted mb-1"
+                    >Nilai Filter</label
+                  >
+                  <input
+                    type="date"
+                    id="bahanFilterValue"
+                    class="form-control form-control-sm"
+                    aria-label="Nilai filter bahan"
+                    disabled
+                  />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Reset</label
+                  >
+                  <button
+                    id="bahanFilterReset"
+                    class="btn btn-outline-secondary btn-sm w-100"
+                    type="button"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Rekap</label
+                  >
+                  <button
+                    class="btn btn-primary btn-sm w-100"
+                    type="button"
+                    onclick="exportRekap('bahan')"
+                  >
+                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
+                  </button>
+                </div>
+              </div>
+              <div class="row g-3 mb-4">
+                <div class="col-lg-4">
+                  <div class="card stat-card h-100">
+                    <div class="card-body">
+                      <p class="text-muted text-uppercase small mb-1">
+                        Rata-rata Harga/Kg
+                      </p>
+                      <h3 class="fw-bold mb-2" id="avgPriceSeason">-</h3>
+                      <small class="text-muted" id="seasonRangeLabel"
+                        >Musim panen belum tersedia</small
+                      >
+                    </div>
+                  </div>
+                </div>
+                <div class="col-lg-4">
+                  <div class="card stat-card h-100">
+                    <div class="card-body">
+                      <p class="text-muted text-uppercase small mb-1">
+                        Harga Maksimum/Kg
+                      </p>
+                      <h3 class="fw-bold mb-2" id="maxPriceSeason">-</h3>
+                      <small class="text-muted"
+                        >Pemasok termahal:
+                        <span class="fw-semibold" id="maxPriceSupplier"
+                          >-</span
+                        ></small
+                      >
+                    </div>
+                  </div>
+                </div>
+                <div class="col-lg-4">
+                  <div class="card h-100 bg-light border-0">
+                    <div class="card-body">
+                      <p class="fw-semibold mb-1">Catatan Musim Panen</p>
+                      <p class="text-muted mb-0" id="seasonInfoText">
+                        Menunggu data bahan baku masuk.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="card shadow-sm">
+                <div class="card-body">
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">No</th>
+                          <th scope="col">ID Bahan</th>
+                          <th scope="col">Pemasok</th>
+                          <th scope="col">Jumlah (kg)</th>
+                          <th scope="col">Varietas</th>
+                          <th scope="col">Harga/Kg</th>
+                          <th scope="col">Total Pengeluaran</th>
+                          <th scope="col">Jenis Kopi</th>
+                          <th scope="col">Tanggal Masuk</th>
+                          <th scope="col">Kualitas</th>
+                          <th scope="col" class="text-center">Lihat Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tableBahan">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab Produksi -->
+            <div
+              class="tab-pane fade"
+              id="produksi"
+              role="tabpanel"
+              aria-labelledby="produksi-tab"
+            >
+              <div class="row gy-3 gx-3 align-items-end mb-3 filter-bar">
+                <div class="col-md-4">
+                  <label
+                    for="produksiFilterMode"
+                    class="form-label small text-muted mb-1"
+                    >Filter Waktu</label
+                  >
+                  <select
+                    id="produksiFilterMode"
+                    class="form-select form-select-sm"
+                    aria-label="Filter waktu produksi"
+                  >
+                    <option value="all">Semua</option>
+                    <option value="daily">Harian</option>
+                    <option value="monthly">Bulanan</option>
+                    <option value="yearly">Tahunan</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label
+                    for="produksiFilterValue"
+                    class="form-label small text-muted mb-1"
+                    >Nilai Filter</label
+                  >
+                  <input
+                    type="date"
+                    id="produksiFilterValue"
+                    class="form-control form-control-sm"
+                    aria-label="Nilai filter produksi"
+                    disabled
+                  />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Reset</label
+                  >
+                  <button
+                    id="produksiFilterReset"
+                    class="btn btn-outline-secondary btn-sm w-100"
+                    type="button"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Rekap</label
+                  >
+                  <button
+                    class="btn btn-primary btn-sm w-100"
+                    type="button"
+                    onclick="exportRekap('produksi')"
+                  >
+                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
+                  </button>
+                </div>
+              </div>
+              <div class="card shadow-sm">
+                <div class="card-body">
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">No</th>
+                          <th scope="col">ID Produksi</th>
+                          <th scope="col">ID Bahan</th>
+                          <th scope="col">Berat Awal (kg)</th>
+                          <th scope="col">Berat Saat Ini (kg)</th>
+                          <th scope="col">Proses Pengolahan</th>
+                          <th scope="col">Kadar Air (%)</th>
+                          <th scope="col">Varietas</th>
+                          <th scope="col">Tanggal Masuk</th>
+                          <th scope="col">Tanggal Sekarang</th>
+                          <th scope="col">Status Tahapan</th>
+                          <th scope="col" class="text-center">Lihat Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tableProduksi">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <div class="card shadow-sm mt-4">
+                <div class="card-body">
+                  <div
+                    class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3"
+                  >
+                    <div>
+                      <h5 class="fw-bold mb-1">Detail Alur Produksi</h5>
+                      <p class="text-muted mb-0">
+                        Rincian kronologi per ID produksi dari penerimaan hingga
+                        status terakhir.
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    id="produksiTimelineEmpty"
+                    class="alert alert-info d-none mb-0"
+                  >
+                    Belum ada data produksi untuk dirinci.
+                  </div>
+                  <div class="accordion" id="produksiTimelineWrapper"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab Hasil Produksi -->
+            <div
+              class="tab-pane fade"
+              id="hasil-produksi"
+              role="tabpanel"
+              aria-labelledby="hasil-produksi-tab"
+            >
+              <div class="row gy-3 gx-3 align-items-end mb-3 filter-bar">
+                <div class="col-md-4">
+                  <label
+                    for="hasilFilterMode"
+                    class="form-label small text-muted mb-1"
+                    >Filter Waktu</label
+                  >
+                  <select
+                    id="hasilFilterMode"
+                    class="form-select form-select-sm"
+                    aria-label="Filter waktu hasil produksi"
+                  >
+                    <option value="all">Semua</option>
+                    <option value="daily">Harian</option>
+                    <option value="monthly">Bulanan</option>
+                    <option value="yearly">Tahunan</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label
+                    for="hasilFilterValue"
+                    class="form-label small text-muted mb-1"
+                    >Nilai Filter</label
+                  >
+                  <input
+                    type="date"
+                    id="hasilFilterValue"
+                    class="form-control form-control-sm"
+                    aria-label="Nilai filter hasil produksi"
+                    disabled
+                  />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Reset</label
+                  >
+                  <button
+                    id="hasilFilterReset"
+                    class="btn btn-outline-secondary btn-sm w-100"
+                    type="button"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Rekap</label
+                  >
+                  <button
+                    class="btn btn-primary btn-sm w-100"
+                    type="button"
+                    onclick="exportRekap('hasil')"
+                  >
+                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
+                  </button>
+                </div>
+              </div>
+              <div class="card shadow-sm">
+                <div class="card-body">
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">No</th>
+                          <th scope="col">ID Produksi</th>
+                          <th scope="col">ID Bahan</th>
+                          <th scope="col">Tipe Produk</th>
+                          <th scope="col">Kemasan</th>
+                          <th scope="col">Jenis Kopi</th>
+                          <th scope="col">Proses Pengolahan</th>
+                          <th scope="col">Level Roasting</th>
+                          <th scope="col">Tanggal</th>
+                          <th scope="col">Berat yang Diproses (kg)</th>
+                          <th scope="col">Jumlah</th>
+                          <th scope="col" class="text-center">Lihat Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tableHasilProduksi">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab Sanitasi -->
+            <div
+              class="tab-pane fade"
+              id="sanitasi"
+              role="tabpanel"
+              aria-labelledby="sanitasi-tab"
+            >
+              <div class="row gy-3 gx-3 align-items-end mb-3 filter-bar">
+                <div class="col-md-4">
+                  <label
+                    for="sanitasiFilterMode"
+                    class="form-label small text-muted mb-1"
+                    >Filter Waktu</label
+                  >
+                  <select
+                    id="sanitasiFilterMode"
+                    class="form-select form-select-sm"
+                    aria-label="Filter waktu sanitasi"
+                  >
+                    <option value="all">Semua</option>
+                    <option value="daily">Harian</option>
+                    <option value="monthly">Bulanan</option>
+                    <option value="yearly">Tahunan</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label
+                    for="sanitasiFilterValue"
+                    class="form-label small text-muted mb-1"
+                    >Nilai Filter</label
+                  >
+                  <input
+                    type="date"
+                    id="sanitasiFilterValue"
+                    class="form-control form-control-sm"
+                    aria-label="Nilai filter sanitasi"
+                    disabled
+                  />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Reset</label
+                  >
+                  <button
+                    id="sanitasiFilterReset"
+                    class="btn btn-outline-secondary btn-sm w-100"
+                    type="button"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Rekap</label
+                  >
+                  <button
+                    class="btn btn-primary btn-sm w-100"
+                    type="button"
+                    onclick="exportRekap('sanitasi')"
+                  >
+                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
+                  </button>
+                </div>
+              </div>
+              <div class="card shadow-sm">
+                <div class="card-body">
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">No</th>
+                          <th scope="col">Tanggal</th>
+                          <th scope="col">Tipe Sanitasi</th>
+                          <th scope="col">Petugas</th>
+                          <th scope="col">Status</th>
+                          <th scope="col">Keterangan</th>
+                          <th scope="col" class="text-center">Lihat Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tableSanitasi">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab Pemasok -->
+            <div
+              class="tab-pane fade"
+              id="pemasok"
+              role="tabpanel"
+              aria-labelledby="pemasok-tab"
+            >
+              <div class="card shadow-sm">
+                <div class="card-body">
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">No</th>
+                          <th scope="col">ID Pemasok</th>
+                          <th scope="col">Nama</th>
+                          <th scope="col">Alamat</th>
+                          <th scope="col">Kontak</th>
+                          <th scope="col">Nama Perkebunan</th>
+                          <th scope="col">Status</th>
+                          <th scope="col" class="text-center">Lihat Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tablePemasok">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab Keuangan -->
+            <div
+              class="tab-pane fade"
+              id="keuangan"
+              role="tabpanel"
+              aria-labelledby="keuangan-tab"
+            >
+              <div class="row gy-3 gx-3 align-items-end mb-3 filter-bar">
+                <div class="col-md-4">
+                  <label
+                    for="keuanganFilterMode"
+                    class="form-label small text-muted mb-1"
+                    >Filter Waktu</label
+                  >
+                  <select
+                    id="keuanganFilterMode"
+                    class="form-select form-select-sm"
+                    aria-label="Filter waktu keuangan"
+                  >
+                    <option value="all">Semua</option>
+                    <option value="daily">Harian</option>
+                    <option value="monthly">Bulanan</option>
+                    <option value="yearly">Tahunan</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <label
+                    for="keuanganFilterValue"
+                    class="form-label small text-muted mb-1"
+                    >Nilai Filter</label
+                  >
+                  <input
+                    type="date"
+                    id="keuanganFilterValue"
+                    class="form-control form-control-sm"
+                    aria-label="Nilai filter keuangan"
+                    disabled
+                  />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Reset</label
+                  >
+                  <button
+                    id="keuanganFilterReset"
+                    class="btn btn-outline-secondary btn-sm w-100"
+                    type="button"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Rekap</label
+                  >
+                  <button
+                    class="btn btn-primary btn-sm w-100"
+                    type="button"
+                    onclick="exportRekap('keuangan')"
+                  >
+                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
+                  </button>
+                </div>
+              </div>
+              <div class="card shadow-sm">
+                <div class="card-body">
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">No</th>
+                          <th scope="col">Tanggal</th>
+                          <th scope="col">Jenis Pengeluaran</th>
+                          <th scope="col">ID Bahan Baku</th>
+                          <th scope="col">Nilai</th>
+                          <th scope="col">Notes</th>
+                          <th scope="col" class="text-center">Lihat Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tableKeuangan">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab Stok -->
+            <div
+              class="tab-pane fade"
+              id="stok"
+              role="tabpanel"
+              aria-labelledby="stok-tab"
+            >
+              <!-- Tabel Ringkasan Stok -->
+              <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">
+                  <h5 class="mb-0 fw-bold">
+                    <i class="bi bi-bar-chart me-2"></i>Ringkasan Stok
+                  </h5>
+                </div>
+                <div class="card-body">
+                  <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                      <div class="card border-0 bg-light h-100">
+                        <div class="card-body">
+                          <p class="text-muted text-uppercase small mb-1">
+                            Total Berat Stok
+                          </p>
+                          <h3
+                            class="fw-bold mb-0 text-primary"
+                            id="totalBeratStok"
+                          >
+                            -
+                          </h3>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="card border-0 bg-light h-100">
+                        <div class="card-body">
+                          <p class="text-muted text-uppercase small mb-1">
+                            Total Jumlah Kemasan
+                          </p>
+                          <h3
+                            class="fw-bold mb-0 text-success"
+                            id="totalJumlahKemasan"
+                          >
+                            -
+                          </h3>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="table-responsive">
+                    <table
+                      class="table table-bordered table-hover align-middle"
+                    >
+                      <thead class="table-primary">
+                        <tr>
+                          <th scope="col">Kemasan</th>
+                          <th scope="col" class="text-center">Jumlah Item</th>
+                          <th scope="col" class="text-end">Total Berat (kg)</th>
+                          <th scope="col" class="text-end">
+                            Total Jumlah Kemasan
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody id="tableRingkasanStok">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tabel Detail Stok -->
+              <div class="card shadow-sm">
+                <div class="card-body">
+                  <div
+                    class="d-flex justify-content-between align-items-center mb-3"
+                  >
+                    <div>
+                      <h5 class="fw-bold mb-1">Detail Stok Produk</h5>
+                      <p class="text-muted mb-0 small">
+                        Data stok dikategorikan berdasarkan kemasan
+                      </p>
+                    </div>
+                    <button
+                      class="btn btn-primary btn-sm"
+                      type="button"
+                      onclick="exportRekap('stok')"
+                    >
+                      <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
+                    </button>
+                  </div>
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">No</th>
+                          <th scope="col">Tipe Produk</th>
+                          <th scope="col">Kemasan</th>
+                          <th scope="col">Jenis Kopi</th>
+                          <th scope="col">Proses Pengolahan</th>
+                          <th scope="col">Level Roasting</th>
+                          <th scope="col" class="text-end">Total Berat (kg)</th>
+                          <th scope="col" class="text-end">Total Jumlah</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tableStok">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Tabel Data Kemasan -->
+              <div class="card shadow-sm mt-4">
+                <div class="card-body">
+                  <div
+                    class="d-flex justify-content-between align-items-center mb-3"
+                  >
+                    <div>
+                      <h5 class="fw-bold mb-1">Data Kemasan</h5>
+                      <p class="text-muted mb-0 small">
+                        Data kemasan dari hasil produksi dengan QRCode untuk
+                        tracking
+                      </p>
+                    </div>
+                  </div>
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">No</th>
+                          <th scope="col">ID Produksi</th>
+                          <th scope="col">ID Bahan</th>
+                          <th scope="col">Tipe Produk</th>
+                          <th scope="col">Kemasan</th>
+                          <th scope="col">Jenis Kopi</th>
+                          <th scope="col">Proses Pengolahan</th>
+                          <th scope="col">Level Roasting</th>
+                          <th scope="col">Tanggal</th>
+                          <th scope="col" class="text-end">
+                            Berat yang Diproses (kg)
+                          </th>
+                          <th scope="col" class="text-end">Jumlah</th>
+                          <th scope="col" class="text-center">Lihat Detail</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tableDataKemasan">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Script untuk sidebar toggle -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/notification-system.js') }}"></script>
+      <!-- Authentication Guard - Proteksi halaman -->
+    <script src="{{ url_for('static', filename='js/auth-guard.js') }}"></script>
+    <script>
+      // Display username from sessionStorage
+      document.addEventListener("DOMContentLoaded", async function () {
+        const authResult = await checkAuth("Owner");
+        if (!authResult) {
+          // Jika belum login, checkAuth akan redirect otomatis
+          return;
+        }
+        console.log("✓ Access granted to Kelola Laporan Owner");
+
+        const username = sessionStorage.getItem("username");
+        if (username && document.getElementById("usernameDisplay")) {
+          document.getElementById("usernameDisplay").textContent = username;
+        }
+      });
+    </script>
+  </body>
+</html>

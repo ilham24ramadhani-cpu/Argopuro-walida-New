@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login Admin - Argopuro Walida</title>
+
+    <!-- Boxicons -->
+    <link
+      href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css"
+      rel="stylesheet"
+    />
+
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    />
+    <!-- Bootstrap Primary Color Override -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='bootstrap-primary-override.css') }}"
+    />
+
+    <!-- Bootstrap Icons -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+      rel="stylesheet"
+    />
+
+    <!-- Custom CSS -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='login.css') }}"
+    />
+
+    <!-- Bootstrap JS -->
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+    ></script>
+  </head>
+
+  <body
+    class="d-flex align-items-center justify-content-center vh-100 bg-light"
+  >
+    <div class="card shadow-lg p-4 rounded-4" style="width: 400px">
+      <!-- Back Button -->
+      <div class="mb-3">
+        <a
+          href="{{ url_for('welcome') }}"
+          class="text-decoration-none text-muted"
+        >
+          <i class="bi bi-arrow-left me-1"></i> Kembali
+        </a>
+      </div>
+
+      <div class="text-center mb-4">
+        <div class="role-badge-admin mb-3">
+          <i class="bi bi-shield-check fs-1 text-white"></i>
+        </div>
+        <h3 class="fw-bold">Login Admin</h3>
+        <p class="text-muted small">
+          Masuk sebagai Administrator untuk akses penuh sistem
+        </p>
+      </div>
+
+      <form id="loginForm" onsubmit="handleLogin(event, 'Admin')">
+        <div class="mb-3">
+          <label for="username" class="form-label fw-semibold">Username</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bx bx-user"></i></span>
+            <input
+              type="text"
+              id="username"
+              class="form-control"
+              placeholder="Masukkan username"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label for="password" class="form-label fw-semibold">Password</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bx bx-lock-alt"></i></span>
+            <input
+              type="password"
+              id="password"
+              class="form-control"
+              placeholder="Masukkan password"
+              required
+            />
+          </div>
+          <small class="text-muted"
+            >Login hanya dapat dilakukan dengan akun yang sudah terdaftar</small
+          >
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input" id="rememberMe" />
+            <label for="rememberMe" class="form-check-label small"
+              >Ingat saya</label
+            >
+          </div>
+          <a href="#" class="text-decoration-none small text-primary"
+            >Lupa password?</a
+          >
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100 fw-semibold">
+          <i class="bx bx-log-in me-1"></i> Login sebagai Admin
+        </button>
+      </form>
+
+      <p class="text-center text-muted mt-3 small">
+        Bukan Admin?
+        <a
+          href="{{ url_for('welcome') }}"
+          class="text-primary text-decoration-none"
+          >Pilih tipe akun lain</a
+        >
+      </p>
+    </div>
+
+    <!-- API Service -->
+    <script
+      src="{{ url_for('static', filename='js/api-service.js') }}"
+      defer
+    ></script>
+
+    <!-- Script Auth -->
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+
+    <script>
+      /**
+       * Handle Login untuk Admin
+       *
+       * Fungsi ini melakukan autentikasi pengguna dengan memvalidasi:
+       * 1. Username dan password dari input form
+       * 2. Data pengguna yang ada di API atau localStorage
+       * 3. Role harus sesuai dengan "Admin"
+       * 4. Status pengguna harus "Aktif"
+       *
+       * Login berhasil jika pengguna sudah terdaftar di API atau localStorage
+       * (baik ditambahkan oleh Admin atau melalui Register)
+       */
+      async function handleLogin(event, role) {
+        event.preventDefault();
+
+        // Ambil input dari form
+        const usernameInput = document.getElementById("username");
+        const passwordInput = document.getElementById("password");
+
+        const username = usernameInput ? usernameInput.value.trim() : "";
+        const password = passwordInput ? passwordInput.value.trim() : "";
+
+        // Validasi input
+        if (!username) {
+          alert("⚠️ Username harus diisi!");
+          usernameInput.focus();
+          return;
+        }
+
+        if (!password) {
+          alert("⚠️ Password harus diisi!");
+          passwordInput.focus();
+          return;
+        }
+
+        // Set role Admin
+        const loginRole = "Admin";
+
+        console.log(
+          "🔐 Login attempt - Role:",
+          loginRole,
+          "Username:",
+          username
+        );
+
+        try {
+          // Autentikasi menggunakan fungsi dari auth.js (async)
+          // Fungsi ini akan mencari user di API atau localStorage berdasarkan username, password, dan role
+          const authenticatedUser = await authenticateUser(
+            username,
+            password,
+            loginRole
+          );
+
+          if (authenticatedUser) {
+            // Login berhasil - Flask session is already set by backend
+            // No need to set sessionStorage - backend handles everything
+            console.log(
+              "✅ Login berhasil! Flask session created. Waiting for cookie to be set..."
+            );
+
+            // Wait a small delay to ensure session cookie is set before redirect
+            // This ensures the cookie is available for the next request
+            setTimeout(() => {
+              console.log("Redirecting to dashboard...");
+              // Redirect ke dashboard Admin - backend session will be checked
+              window.location.href = "{{ url_for('dashboard') }}";
+            }, 100);
+          } else {
+            // Login gagal
+            alert(
+              "❌ Login gagal!\n\nUsername atau password salah, atau akun tidak aktif.\n\nPastikan:\n- Username dan password benar\n- Akun sudah terdaftar di sistem\n- Status akun adalah 'Aktif'"
+            );
+            passwordInput.value = "";
+            passwordInput.focus();
+          }
+        } catch (error) {
+          console.error("Error during login:", error);
+          alert(
+            "❌ Terjadi kesalahan saat login.\n\nSilakan coba lagi atau hubungi administrator."
+          );
+          passwordInput.value = "";
+        }
+      }
+    </script>
+  </body>
+</html>

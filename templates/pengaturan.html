@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pengaturan - Argopuro Walida</title>
+    <!-- Boxicons -->
+    <link
+      href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/boxicons@2.1.3/dist/boxicons.js"></script>
+
+    <!-- Custom CSS -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='pengaturan.css') }}"
+    />
+    <!-- Bootstrap JS -->
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+    ></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    />
+    <!-- Bootstrap Primary Color Override -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='bootstrap-primary-override.css') }}"
+    />
+    <script
+      src="{{ url_for('static', filename='js/api-service.js') }}"
+      defer
+    ></script>
+  </head>
+  <body>
+    <!-- ===== Sidebar Start ===== -->
+    <nav class="sidebar close">
+      <header>
+        <div class="image-text">
+          <a
+            href="{{ url_for('dashboard') }}"
+            class="d-flex align-items-center text-decoration-none"
+            style="color: inherit"
+          >
+            <span class="image">
+              <img
+                src="{{ url_for('static', filename='img/logo.png') }}"
+                alt="logo"
+              />
+            </span>
+
+            <div class="text header-text">
+              <span class="name">Argopuro Walida</span>
+            </div>
+          </a>
+        </div>
+
+        <i class="bx bx-chevron-right toggle"></i>
+      </header>
+
+      <div class="menu-bar">
+        <ul class="menu-links">
+          <li>
+            <a href="{{ url_for('kelola_pengguna') }}"
+              ><i class="bi bi-person-circle"></i
+              ><span class="text">Kelola Pengguna</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_bahan') }}">
+              <i class="bi bi-flower1"></i>
+              <span class="text">Kelola Bahan</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_produksi') }}"
+              ><i class="bi bi-building-gear"></i
+              ><span class="text">Kelola Produksi</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_stok') }}"
+              ><i class="bi bi-boxes"></i
+              ><span class="text">Kelola Stok</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_pemasok') }}"
+              ><i class="bi bi-person-heart"></i
+              ><span class="text">Kelola Pemasok</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_sanitasi') }}"
+              ><i class="bi bi-shield-check"></i
+              ><span class="text">Kelola Sanitasi</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_keuangan') }}"
+              ><i class="bi bi-currency-dollar"></i
+              ><span class="text">Kelola Keuangan</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_laporan') }}"
+              ><i class="bi bi-file-text"></i
+              ><span class="text">Kelola Laporan</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_data') }}"
+              ><i class="bi bi-database"></i
+              ><span class="text">Kelola Data</span></a
+            >
+          </li>
+          <li>
+            <a href="#"
+              ><i class="bi bi-cart"></i
+              ><span class="text">Kelola Pemesanan</span></a
+            >
+          </li>
+        </ul>
+      </div>
+    </nav>
+    <!-- ===== Sidebar End ===== -->
+    <section class="home">
+      <!-- Navbar -->
+      <nav class="navbar fixed-top bg-white shadow-sm px-3">
+        <div
+          class="container-fluid d-flex align-items-center justify-content-between"
+        >
+          <!-- Brand -->
+          <span class="fw-bold fs-5">Argopuro Walida System <span class="badge bg-primary ms-2">Admin</span></span>
+
+          <!-- Search Bar -->
+          <form class="d-flex ms-auto me-3" role="search">
+            <input
+              class="form-control me-2 search-input"
+              type="search"
+              placeholder="Search"
+              aria-label="Search"
+            />
+            <button class="btn btn-outline-primary" type="submit">
+              Search
+            </button>
+          </form>
+
+          <!-- Right Icons -->
+          <ul
+            class="navbar-icons d-flex align-items-center list-unstyled mb-0"
+            style="gap: 1rem"
+          >
+                        <!-- Notification Dropdown -->
+            <li class="nav-item dropdown">
+              <a
+                class="text-dark fs-4 position-relative dropdown-toggle"
+                href="#"
+                id="notificationDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i class="bi bi-bell"></i>
+                <span
+                  id="notificationBadge"
+                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                  style="font-size: 0.65rem; display: none;"
+                ></span>
+              </a>
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow"
+                style="width: 350px; max-height: 500px; overflow-y: auto;"
+                aria-labelledby="notificationDropdown"
+              >
+                <li>
+                  <h6 class="dropdown-header d-flex justify-content-between align-items-center">
+                    <span>Notifikasi</span>
+                    <button
+                      class="btn btn-sm btn-link text-decoration-none p-0"
+                      onclick="window.NotificationSystem.markAllAsRead()"
+                      style="font-size: 0.75rem;"
+                    >
+                      Tandai semua dibaca
+                    </button>
+                  </h6>
+                </li>
+                <li><hr class="dropdown-divider" /></li>
+                <li id="notificationEmptyState" style="display: none;">
+                  <div class="text-center text-muted p-3">
+                    <i class="bi bi-bell-slash fs-3 d-block mb-2"></i>
+                    <small>Tidak ada notifikasi</small>
+                  </div>
+                </li>
+                <ul id="notificationDropdownBody" class="list-unstyled mb-0"></ul>
+                <li><hr class="dropdown-divider" /></li>
+                <li>
+                  <a
+                    class="dropdown-item text-center text-danger small"
+                    href="#"
+                    onclick="window.NotificationSystem.clearAll(); return false;"
+                  >
+                    Hapus Semua Notifikasi
+                  </a>
+                </li>
+              </ul>
+            </li>
+
+            <!-- User Dropdown -->
+            <li class="nav-item dropdown">
+              <a
+                class="text-dark fs-4 dropdown-toggle d-flex align-items-center"
+                href="#"
+                id="userDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i class="bi bi-person-circle"></i>
+              </a>
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow"
+                aria-labelledby="userDropdown"
+              >
+                <li>
+                  <h6 class="dropdown-header">Akun Pengguna</h6>
+                </li>
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('profile') }}"
+                    >Profil Saya</a
+                  >
+                </li>
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('pengaturan') }}"
+                    >Pengaturan</a
+                  >
+                </li>
+                <li><hr class="dropdown-divider" /></li>
+                <li>
+                  <a
+                    class="dropdown-item text-danger"
+                    href="#"
+                    onclick="handleLogout(event)"
+                    >Logout</a
+                  >
+                </li>
+              </ul>
+            </li>
+
+            <!-- Language Dropdown -->
+            <li class="nav-item dropdown">
+              <a
+                class="text-dark fs-4 dropdown-toggle d-flex align-items-center"
+                href="#"
+                id="languageDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i class="bi bi-globe"></i>
+              </a>
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow"
+                aria-labelledby="languageDropdown"
+              >
+                <li><h6 class="dropdown-header">Pilih Bahasa</h6></li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img
+                      src="https://flagcdn.com/id.svg"
+                      width="20"
+                      class="me-2"
+                      alt="ID"
+                    />
+                    Indonesia
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img
+                      src="https://flagcdn.com/gb.svg"
+                      width="20"
+                      class="me-2"
+                      alt="EN"
+                    />
+                    English
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img
+                      src="https://flagcdn.com/ru.svg"
+                      width="20"
+                      class="me-2"
+                      alt="RU"
+                    />
+                    Russian
+                  </a>
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </nav>
+
+      <!-- Content -->
+      <div class="content">
+        <div class="container-fluid p-4">
+          <!-- Header -->
+          <div class="mb-4">
+            <h2 class="fw-bold mb-1">Pengaturan</h2>
+            <p class="text-muted mb-0">Kelola pengaturan akun Anda</p>
+          </div>
+
+          <!-- Settings Tabs -->
+          <div class="row">
+            <div class="col-lg-3 mb-4">
+              <div class="card shadow-sm">
+                <div class="card-body p-0">
+                  <ul
+                    class="nav nav-pills flex-column"
+                    id="settingsTab"
+                    role="tablist"
+                  >
+                    <li class="nav-item" role="presentation">
+                      <button
+                        class="nav-link active"
+                        id="account-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#account"
+                        type="button"
+                        role="tab"
+                      >
+                        <i class="bi bi-person-circle me-2"></i>Akun
+                      </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button
+                        class="nav-link"
+                        id="security-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#security"
+                        type="button"
+                        role="tab"
+                      >
+                        <i class="bi bi-shield-lock me-2"></i>Keamanan
+                      </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button
+                        class="nav-link"
+                        id="notification-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#notification"
+                        type="button"
+                        role="tab"
+                      >
+                        <i class="bi bi-bell me-2"></i>Notifikasi
+                      </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                      <button
+                        class="nav-link"
+                        id="privacy-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#privacy"
+                        type="button"
+                        role="tab"
+                      >
+                        <i class="bi bi-eye me-2"></i>Privasi
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-lg-9">
+              <div class="tab-content" id="settingsTabContent">
+                <!-- Akun Tab -->
+                <div
+                  class="tab-pane fade show active"
+                  id="account"
+                  role="tabpanel"
+                >
+                  <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                      <h5 class="mb-0 fw-bold">Pengaturan Akun</h5>
+                    </div>
+                    <div class="card-body">
+                      <form id="accountForm">
+                        <div class="mb-3">
+                          <label
+                            for="displayName"
+                            class="form-label fw-semibold"
+                            >Nama Tampilan</label
+                          >
+                          <input
+                            type="text"
+                            class="form-control"
+                            id="displayName"
+                            placeholder="Masukkan nama tampilan"
+                          />
+                        </div>
+                        <div class="mb-3">
+                          <label for="timezone" class="form-label fw-semibold"
+                            >Zona Waktu</label
+                          >
+                          <select class="form-select" id="timezone">
+                            <option value="WIB">
+                              WIB (Waktu Indonesia Barat)
+                            </option>
+                            <option value="WITA">
+                              WITA (Waktu Indonesia Tengah)
+                            </option>
+                            <option value="WIT">
+                              WIT (Waktu Indonesia Timur)
+                            </option>
+                          </select>
+                        </div>
+                        <div class="mb-3">
+                          <label for="language" class="form-label fw-semibold"
+                            >Bahasa</label
+                          >
+                          <select class="form-select" id="language">
+                            <option value="id">Bahasa Indonesia</option>
+                            <option value="en">English</option>
+                            <option value="ru">Русский</option>
+                          </select>
+                        </div>
+                        <div class="d-flex justify-content-end">
+                          <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save me-1"></i>Simpan Perubahan
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Keamanan Tab -->
+                <div class="tab-pane fade" id="security" role="tabpanel">
+                  <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                      <h5 class="mb-0 fw-bold">Keamanan</h5>
+                    </div>
+                    <div class="card-body">
+                      <form id="securityForm">
+                        <div class="mb-4">
+                          <h6 class="fw-bold mb-3">Ubah Password</h6>
+                          <div class="mb-3">
+                            <label
+                              for="currentPassword"
+                              class="form-label fw-semibold"
+                              >Password Saat Ini
+                              <span class="text-danger">*</span></label
+                            >
+                            <input
+                              type="password"
+                              class="form-control"
+                              id="currentPassword"
+                              placeholder="Masukkan password saat ini"
+                              required
+                            />
+                          </div>
+                          <div class="mb-3">
+                            <label
+                              for="newPassword"
+                              class="form-label fw-semibold"
+                              >Password Baru
+                              <span class="text-danger">*</span></label
+                            >
+                            <input
+                              type="password"
+                              class="form-control"
+                              id="newPassword"
+                              placeholder="Masukkan password baru"
+                              required
+                            />
+                          </div>
+                          <div class="mb-3">
+                            <label
+                              for="confirmPassword"
+                              class="form-label fw-semibold"
+                              >Konfirmasi Password Baru
+                              <span class="text-danger">*</span></label
+                            >
+                            <input
+                              type="password"
+                              class="form-control"
+                              id="confirmPassword"
+                              placeholder="Konfirmasi password baru"
+                              required
+                            />
+                          </div>
+                          <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary">
+                              <i class="bi bi-key me-1"></i>Ubah Password
+                            </button>
+                          </div>
+                        </div>
+                      </form>
+
+                      <hr class="my-4" />
+
+                      <div class="mb-3">
+                        <h6 class="fw-bold mb-3">Autentikasi Dua Faktor</h6>
+                        <div
+                          class="d-flex justify-content-between align-items-center"
+                        >
+                          <div>
+                            <p class="mb-0 fw-semibold">Aktifkan 2FA</p>
+                            <small class="text-muted"
+                              >Tingkatkan keamanan akun Anda dengan autentikasi
+                              dua faktor</small
+                            >
+                          </div>
+                          <div class="form-check form-switch">
+                            <input
+                              class="form-check-input"
+                              type="checkbox"
+                              id="twoFactorAuth"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Notifikasi Tab -->
+                <div class="tab-pane fade" id="notification" role="tabpanel">
+                  <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                      <h5 class="mb-0 fw-bold">Pengaturan Notifikasi</h5>
+                    </div>
+                    <div class="card-body">
+                      <div class="mb-3">
+                        <div
+                          class="d-flex justify-content-between align-items-center mb-3"
+                        >
+                          <div>
+                            <p class="mb-0 fw-semibold">Email Notifikasi</p>
+                            <small class="text-muted"
+                              >Terima notifikasi melalui email</small
+                            >
+                          </div>
+                          <div class="form-check form-switch">
+                            <input
+                              class="form-check-input"
+                              type="checkbox"
+                              id="emailNotification"
+                              checked
+                            />
+                          </div>
+                        </div>
+                        <div
+                          class="d-flex justify-content-between align-items-center mb-3"
+                        >
+                          <div>
+                            <p class="mb-0 fw-semibold">Notifikasi Sistem</p>
+                            <small class="text-muted"
+                              >Terima notifikasi dari sistem</small
+                            >
+                          </div>
+                          <div class="form-check form-switch">
+                            <input
+                              class="form-check-input"
+                              type="checkbox"
+                              id="systemNotification"
+                              checked
+                            />
+                          </div>
+                        </div>
+                        <div
+                          class="d-flex justify-content-between align-items-center"
+                        >
+                          <div>
+                            <p class="mb-0 fw-semibold">Notifikasi Pembaruan</p>
+                            <small class="text-muted"
+                              >Terima notifikasi tentang pembaruan</small
+                            >
+                          </div>
+                          <div class="form-check form-switch">
+                            <input
+                              class="form-check-input"
+                              type="checkbox"
+                              id="updateNotification"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div class="d-flex justify-content-end">
+                        <button
+                          type="button"
+                          class="btn btn-primary"
+                          onclick="saveNotificationSettings()"
+                        >
+                          <i class="bi bi-save me-1"></i>Simpan Perubahan
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Privasi Tab -->
+                <div class="tab-pane fade" id="privacy" role="tabpanel">
+                  <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                      <h5 class="mb-0 fw-bold">Pengaturan Privasi</h5>
+                    </div>
+                    <div class="card-body">
+                      <div class="mb-3">
+                        <div
+                          class="d-flex justify-content-between align-items-center mb-3"
+                        >
+                          <div>
+                            <p class="mb-0 fw-semibold">Profil Publik</p>
+                            <small class="text-muted"
+                              >Izinkan orang lain melihat profil Anda</small
+                            >
+                          </div>
+                          <div class="form-check form-switch">
+                            <input
+                              class="form-check-input"
+                              type="checkbox"
+                              id="publicProfile"
+                            />
+                          </div>
+                        </div>
+                        <div
+                          class="d-flex justify-content-between align-items-center mb-3"
+                        >
+                          <div>
+                            <p class="mb-0 fw-semibold">Bagikan Aktivitas</p>
+                            <small class="text-muted"
+                              >Bagikan aktivitas Anda dengan pengguna
+                              lain</small
+                            >
+                          </div>
+                          <div class="form-check form-switch">
+                            <input
+                              class="form-check-input"
+                              type="checkbox"
+                              id="shareActivity"
+                            />
+                          </div>
+                        </div>
+                        <div class="mb-3">
+                          <label
+                            for="dataRetention"
+                            class="form-label fw-semibold"
+                            >Retensi Data</label
+                          >
+                          <select class="form-select" id="dataRetention">
+                            <option value="30">30 Hari</option>
+                            <option value="90">90 Hari</option>
+                            <option value="365" selected>1 Tahun</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="d-flex justify-content-end">
+                        <button
+                          type="button"
+                          class="btn btn-primary"
+                          onclick="savePrivacySettings()"
+                        >
+                          <i class="bi bi-save me-1"></i>Simpan Perubahan
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Script untuk sidebar toggle -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/notification-system.js') }}"></script>
+    <!-- Authentication Guard - Proteksi halaman -->
+    <script src="{{ url_for('static', filename='js/auth-guard.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/pengaturan.js') }}"></script>
+    <script>
+      // Check authentication on page load - Admin only
+      document.addEventListener("DOMContentLoaded", async function () {
+        if (typeof checkAuth === "function") {
+          const authResult = await checkAuth("Admin");
+          if (!authResult) {
+            return;
+          }
+        } else if (typeof window.checkAuth === "function") {
+          const authResult = await window.checkAuth("Admin");
+          if (!authResult) {
+            return;
+          }
+        }
+        console.log("✓ Access granted to Pengaturan Admin");
+      });
+    </script>
+  </body>
+</html>

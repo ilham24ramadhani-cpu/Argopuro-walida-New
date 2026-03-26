@@ -1,0 +1,80 @@
+/* Pengaturan Styles */
+.content {
+  margin-top: 70px;
+  padding: 20px;
+}
+
+.card {
+  border: none;
+  border-radius: 10px;
+}
+
+.nav-pills .nav-link {
+  border-radius: 0;
+  color: #495057;
+  padding: 0.75rem 1rem;
+  transition: all 0.3s ease;
+}
+
+.nav-pills .nav-link:hover {
+  background-color: #f8f9fa;
+  color: #00665D;
+}
+
+.nav-pills .nav-link.active {
+  background-color: #00665D;
+  color: #fff;
+}
+
+.form-label {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #495057;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #00665D;
+  box-shadow: 0 0 0 0.2rem rgba(0, 102, 93, 0.15);
+}
+
+.card-header {
+  border-bottom: 1px solid #e9ecef;
+  padding: 1.25rem 1.5rem;
+  background-color: #f8f9fa;
+}
+
+.card-body {
+  padding: 1.5rem;
+}
+
+.form-check-input:checked {
+  background-color: #00665D;
+  border-color: #00665D;
+}
+
+.form-check-input:focus {
+  border-color: #00665D;
+  box-shadow: 0 0 0 0.25rem rgba(0, 102, 93, 0.25);
+}
+
+.form-switch .form-check-input {
+  width: 3em;
+  height: 1.5em;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .content {
+    padding: 15px;
+  }
+
+  .nav-pills {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+
+  .nav-pills .nav-link {
+    white-space: nowrap;
+  }
+}

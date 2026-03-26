@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Input Produksi - Argopuro Walida</title>
+    <!-- Boxicons -->
+    <link
+      href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/boxicons@2.1.3/dist/boxicons.js"></script>
+
+    <!-- Custom CSS -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='kelola_produksi.css') }}"
+    />
+    <!-- JS - api-service.js HARUS di-load SEBELUM kelola_produksi.js -->
+    <!-- IMPORTANT: api-service.js WITHOUT defer untuk memastikan dieksekusi lebih dulu -->
+    <script src="{{ url_for('static', filename='js/api-service.js') }}"></script>
+    <script
+      src="{{ url_for('static', filename='js/kelola_produksi.js') }}"
+      defer
+    ></script>
+    <!-- Bootstrap JS -->
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+    ></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+      rel="stylesheet"
+    />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    />
+    <!-- Bootstrap Primary Color Override -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='bootstrap-primary-override.css') }}"
+    />
+  </head>
+  <body data-role="karyawan">
+    <!-- ===== Sidebar Start ===== -->
+    <nav class="sidebar close">
+      <header>
+        <div class="image-text">
+          <a
+            href="{{ url_for('dashboard_karyawan') }}"
+            class="d-flex align-items-center text-decoration-none"
+            style="color: inherit"
+          >
+            <span class="image">
+              <img
+                src="{{ url_for('static', filename='img/logo.png') }}"
+                alt="logo"
+              />
+            </span>
+
+            <div class="text header-text">
+              <span class="name">Argopuro Walida</span>
+              <span class="text profession">Karyawan Dashboard</span>
+            </div>
+          </a>
+        </div>
+
+        <i class="bx bx-chevron-right toggle"></i>
+      </header>
+
+      <div class="menu-bar">
+        <ul class="menu-links">
+          <li>
+            <a href="{{ url_for('dashboard_karyawan') }}"
+              ><i class="bi bi-house-door"></i
+              ><span class="text">Dashboard</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_bahan_karyawan') }}">
+              <i class="bi bi-flower1"></i>
+              <span class="text">Input Bahan</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_produksi_karyawan') }}"
+              ><i class="bi bi-building-gear"></i
+              ><span class="text">Input Produksi</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('kelola_sanitasi_karyawan') }}"
+              ><i class="bi bi-shield-check"></i
+              ><span class="text">Input Sanitasi</span></a
+            >
+          </li>
+          <li>
+            <a href="{{ url_for('profile_karyawan') }}"
+              ><i class="bi bi-person-circle"></i
+              ><span class="text">Profil</span></a
+            >
+          </li>
+        </ul>
+      </div>
+    </nav>
+    <!-- ===== Sidebar End ===== -->
+    <section class="home">
+      <!-- Navbar -->
+      <nav class="navbar fixed-top bg-white shadow-sm px-3">
+        <div
+          class="container-fluid d-flex align-items-center justify-content-between"
+        >
+          <!-- Brand -->
+          <span class="fw-bold fs-5">Argopuro Walida System <span class="badge bg-info ms-2">Karyawan</span></span>
+
+          <!-- Search Bar -->
+          <form class="d-flex ms-auto me-3" role="search">
+            <input
+              class="form-control me-2 search-input"
+              type="search"
+              placeholder="Search"
+              aria-label="Search"
+              id="searchInput"
+            />
+            <button class="btn btn-outline-primary" type="submit">
+              Search
+            </button>
+          </form>
+
+          <!-- Right Icons -->
+          <ul
+            class="navbar-icons d-flex align-items-center list-unstyled mb-0"
+            style="gap: 1rem"
+          >
+                        <!-- Notification Dropdown -->
+            <li class="nav-item dropdown">
+              <a
+                class="text-dark fs-4 position-relative dropdown-toggle"
+                href="#"
+                id="notificationDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i class="bi bi-bell"></i>
+                <span
+                  id="notificationBadge"
+                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                  style="font-size: 0.65rem; display: none;"
+                ></span>
+              </a>
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow"
+                style="width: 350px; max-height: 500px; overflow-y: auto;"
+                aria-labelledby="notificationDropdown"
+              >
+                <li>
+                  <h6 class="dropdown-header d-flex justify-content-between align-items-center">
+                    <span>Notifikasi</span>
+                    <button
+                      class="btn btn-sm btn-link text-decoration-none p-0"
+                      onclick="window.NotificationSystem.markAllAsRead()"
+                      style="font-size: 0.75rem;"
+                    >
+                      Tandai semua dibaca
+                    </button>
+                  </h6>
+                </li>
+                <li><hr class="dropdown-divider" /></li>
+                <li id="notificationEmptyState" style="display: none;">
+                  <div class="text-center text-muted p-3">
+                    <i class="bi bi-bell-slash fs-3 d-block mb-2"></i>
+                    <small>Tidak ada notifikasi</small>
+                  </div>
+                </li>
+                <ul id="notificationDropdownBody" class="list-unstyled mb-0"></ul>
+                <li><hr class="dropdown-divider" /></li>
+                <li>
+                  <a
+                    class="dropdown-item text-center text-danger small"
+                    href="#"
+                    onclick="window.NotificationSystem.clearAll(); return false;"
+                  >
+                    Hapus Semua Notifikasi
+                  </a>
+                </li>
+              </ul>
+            </li>
+
+            <!-- User Dropdown -->
+            <li class="nav-item dropdown">
+              <a
+                class="text-dark fs-4 dropdown-toggle d-flex align-items-center"
+                href="#"
+                id="userDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i class="bi bi-person-circle"></i>
+                <span class="ms-2 d-none d-md-inline" id="usernameDisplay"
+                  >Karyawan</span
+                >
+              </a>
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow"
+                aria-labelledby="userDropdown"
+              >
+                <li>
+                  <h6 class="dropdown-header">Akun Karyawan</h6>
+                </li>
+                <li>
+                  <a
+                    class="dropdown-item"
+                    href="{{ url_for('profile_karyawan') }}"
+                    >Profil Saya</a
+                  >
+                </li>
+                <li>
+                  <a
+                    class="dropdown-item"
+                    href="{{ url_for('pengaturan_karyawan') }}"
+                    >Pengaturan</a
+                  >
+                </li>
+                <li><hr class="dropdown-divider" /></li>
+                <li>
+                  <a
+                    class="dropdown-item text-danger"
+                    href="#"
+                    onclick="handleLogout(event)"
+                    >Logout</a
+                  >
+                </li>
+              </ul>
+            </li>
+
+            <!-- Language Dropdown -->
+            <li class="nav-item dropdown">
+              <a
+                class="text-dark fs-4 dropdown-toggle d-flex align-items-center"
+                href="#"
+                id="languageDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i class="bi bi-globe"></i>
+              </a>
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow"
+                aria-labelledby="languageDropdown"
+              >
+                <li><h6 class="dropdown-header">Pilih Bahasa</h6></li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img
+                      src="https://flagcdn.com/id.svg"
+                      width="20"
+                      class="me-2"
+                      alt="ID"
+                    />
+                    Indonesia
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img src="https://flagcdn.com/gb.svg" width="20" class="me-2" alt="EN" />
+                    English
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img src="https://flagcdn.com/ru.svg" width="20" class="me-2" alt="RU" />
+                    Russian
+                  </a>
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </nav>
+
+      <!-- Content -->
+      <div class="content">
+        <div class="container-fluid p-4">
+          <!-- Header -->
+          <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+              <h2 class="fw-bold mb-1">Input Produksi</h2>
+              <p class="text-muted mb-0">Input data proses produksi kopi</p>
+            </div>
+            <button
+              class="btn btn-primary"
+              data-bs-toggle="modal"
+              data-bs-target="#modalProduksi"
+              onclick="openModal('add')"
+            >
+              <i class="bi bi-plus-circle me-2"></i>Tambah Produksi
+            </button>
+          </div>
+
+          <!-- Table -->
+          <div class="card shadow-sm">
+            <div class="card-body">
+              <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                  <thead class="table-light">
+                    <tr>
+                      <th scope="col">No</th>
+                      <th scope="col">ID Produksi</th>
+                      <th scope="col">ID Bahan</th>
+                      <th scope="col">Berat Awal (kg)</th>
+                      <th scope="col">Berat Terkini (kg)</th>
+                      <th scope="col">Berat Akhir (kg)</th>
+                      <th scope="col">Proses Pengolahan</th>
+                      <th scope="col">Kadar Air (%)</th>
+                      <th scope="col">Varietas</th>
+                      <th scope="col">Tanggal Masuk</th>
+                      <th scope="col">Tanggal Sekarang</th>
+                      <th scope="col">Status Tahapan</th>
+                      <th scope="col" class="text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tableBody">
+                    <!-- Data akan diisi oleh JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Modal Tambah/Edit Produksi -->
+    <div
+      class="modal fade"
+      id="modalProduksi"
+      tabindex="-1"
+      aria-labelledby="modalProduksiLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="modalProduksiLabel">Tambah Produksi</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <form id="formProduksi">
+              <input type="hidden" id="produksiId" />
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="idProduksi" class="form-label">ID Produksi</label>
+                  <input type="text" class="form-control bg-light" id="idProduksi" placeholder="Loading..." readonly />
+                  <small class="text-muted"><i class="bi bi-info-circle"></i> ID Produksi dihasilkan otomatis (format PRD-YYYYMM-XXXX)</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="idBahan" class="form-label">ID Bahan <span class="text-danger">*</span></label>
+                  <select class="form-select" id="idBahan" required onchange="loadBahanDataProduksi()">
+                    <option value="">Pilih ID Bahan</option>
+                  </select>
+                  <small class="text-muted">Pilih ID Bahan untuk auto-fill data dari bahan masuk</small>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="varietas" class="form-label">Varietas <span class="text-danger">*</span></label>
+                  <input type="text" class="form-control" id="varietas" list="varietasListProduksi" placeholder="Pilih atau ketik varietas" required />
+                  <datalist id="varietasListProduksi"></datalist>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="beratAwal" class="form-label">Berat Awal (kg) <span class="text-danger">*</span></label>
+                  <input type="number" class="form-control" id="beratAwal" placeholder="Pilih ID Bahan terlebih dahulu" min="0" step="0.01" required />
+                  <small class="text-muted" id="beratAwalInfo">Info sisa bahan muncul setelah memilih ID Bahan.</small>
+                  <small class="text-warning d-none" id="beratAwalWarning">Berat awal hanya bisa diubah saat menambah produksi baru.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="beratTerkini" class="form-label">Berat Terkini (kg) <span class="text-danger" id="beratTerkiniAsterisk">*</span></label>
+                  <input type="number" class="form-control" id="beratTerkini" placeholder="Masukkan berat terkini pada tahapan ini" min="0" step="0.01" required />
+                  <small class="text-muted" id="beratTerkiniInfo">Wajib diisi: Berat terkini diinput setiap update tahapan.</small>
+                  <small class="text-warning d-none" id="beratTerkiniPengemasanInfo">Pada tahap Pengemasan, berat terkini dikunci.</small>
+                </div>
+              </div>
+              <div class="mb-3" id="beratAkhirField" style="display: none">
+                <label for="beratAkhir" class="form-label">Berat Akhir (kg) <span class="text-danger">*</span></label>
+                <input type="number" class="form-control" id="beratAkhir" placeholder="Masukkan berat akhir setelah pengemasan" min="0" step="0.01" disabled />
+                <small class="text-muted">Hanya untuk tahap Pengemasan. Data masuk ke stok otomatis.</small>
+              </div>
+              <div id="dataProdukStokField" style="display: none" class="border rounded p-3 bg-light mb-3">
+                <small class="text-muted d-block mb-2"><i class="bi bi-box-seam"></i> Catat berat produk hasil pengemasan.</small>
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    <label for="beratGreenBeans" class="form-label">Berat Green Beans (kg) <span class="text-danger">*</span></label>
+                    <input type="number" class="form-control" id="beratGreenBeans" placeholder="Masukkan berat green beans" min="0" step="0.01" />
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    <label for="beratPixel" class="form-label">Berat Produk Pixel (kg) <span class="text-muted">(Opsional)</span></label>
+                    <input type="number" class="form-control" id="beratPixel" placeholder="Masukkan berat produk pixel" min="0" step="0.01" />
+                  </div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="prosesPengolahan" class="form-label">Proses Pengolahan <span class="text-danger">*</span></label>
+                  <select class="form-select" id="prosesPengolahan" required onchange="loadTahapanFromMasterProduksi()">
+                    <option value="">Pilih Proses Pengolahan</option>
+                  </select>
+                  <small class="text-muted">Pilih dari Master Data. Tahapan dimuat otomatis.</small>
+                </div>
+                <div class="col-md-6 mb-3" id="kadarAirField">
+                  <label for="kadarAir" class="form-label">Kadar Air (%) <span class="text-danger" id="kadarAirAsterisk" style="display: none;">*</span></label>
+                  <input type="number" class="form-control" id="kadarAir" placeholder="Masukkan kadar air" min="0" max="100" step="0.1" />
+                  <small class="text-muted" id="kadarAirInfo">Wajib untuk tahapan Pengeringan Awal dan Pengeringan Akhir.</small>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="tanggalMasuk" class="form-label">Tanggal Masuk <span class="text-danger">*</span></label>
+                  <input type="date" class="form-control" id="tanggalMasuk" required />
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="tanggalSekarang" class="form-label">Tanggal Sekarang <span class="text-danger">*</span></label>
+                  <input type="date" class="form-control" id="tanggalSekarang" required />
+                </div>
+              </div>
+              <div class="mb-3">
+                <label for="statusTahapan" class="form-label">Status Tahapan Produksi <span class="text-danger">*</span></label>
+                <select class="form-select" id="statusTahapan" required onchange="toggleBeratAkhirField(); toggleKadarAirField(); validateSequentialTahapan();">
+                  <option value="">Pilih Status Tahapan</option>
+                </select>
+                <small class="text-muted d-block mt-1" id="statusTahapanInfo">Pilih proses pengolahan terlebih dahulu.</small>
+                <small class="text-danger d-none" id="statusTahapanError"><i class="bi bi-exclamation-triangle"></i> <span id="statusTahapanErrorText"></span></small>
+              </div>
+              <!-- HACCP Checklist -->
+              <div class="mb-3">
+                <label class="form-label">
+                  Checklist HACCP <span class="text-danger">*</span>
+                </label>
+                <div class="border rounded p-3 bg-light">
+                  <div class="form-check mb-2">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="haccpBendaAsingProduksi"
+                      required
+                    />
+                    <label
+                      class="form-check-label"
+                      for="haccpBendaAsingProduksi"
+                    >
+                      Bebas dari benda asing
+                    </label>
+                  </div>
+                  <div class="form-check mb-2">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="haccpHamaJamurProduksi"
+                      required
+                    />
+                    <label
+                      class="form-check-label"
+                      for="haccpHamaJamurProduksi"
+                    >
+                      Bebas dari hama dan jamur
+                    </label>
+                  </div>
+                  <div class="form-check">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      id="haccpKondisiBaikProduksi"
+                      required
+                    />
+                    <label
+                      class="form-check-label"
+                      for="haccpKondisiBaikProduksi"
+                    >
+                      Kondisi tidak cacat dan hal hal yang menurunkan kualitas
+                    </label>
+                  </div>
+                </div>
+                <small class="text-muted">
+                  Semua checklist HACCP harus dicentang untuk dapat menyimpan
+                  data
+                </small>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              onclick="saveProduksi()"
+            >
+              Simpan
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Konfirmasi Hapus -->
+    <div
+      class="modal fade"
+      id="modalDelete"
+      tabindex="-1"
+      aria-labelledby="modalDeleteLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="modalDeleteLabel">Konfirmasi Hapus</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <p>Apakah Anda yakin ingin menghapus data produksi ini?</p>
+            <p class="fw-bold mb-0" id="deleteProduksiInfo"></p>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              class="btn btn-danger"
+              onclick="confirmDelete()"
+            >
+              Hapus
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Script untuk sidebar toggle -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/notification-system.js') }}"></script>
+    <!-- Authentication Guard - Proteksi halaman -->
+    <script src="{{ url_for('static', filename='js/auth-guard.js') }}"></script>
+    <script>
+      // Check authentication on page load - Karyawan only
+      document.addEventListener("DOMContentLoaded", async function () {
+        if (typeof checkAuth === "function") {
+          const authResult = await checkAuth("Karyawan");
+          if (!authResult) {
+            return;
+          }
+        } else if (typeof window.checkAuth === "function") {
+          const authResult = await window.checkAuth("Karyawan");
+          if (!authResult) {
+            return;
+          }
+        }
+        console.log("✓ Access granted to Kelola Produksi Karyawan");
+
+        // Display username from sessionStorage
+        const username = sessionStorage.getItem("username");
+        if (username && document.getElementById("usernameDisplay")) {
+          document.getElementById("usernameDisplay").textContent = username;
+        }
+      });
+    </script>
+  </body>
+</html>

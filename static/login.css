@@ -1,0 +1,60 @@
+@import url("https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@300;400;600;700;800&display=swap");
+
+* {
+  font-family: "Nunito Sans", sans-serif !important;
+}
+
+body {
+  background: linear-gradient(135deg, #dfe9f3 0%, #e5e5e5 100%);
+  font-family: "Nunito Sans", sans-serif !important;
+}
+
+.card {
+  border: none;
+  background-color: #ffffff;
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+input::placeholder {
+  color: #adb5bd;
+  font-size: 0.9rem;
+}
+
+/* Role Badge Styling */
+.role-badge-admin,
+.role-badge-owner,
+.role-badge-karyawan {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+.role-badge-admin {
+  background: linear-gradient(135deg, #00665D 0%, #004d47 100%);
+}
+
+.role-badge-owner {
+  background: linear-gradient(135deg, #198754 0%, #0f5132 100%);
+}
+
+.role-badge-karyawan {
+  background: linear-gradient(135deg, #0dcaf0 0%, #087990 100%);
+}
+
+.role-badge-admin:hover,
+.role-badge-owner:hover,
+.role-badge-karyawan:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}

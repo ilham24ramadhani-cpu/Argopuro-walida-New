@@ -1,0 +1,269 @@
+@import url("https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@300;400;600;700;800&display=swap");
+
+* {
+  font-family: "Nunito Sans", sans-serif !important;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+.welcome-container {
+  min-height: 100vh;
+  position: relative;
+  background: linear-gradient(135deg, #00665D 0%, #004d47 50%, #00665D 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+/* Background Pattern */
+.background-pattern {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 40% 20%, rgba(255, 255, 255, 0.03) 0%, transparent 50%);
+  opacity: 0.6;
+  z-index: 1;
+}
+
+/* Welcome Card */
+.welcome-card {
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 3rem 2.5rem;
+  position: relative;
+  z-index: 2;
+  border: none;
+  animation: fadeInUp 0.6s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Logo */
+.logo-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.logo-img {
+  max-width: 120px;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Title */
+.welcome-title {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: #00665D;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.5px;
+}
+
+.welcome-subtitle {
+  font-size: 1.1rem;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+/* Role Cards */
+.role-card {
+  display: block;
+  height: 100%;
+  transition: all 0.3s ease;
+}
+
+.role-card:hover {
+  text-decoration: none;
+  transform: translateY(-8px);
+}
+
+.role-card-inner {
+  background: #ffffff;
+  border: 2px solid #e9ecef;
+  border-radius: 16px;
+  padding: 2rem 1.5rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.role-card:hover .role-card-inner {
+  border-color: #00665D;
+  box-shadow: 0 10px 30px rgba(0, 102, 93, 0.15);
+  transform: translateY(-5px);
+}
+
+/* Role Icon */
+.role-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  font-size: 2.5rem;
+  color: #ffffff;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.role-card:hover .role-icon {
+  transform: scale(1.1) rotate(5deg);
+}
+
+.admin-icon {
+  background: linear-gradient(135deg, #00665D 0%, #004d47 100%);
+  box-shadow: 0 4px 15px rgba(0, 102, 93, 0.3);
+}
+
+.owner-icon {
+  background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);
+  box-shadow: 0 4px 15px rgba(255, 193, 7, 0.3);
+}
+
+.karyawan-icon {
+  background: linear-gradient(135deg, #0dcaf0 0%, #087990 100%);
+  box-shadow: 0 4px 15px rgba(13, 202, 240, 0.3);
+}
+
+/* Role Title */
+.role-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #212529;
+  margin-bottom: 0.75rem;
+  transition: color 0.3s ease;
+}
+
+.role-card:hover .role-title {
+  color: #00665D;
+}
+
+/* Role Description */
+.role-description {
+  font-size: 0.9rem;
+  color: #6c757d;
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+  flex-grow: 1;
+}
+
+/* Role Badge */
+.role-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #00665D;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  transition: all 0.3s ease;
+  opacity: 0;
+  transform: translateX(-10px);
+}
+
+.role-card:hover .role-badge {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.role-card:hover .role-badge {
+  background: #004d47;
+  transform: translateX(5px);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .welcome-card {
+    padding: 2rem 1.5rem;
+  }
+
+  .welcome-title {
+    font-size: 2rem;
+  }
+
+  .welcome-subtitle {
+    font-size: 1rem;
+  }
+
+  .role-card-inner {
+    padding: 1.5rem 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .role-icon {
+    width: 70px;
+    height: 70px;
+    font-size: 2rem;
+  }
+
+  .role-title {
+    font-size: 1.25rem;
+  }
+
+  .role-description {
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .welcome-container {
+    padding: 1rem;
+  }
+
+  .welcome-card {
+    padding: 1.5rem 1rem;
+  }
+
+  .logo-img {
+    max-width: 100px;
+  }
+
+  .welcome-title {
+    font-size: 1.75rem;
+  }
+}
+
+/* Animation for cards */
+.role-card:nth-child(1) {
+  animation: fadeInUp 0.6s ease-out 0.1s both;
+}
+
+.role-card:nth-child(2) {
+  animation: fadeInUp 0.6s ease-out 0.2s both;
+}
+
+.role-card:nth-child(3) {
+  animation: fadeInUp 0.6s ease-out 0.3s both;
+}
+

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Register Page</title>
+
+    <!-- Boxicons -->
+    <link
+      href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css"
+      rel="stylesheet"
+    />
+
+    <!-- Bootstrap CSS -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    />
+    <!-- Bootstrap Primary Color Override -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='bootstrap-primary-override.css') }}"
+    />
+
+    <!-- Bootstrap Icons -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+      rel="stylesheet"
+    />
+
+    <!-- Custom CSS -->
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='login.css') }}"
+    />
+
+    <!-- Bootstrap JS -->
+    <script
+      defer
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+    ></script>
+  </head>
+
+  <body
+    class="d-flex align-items-center justify-content-center vh-100 bg-light"
+  >
+    <div class="card shadow-lg p-4 rounded-4" style="width: 400px">
+      <!-- Back Button -->
+      <div class="mb-3">
+        <a
+          href="{{ url_for('welcome') }}"
+          class="text-decoration-none text-muted"
+        >
+          <i class="bi bi-arrow-left me-1"></i> Kembali
+        </a>
+      </div>
+
+      <div class="text-center mb-4">
+        <div class="role-badge-admin mb-3">
+          <i class="bi bi-shield-check fs-1 text-white"></i>
+        </div>
+        <h3 class="fw-bold">Registrasi Admin</h3>
+        <p class="text-muted small">
+          Daftar akun baru untuk Admin, Owner, atau Karyawan
+        </p>
+      </div>
+
+      <!-- Register Form -->
+      <form>
+        <!-- Nama Lengkap -->
+        <div class="mb-3">
+          <label for="fullname" class="form-label fw-semibold"
+            >Nama Lengkap</label
+          >
+          <div class="input-group">
+            <span class="input-group-text"><i class="bx bx-user"></i></span>
+            <input
+              type="text"
+              id="fullname"
+              class="form-control"
+              placeholder="Masukkan nama lengkap"
+              required
+            />
+          </div>
+        </div>
+
+        <!-- Username -->
+        <div class="mb-3">
+          <label for="username" class="form-label fw-semibold">Username</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bx bx-id-card"></i></span>
+            <input
+              type="text"
+              id="username"
+              class="form-control"
+              placeholder="Masukkan username"
+              required
+            />
+          </div>
+        </div>
+
+        <!-- Email -->
+        <div class="mb-3">
+          <label for="email" class="form-label fw-semibold">Email</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bx bx-envelope"></i></span>
+            <input
+              type="email"
+              id="email"
+              class="form-control"
+              placeholder="Masukkan email aktif"
+              required
+            />
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div class="mb-3">
+          <label for="password" class="form-label fw-semibold">Password</label>
+          <div class="input-group">
+            <span class="input-group-text"><i class="bx bx-lock-alt"></i></span>
+            <input
+              type="password"
+              id="password"
+              class="form-control"
+              placeholder="Masukkan password"
+              required
+            />
+          </div>
+        </div>
+
+        <!-- Konfirmasi Password -->
+        <div class="mb-3">
+          <label for="confirmPassword" class="form-label fw-semibold"
+            >Konfirmasi Password</label
+          >
+          <div class="input-group">
+            <span class="input-group-text"><i class="bx bx-lock"></i></span>
+            <input
+              type="password"
+              id="confirmPassword"
+              class="form-control"
+              placeholder="Ulangi password"
+              required
+            />
+          </div>
+        </div>
+
+        <!-- Role Selection (Hanya Admin) -->
+        <div class="mb-3">
+          <label for="role" class="form-label fw-semibold"
+            >Role <span class="text-danger">*</span></label
+          >
+          <select class="form-select" id="role" required>
+            <option value="">Pilih Role</option>
+            <option value="Admin">Admin</option>
+            <option value="Owner">Owner</option>
+            <option value="Karyawan">Karyawan</option>
+          </select>
+          <small class="text-muted"
+            >Hanya Admin yang dapat mendaftarkan akun baru</small
+          >
+        </div>
+
+        <!-- Tombol Daftar -->
+        <button
+          type="submit"
+          class="btn btn-primary w-100 fw-semibold d-flex align-items-center justify-content-center"
+          onclick="handleRegister(event)"
+        >
+          <i class="bx bx-user-check me-2"></i> Daftar Admin
+        </button>
+      </form>
+
+      <!-- Sudah punya akun -->
+      <p class="text-center text-muted mt-3 small">
+        Sudah punya akun?
+        <a
+          href="{{ url_for('welcome') }}"
+          class="text-primary text-decoration-none"
+          >Masuk di sini</a
+        >
+      </p>
+    </div>
+
+    <!-- API Service -->
+    <script
+      src="{{ url_for('static', filename='js/api-service.js') }}"
+      defer
+    ></script>
+
+    <!-- Script Auth -->
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+
+    <script>
+      /**
+       * Handle Register (Sign Up)
+       *
+       * Fungsi ini menangani proses registrasi pengguna baru.
+       * Data yang didaftarkan akan:
+       * 1. Disimpan ke API (MongoDB) atau localStorage dengan key "users"
+       * 2. Otomatis tersedia untuk proses login
+       * 3. Dapat dilihat dan dikelola oleh Admin di halaman "Kelola Pengguna"
+       *
+       * Validasi yang dilakukan:
+       * - Password dan konfirmasi password harus sama
+       * - Username harus unik (belum terdaftar)
+       * - Email harus unik (belum terdaftar)
+       * - Role harus dipilih
+       *
+       * Setelah registrasi berhasil, pengguna dapat langsung login
+       * menggunakan username dan password yang didaftarkan.
+       */
+      async function handleRegister(event) {
+        event.preventDefault();
+        const form = event.target.closest("form");
+
+        // Validasi form HTML5
+        if (!form.checkValidity()) {
+          form.reportValidity();
+          return;
+        }
+
+        // Ambil nilai dari form
+        const fullname = document.getElementById("fullname").value.trim();
+        const username = document.getElementById("username").value.trim();
+        const email = document.getElementById("email").value.trim();
+        const password = document.getElementById("password").value;
+        const confirmPassword =
+          document.getElementById("confirmPassword").value;
+        const role = document.getElementById("role").value;
+
+        // Validasi password match
+        if (password !== confirmPassword) {
+          alert("❌ Password dan konfirmasi password tidak cocok!");
+          document.getElementById("confirmPassword").focus();
+          return;
+        }
+
+        // Validasi panjang password (minimal 6 karakter)
+        if (password.length < 6) {
+          alert("⚠️ Password harus minimal 6 karakter!");
+          document.getElementById("password").focus();
+          return;
+        }
+
+        try {
+          // Validasi username unik menggunakan fungsi dari auth.js (async)
+          // Fungsi ini mencari di API atau localStorage apakah username sudah terdaftar
+          const existingUsername = await getUserByUsername(username);
+          if (existingUsername) {
+            alert(
+              "❌ Username sudah digunakan!\n\nSilakan gunakan username lain."
+            );
+            document.getElementById("username").focus();
+            return;
+          }
+
+          // Validasi email unik menggunakan fungsi dari auth.js (async)
+          // Fungsi ini mencari di API atau localStorage apakah email sudah terdaftar
+          const existingEmail = await getUserByEmail(email);
+          if (existingEmail) {
+            alert("❌ Email sudah digunakan!\n\nSilakan gunakan email lain.");
+            document.getElementById("email").focus();
+            return;
+          }
+
+          // Validasi role
+          if (!role) {
+            alert("⚠️ Silakan pilih role!");
+            document.getElementById("role").focus();
+            return;
+          }
+
+          console.log("📝 Memproses registrasi pengguna baru...");
+          console.log("Data:", { fullname, username, email, role });
+
+          // Simpan user baru ke API atau localStorage menggunakan fungsi dari auth.js (async)
+          // Fungsi saveUser akan:
+          // 1. Generate ID baru
+          // 2. Menambahkan data ke API atau array users
+          // 3. Menyimpan ke API (MongoDB) atau localStorage dengan key "users"
+          // 4. Data ini akan otomatis tersedia untuk proses login
+          const newUser = await saveUser({
+            namaLengkap: fullname,
+            username: username,
+            email: email,
+            password: password,
+            role: role,
+            status: "Aktif", // Status default untuk user baru adalah "Aktif"
+          });
+
+          if (newUser) {
+            const userId = newUser.id || newUser._id;
+            console.log("✓ Registrasi berhasil! User ID:", userId);
+
+            // Tampilkan pesan sukses
+            alert(
+              `✅ Registrasi berhasil!\n\n` +
+                `Akun ${role} dengan username "${username}" telah dibuat.\n\n` +
+                `Data telah tersimpan di sistem dan dapat digunakan untuk login.\n\n` +
+                `Silakan login menggunakan username dan password yang telah didaftarkan.`
+            );
+
+            // Redirect ke halaman welcome untuk login
+            window.location.href = "/";
+          } else {
+            console.error("❌ Error saat menyimpan data pengguna");
+            alert(
+              "❌ Terjadi kesalahan saat mendaftar.\n\nSilakan coba lagi atau hubungi administrator."
+            );
+          }
+        } catch (error) {
+          console.error("Error during registration:", error);
+          alert(
+            "❌ Terjadi kesalahan saat mendaftar.\n\n" +
+              (error.message || "Silakan coba lagi atau hubungi administrator.")
+          );
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF Viewer - Argopuro Walida</title>
+    <!-- jsPDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background: #f5f5f5;
+        font-family: Arial, sans-serif;
+      }
+      .loading {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        flex-direction: column;
+      }
+      .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #3498db;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p>Memuat PDF...</p>
+    </div>
+
+    <script>
+      // Fungsi untuk generate PDF detail hasil produksi (tanpa perlu login)
+      function generatePDFFromURL() {
+        console.log('📄 PDF Viewer: Starting PDF generation...');
+        console.log('📄 Current URL:', window.location.href);
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const id = parseInt(urlParams.get('id'));
+        const type = urlParams.get('type'); // 'hasil-produksi'
+        
+        console.log('📄 URL Parameters - id:', id, 'type:', type);
+        
+        if (!id || isNaN(id) || !type || type !== 'hasil-produksi') {
+          const errorMsg = `Parameter tidak valid! id: ${id}, type: ${type}`;
+          console.error('❌', errorMsg);
+          document.getElementById('loading').innerHTML = `<p style="color: red;">${errorMsg}</p>`;
+          return;
+        }
+        
+        // Load data dari localStorage
+        console.log('📄 Loading data from localStorage...');
+        const hasilProduksi = JSON.parse(localStorage.getItem("hasilProduksi")) || [];
+        const produksi = JSON.parse(localStorage.getItem("produksi")) || [];
+        const bahan = JSON.parse(localStorage.getItem("bahan")) || [];
+        
+        console.log('📄 Data loaded - hasilProduksi:', hasilProduksi.length, 'items');
+        
+        const item = hasilProduksi.find((h) => h.id === id);
+        if (!item) {
+          const errorMsg = `Data tidak ditemukan untuk ID: ${id}`;
+          console.error('❌', errorMsg);
+          console.log('📄 Available IDs:', hasilProduksi.map(h => h.id));
+          document.getElementById('loading').innerHTML = `<p style="color: red;">${errorMsg}</p>`;
+          return;
+        }
+        
+        console.log('✓ Data found:', item);
+        
+        // Cari data produksi dan bahan terkait
+        const produksiData = item.idProduksi
+          ? produksi.find((p) => p.idProduksi === item.idProduksi)
+          : null;
+        const bahanData = item.idBahan
+          ? bahan.find((b) => b.idBahan === item.idBahan)
+          : null;
+        
+        // Import fungsi formatDate dari kelola_laporan.js
+        // Karena kita tidak bisa import, kita buat fungsi sederhana
+        function formatDate(dateString) {
+          if (!dateString) return "-";
+          const date = new Date(dateString);
+          return date.toLocaleDateString("id-ID", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
+        }
+        
+        function formatCurrency(amount) {
+          return new Intl.NumberFormat("id-ID", {
+            style: "currency",
+            currency: "IDR",
+            minimumFractionDigits: 0,
+          }).format(amount);
+        }
+        
+        function formatKgValue(value) {
+          if (!value || isNaN(value)) return "-";
+          return `${parseFloat(value).toLocaleString("id-ID", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })} kg`;
+        }
+        
+        // Generate PDF menggunakan fungsi yang sama dengan kelola_laporan.js
+        // Kita akan memanggil fungsi dari parent window jika ada, atau generate sendiri
+        if (window.opener && typeof window.opener.generateHasilProduksiPDF === 'function') {
+          // Jika dibuka dari window lain, gunakan fungsi dari parent
+          window.opener.generateHasilProduksiPDF(id);
+          window.close();
+        } else {
+          // Generate PDF sendiri
+          generateHasilProduksiPDFStandalone(item, produksiData, bahanData, formatDate, formatCurrency, formatKgValue);
+        }
+      }
+      
+      // Fungsi standalone untuk generate PDF (menggunakan logika yang sama dengan kelola_laporan.js)
+      function generateHasilProduksiPDFStandalone(item, produksiData, bahanData, formatDate, formatCurrency, formatKgValue) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        
+        // Header
+        doc.setFontSize(18);
+        doc.text("LAPORAN DETAIL HASIL PRODUKSI", 105, 20, { align: "center" });
+        doc.setFontSize(12);
+        doc.text("Argopuro Walida", 105, 30, { align: "center" });
+        doc.line(20, 35, 190, 35);
+        
+        // Content
+        let y = 50;
+        doc.setFontSize(11);
+        
+        // === DATA HASIL PRODUKSI ===
+        doc.setFontSize(12);
+        doc.setFont(undefined, "bold");
+        doc.text("DATA HASIL PRODUKSI", 20, y);
+        y += 8;
+        doc.line(20, y, 190, y);
+        y += 10;
+        doc.setFontSize(11);
+        
+        doc.setFont(undefined, "bold");
+        doc.text("ID Produksi:", 20, y);
+        doc.setFont(undefined, "normal");
+        doc.text(item.idProduksi || "-", 60, y);
+        y += 10;
+        
+        doc.setFont(undefined, "bold");
+        doc.text("Tipe Produk:", 20, y);
+        doc.setFont(undefined, "normal");
+        doc.text(item.tipeProduk || "-", 60, y);
+        y += 10;
+        
+        doc.setFont(undefined, "bold");
+        doc.text("Kemasan:", 20, y);
+        doc.setFont(undefined, "normal");
+        doc.text(item.kemasan || "-", 60, y);
+        y += 10;
+        
+        doc.setFont(undefined, "bold");
+        doc.text("Jenis Kopi:", 20, y);
+        doc.setFont(undefined, "normal");
+        doc.text(item.jenisKopi || "-", 60, y);
+        y += 10;
+        
+        doc.setFont(undefined, "bold");
+        doc.text("Proses Pengolahan:", 20, y);
+        doc.setFont(undefined, "normal");
+        doc.text(item.prosesPengolahan || "-", 60, y);
+        y += 10;
+        
+        doc.setFont(undefined, "bold");
+        doc.text("Level Roasting:", 20, y);
+        doc.setFont(undefined, "normal");
+        doc.text(item.levelRoasting || "-", 60, y);
+        y += 10;
+        
+        doc.setFont(undefined, "bold");
+        doc.text("Berat yang Diproses:", 20, y);
+        doc.setFont(undefined, "normal");
+        doc.text(
+          `${item.beratSaatIni ? item.beratSaatIni.toLocaleString("id-ID") : "-"} kg`,
+          60,
+          y
+        );
+        y += 10;
+        
+        doc.setFont(undefined, "bold");
+        doc.text("Jumlah Kemasan:", 20, y);
+        doc.setFont(undefined, "normal");
+        doc.text(item.jumlah ? item.jumlah.toLocaleString("id-ID") : "-", 60, y);
+        y += 10;
+        
+        doc.setFont(undefined, "bold");
+        doc.text("Tanggal:", 20, y);
+        doc.setFont(undefined, "normal");
+        doc.text(formatDate(item.tanggal), 60, y);
+        
+        // === DATA BAHAN MASUK ===
+        if (bahanData) {
+          y += 15;
+          if (y > 250) {
+            doc.addPage();
+            y = 20;
+          }
+          doc.setFontSize(12);
+          doc.setFont(undefined, "bold");
+          doc.text("DATA BAHAN MASUK", 20, y);
+          y += 8;
+          doc.line(20, y, 190, y);
+          y += 10;
+          doc.setFontSize(11);
+          
+          doc.setFont(undefined, "bold");
+          doc.text("ID Bahan:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(bahanData.idBahan || "-", 60, y);
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Pemasok:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(bahanData.pemasok || "-", 60, y);
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Jumlah:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(
+            `${bahanData.jumlah ? bahanData.jumlah.toLocaleString("id-ID") : "-"} kg`,
+            60,
+            y
+          );
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Varietas:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(bahanData.varietas || "-", 60, y);
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Harga per Kg:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(
+            bahanData.hargaPerKg ? formatCurrency(bahanData.hargaPerKg) : "-",
+            60,
+            y
+          );
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Total Pengeluaran:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(
+            bahanData.totalPengeluaran
+              ? formatCurrency(bahanData.totalPengeluaran)
+              : "-",
+            60,
+            y
+          );
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Jenis Kopi:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(bahanData.jenisKopi || "-", 60, y);
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Tanggal Masuk:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(formatDate(bahanData.tanggalMasuk), 60, y);
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Kualitas:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(bahanData.kualitas || "-", 60, y);
+        }
+        
+        // === DATA PRODUKSI ===
+        if (produksiData) {
+          y += 15;
+          if (y > 250) {
+            doc.addPage();
+            y = 20;
+          }
+          doc.setFontSize(12);
+          doc.setFont(undefined, "bold");
+          doc.text("DATA PRODUKSI", 20, y);
+          y += 8;
+          doc.line(20, y, 190, y);
+          y += 10;
+          doc.setFontSize(11);
+          
+          doc.setFont(undefined, "bold");
+          doc.text("ID Produksi:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(produksiData.idProduksi || "-", 60, y);
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Berat Awal:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(
+            `${produksiData.beratAwal ? produksiData.beratAwal.toLocaleString("id-ID") : "-"} kg`,
+            60,
+            y
+          );
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Berat Akhir:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(
+            `${produksiData.beratAkhir ? produksiData.beratAkhir.toLocaleString("id-ID") : "-"} kg`,
+            60,
+            y
+          );
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Proses Pengolahan:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(produksiData.prosesPengolahan || "-", 60, y);
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Kadar Air:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(`${produksiData.kadarAir ? produksiData.kadarAir + "%" : "-"}`, 60, y);
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Varietas:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(produksiData.varietas || "-", 60, y);
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Tanggal Masuk:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(formatDate(produksiData.tanggalMasuk), 60, y);
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Tanggal Sekarang:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(formatDate(produksiData.tanggalSekarang), 60, y);
+          y += 10;
+          
+          doc.setFont(undefined, "bold");
+          doc.text("Status Tahapan:", 20, y);
+          doc.setFont(undefined, "normal");
+          doc.text(produksiData.statusTahapan || "-", 60, y);
+        }
+        
+        // Simpan dan tampilkan PDF
+        console.log('📄 Generating PDF blob...');
+        const pdfBlob = doc.output('blob');
+        const pdfUrl = URL.createObjectURL(pdfBlob);
+        console.log('✓ PDF generated, URL:', pdfUrl);
+        
+        // Tampilkan PDF di iframe
+        document.body.innerHTML = `
+          <iframe src="${pdfUrl}" style="width: 100%; height: 100vh; border: none;"></iframe>
+        `;
+        console.log('✓ PDF displayed in iframe');
+      }
+      
+      // Jalankan saat halaman dimuat
+      if (document.readyState === 'loading') {
+        document.addEventListener("DOMContentLoaded", function() {
+          console.log('📄 PDF Viewer: DOM Content Loaded');
+          // Tunggu sedikit untuk memastikan semua library ter-load
+          setTimeout(() => {
+            generatePDFFromURL();
+          }, 100);
+        });
+      } else {
+        // Jika DOM sudah loaded, langsung jalankan
+        console.log('📄 PDF Viewer: DOM already loaded');
+        setTimeout(() => {
+          generatePDFFromURL();
+        }, 100);
+      }
+    </script>
+  </body>
+</html>
+

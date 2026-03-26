@@ -1,0 +1,121 @@
+/* Kelola Stok Styles */
+.card {
+  border: none;
+  border-radius: 10px;
+}
+
+.table {
+  margin-bottom: 0;
+}
+
+.table thead th {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.table tbody tr {
+  transition: all 0.2s ease;
+}
+
+.table tbody tr:hover {
+  background-color: #f8f9fa;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.badge {
+  padding: 0.5em 0.75em;
+  font-weight: 500;
+}
+
+.badge.bg-info {
+  background-color: #0dcaf0 !important;
+  color: #000;
+}
+
+.badge.bg-primary {
+  background-color: #00665D !important;
+  color: #fff;
+}
+
+.badge.bg-warning {
+  background-color: #ffc107 !important;
+  color: #000;
+}
+
+.alert-info {
+  border-left: 4px solid #0dcaf0;
+  border-radius: 8px;
+}
+
+.btn-outline-primary {
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.btn-outline-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 102, 93, 0.2);
+}
+
+/* Styling untuk total berat dan jumlah */
+.table tbody td strong.text-primary {
+  color: #00665D;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.table tbody td strong.text-success {
+  color: #198754;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .table-responsive {
+    font-size: 0.875rem;
+  }
+
+  .badge {
+    font-size: 0.75rem;
+    padding: 0.375em 0.5em;
+  }
+
+  .btn-outline-primary {
+    padding: 0.375rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .table thead th,
+  .table tbody td {
+    padding: 0.75rem 0.5rem;
+  }
+
+  .d-flex.justify-content-between.align-items-center.mb-4 {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 1rem;
+  }
+
+  .d-flex.justify-content-between.align-items-center.mb-4 > button {
+    width: 100%;
+  }
+}
+
+/* Animation untuk refresh button */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-outline-primary:active i.bi-arrow-clockwise {
+  animation: spin 0.6s linear;
+}

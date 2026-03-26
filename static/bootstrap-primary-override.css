@@ -1,0 +1,119 @@
+/* Bootstrap Primary Color Override */
+/* This file should be loaded AFTER Bootstrap CSS to ensure overrides work */
+
+/* Import Nunito Sans font */
+@import url("https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@300;400;600;700;800&display=swap");
+
+/* Ensure Nunito Sans is used globally */
+* {
+  font-family: "Nunito Sans", sans-serif !important;
+}
+
+:root {
+  --bs-primary: #00665D;
+  --bs-primary-rgb: 0, 102, 93;
+}
+
+/* Button Primary */
+.btn-primary {
+  background-color: #00665D !important;
+  border-color: #00665D !important;
+}
+
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active,
+.btn-primary:not(:disabled):not(.disabled):active {
+  background-color: #004d47 !important;
+  border-color: #004d47 !important;
+}
+
+/* Button Outline Primary */
+.btn-outline-primary {
+  color: #00665D !important;
+  border-color: #00665D !important;
+}
+
+.btn-outline-primary:hover,
+.btn-outline-primary:focus,
+.btn-outline-primary:active,
+.btn-outline-primary:not(:disabled):not(.disabled):active {
+  background-color: #00665D !important;
+  border-color: #00665D !important;
+  color: #fff !important;
+}
+
+/* Background Primary */
+.bg-primary {
+  background-color: #00665D !important;
+}
+
+/* Text Primary */
+.text-primary {
+  color: #00665D !important;
+}
+
+/* Border Primary */
+.border-primary {
+  border-color: #00665D !important;
+}
+
+/* Link Primary */
+.link-primary {
+  color: #00665D !important;
+}
+
+.link-primary:hover,
+.link-primary:focus {
+  color: #004d47 !important;
+}
+
+/* Badge Primary */
+.badge.bg-primary {
+  background-color: #00665D !important;
+}
+
+/* Alert Primary */
+.alert-primary {
+  color: #004d47;
+  background-color: #e6f5f3;
+  border-color: #00665D;
+}
+
+/* Form Controls Focus */
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+  border-color: #00665D;
+  box-shadow: 0 0 0 0.25rem rgba(0, 102, 93, 0.25);
+}
+
+.form-check-input:checked {
+  background-color: #00665D;
+  border-color: #00665D;
+}
+
+/* Nav Pills Active */
+.nav-pills .nav-link.active {
+  background-color: #00665D !important;
+}
+
+/* Progress Bar Primary */
+.progress-bar {
+  background-color: #00665D;
+}
+
+/* Pagination Primary */
+.page-link {
+  color: #00665D;
+}
+
+.page-link:hover {
+  color: #004d47;
+}
+
+.page-item.active .page-link {
+  background-color: #00665D;
+  border-color: #00665D;
+}
+
