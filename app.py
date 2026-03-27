@@ -49,7 +49,7 @@ if MONGODB_URI:
         except:
             pass
 
-client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=30000)
+client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=8080)
 db = client[DB_NAME]
 
 TOKEN_KEY = 'mytoken'
