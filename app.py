@@ -478,21 +478,36 @@ def pengaturan_owner():
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint to verify backend is running"""
-    try:
-        # Test MongoDB connection
-        client.admin.command('ping')
+    """
+    Health check endpoint.
+
+    Railway sering butuh respons cepat untuk readiness/liveness.
+    Jadi endpoint ini akan selalu balas HTTP 200 (status 'ok') dan
+    hanya menginformasikan status koneksi MongoDB secara best-effort.
+    """
+    # Jika env MongoDB belum diset, tetap balas 200 agar container dianggap responsive
+    if not MONGODB_URI or not DB_NAME:
         return jsonify({
-            'status': 'healthy',
+            'status': 'ok',
+            'database': 'missing_config',
+            'message': 'Backend is running, MongoDB env is not configured'
+        }), 200
+
+    # Best-effort ping Mongo dengan timeout kecil supaya tidak menggantung
+    try:
+        test_client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=1000)
+        test_client.admin.command('ping')
+        return jsonify({
+            'status': 'ok',
             'database': 'connected',
             'message': 'Backend is running and MongoDB is connected'
         }), 200
     except Exception as e:
         return jsonify({
-            'status': 'unhealthy',
+            'status': 'ok',
             'database': 'disconnected',
             'error': str(e)
-        }), 503
+        }), 200
 
 # ==================== PRODUKSI ENDPOINTS ====================
 
