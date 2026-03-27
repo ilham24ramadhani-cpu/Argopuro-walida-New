@@ -58,3 +58,46 @@ input::placeholder {
   transform: scale(1.1);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
+
+/* =============================================
+   RESPONSIVE — Login pages
+   ============================================= */
+
+/* Make the login card fluid on all screens */
+body .card.shadow-lg {
+  width: 100% !important;
+  max-width: 400px;
+}
+
+@media (max-width: 576px) {
+  body {
+    align-items: flex-start !important;
+    padding: 1rem;
+    min-height: 100vh;
+    height: auto;
+  }
+
+  body .card.shadow-lg {
+    max-width: 100%;
+    padding: 1.25rem !important;
+    border-radius: 0.75rem !important;
+    margin-top: 1rem;
+  }
+
+  .input-group .form-control,
+  .form-control {
+    font-size: 1rem;
+  }
+
+  .btn {
+    min-height: 44px;
+    font-size: 1rem;
+  }
+
+  .role-badge-admin,
+  .role-badge-owner,
+  .role-badge-karyawan {
+    width: 64px;
+    height: 64px;
+  }
+}
