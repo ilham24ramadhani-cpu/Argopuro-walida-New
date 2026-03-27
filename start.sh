@@ -2,5 +2,4 @@
 
 pip install -r requirements.txt
 
-PORT="${PORT:-${RAILWAY_HTTP_PORT:-${RAILWAY_TCP_PORT:-8080}}}"
-gunicorn app:app --bind 0.0.0.0:$PORT
+gunicorn app:app --bind 0.0.0.0:$PORT --access-logfile - --error-logfile -
