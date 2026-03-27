@@ -3507,5 +3507,11 @@ import os
 
 if __name__ == "__main__":
     # Railway akan otomatis mengisi variabel PORT ini
-    port = int(os.environ.get("PORT", 8080))
+    port_raw = (
+        os.environ.get("PORT")
+        or os.environ.get("RAILWAY_HTTP_PORT")
+        or os.environ.get("RAILWAY_TCP_PORT")
+        or "8080"
+    )
+    port = int(port_raw)
     app.run(host='0.0.0.0', port=port)
