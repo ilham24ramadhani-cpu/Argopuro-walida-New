@@ -437,3 +437,125 @@ body {
 .dropdown-menu::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* ===== Mobile Responsiveness (≤576px) ===== */
+@media (max-width: 576px) {
+  /* Sidebar: overlay mode */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 260px;
+    transform: translateX(-100%);
+    z-index: 1050;
+    transition: transform 0.3s ease;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  /* Hide the desktop toggle button on mobile */
+  .sidebar header .toggle {
+    display: none;
+  }
+
+  /* Sidebar overlay */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1040;
+  }
+
+  .sidebar-overlay.active {
+    display: block;
+  }
+
+  /* Home section: full width */
+  .home {
+    left: 0 !important;
+    width: 100% !important;
+    padding: 10px;
+  }
+
+  .sidebar.close ~ .home {
+    left: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Navbar: full width */
+  .home .navbar {
+    left: 0 !important;
+    width: 100% !important;
+  }
+
+  .sidebar.close ~ .home .navbar {
+    left: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Hamburger button */
+  .navbar-hamburger {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 4px 8px;
+    margin-right: 8px;
+    border-radius: 6px;
+    transition: background 0.2s ease;
+  }
+
+  .navbar-hamburger:hover {
+    background: var(--primary-color-light);
+  }
+
+  /* Hide search bar on mobile */
+  .navbar form {
+    display: none !important;
+  }
+
+  /* Reduced chart heights */
+  .card-body[style*="height: 300px"] {
+    height: 200px !important;
+  }
+
+  .card-body[style*="height: 350px"] {
+    height: 220px !important;
+  }
+
+  /* Touch-friendly button sizes */
+  .btn {
+    min-height: 44px;
+    padding: 0.5rem 1rem;
+  }
+
+  /* Responsive grid: stack columns */
+  .col-lg-6,
+  .col-lg-4,
+  .col-lg-8,
+  .col-lg-12 {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  /* Navbar brand text size */
+  .navbar .fw-bold.fs-5 {
+    font-size: 0.9rem !important;
+  }
+
+  /* Navbar icons spacing */
+  .navbar-icons {
+    gap: 0.5rem !important;
+  }
+}

@@ -35,6 +35,7 @@
       <script src="{{ url_for('static', filename='js/api-service.js') }}" defer></script>
   </head>
   <body>
+    <div class="sidebar-overlay"></div>
     <!-- ===== Sidebar Start ===== -->
     <nav class="sidebar close">
       <header>
@@ -88,6 +89,9 @@
         <div
           class="container-fluid d-flex align-items-center justify-content-between"
         >
+          <!-- Hamburger (mobile only) -->
+          <button class="navbar-hamburger d-none"><i class="bi bi-list"></i></button>
+
           <!-- Brand -->
           <span class="fw-bold fs-5">Argopuro Walida System <span class="badge bg-warning text-dark ms-2">Owner</span></span>
 
