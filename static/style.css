@@ -240,7 +240,9 @@ body {
   margin-top: 70px;
 }
 
-/* Responsif */
+/* =============================================
+   RESPONSIVE — Tablet (≤ 768px)
+   ============================================= */
 @media (max-width: 768px) {
   .sidebar {
     width: 220px;
@@ -268,6 +270,190 @@ body {
   .sidebar.close ~ .home .navbar {
     left: 70px;
     width: calc(100% - 70px);
+  }
+
+  /* Reduce chart height on tablet */
+  .card-body canvas {
+    max-height: 220px;
+  }
+}
+
+/* =============================================
+   RESPONSIVE — Mobile (≤ 576px)
+   ============================================= */
+@media (max-width: 576px) {
+  /* ---- Sidebar: overlay mode ---- */
+  .sidebar {
+    width: 260px;
+    transform: translateX(-100%);
+    z-index: 1050;
+    transition: transform 0.3s ease, width 0.3s ease;
+  }
+
+  /* When sidebar is "open" on mobile (remove .close, add .mobile-open) */
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  /* Collapsed/closed state on mobile — keep off-screen */
+  .sidebar.close {
+    width: 260px;
+    transform: translateX(-100%);
+  }
+
+  /* Sidebar overlay backdrop */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 1040;
+  }
+
+  .sidebar-overlay.active {
+    display: block;
+  }
+
+  /* ---- Home section: full width ---- */
+  .home {
+    left: 0 !important;
+    width: 100% !important;
+    padding: 10px;
+  }
+
+  .sidebar.close ~ .home {
+    left: 0 !important;
+    width: 100% !important;
+  }
+
+  /* ---- Navbar: full width ---- */
+  .home .navbar,
+  .sidebar.close ~ .home .navbar {
+    left: 0 !important;
+    width: 100% !important;
+    padding: 0.4rem 0.75rem !important;
+  }
+
+  /* Hide desktop toggle button inside sidebar on mobile */
+  .sidebar header .toggle {
+    display: none;
+  }
+
+  /* Hamburger button (visible only on mobile) */
+  .navbar-hamburger {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    margin-right: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  /* Brand text: truncate on very small screens */
+  .home .navbar .fw-bold.fs-5 {
+    font-size: 0.85rem !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+  }
+
+  /* Hide search bar on mobile */
+  .home .navbar form.d-flex {
+    display: none !important;
+  }
+
+  /* Reduce icon gap in navbar */
+  .navbar-icons {
+    gap: 0.5rem !important;
+  }
+
+  .navbar-icons .text-dark.fs-4 {
+    font-size: 1.15rem !important;
+  }
+
+  /* Notification dropdown: full-width on mobile */
+  .dropdown-menu[style*="width: 350px"] {
+    width: calc(100vw - 1.5rem) !important;
+    max-width: 340px;
+  }
+
+  /* ---- Content area ---- */
+  .content {
+    margin-top: 60px;
+  }
+
+  .home-content {
+    margin-top: 70px !important;
+    padding: 0.75rem !important;
+  }
+
+  /* ---- Cards ---- */
+  .card {
+    margin-bottom: 0.75rem;
+  }
+
+  .card-body {
+    padding: 0.75rem !important;
+  }
+
+  /* ---- Charts: reduce height ---- */
+  .card-body[style*="height: 300px"],
+  .card-body[style*="height: 350px"] {
+    height: 200px !important;
+  }
+
+  .card-body canvas {
+    max-height: 180px;
+  }
+
+  /* ---- Statistics cards: 2-column grid ---- */
+  #statisticsCards .col-lg-3,
+  #statisticsCards .col-md-3,
+  #statisticsCards .col-sm-6 {
+    flex: 0 0 50%;
+    max-width: 50%;
+  }
+
+  /* ---- Tables: horizontal scroll ---- */
+  .table-responsive {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ---- Buttons: touch-friendly ---- */
+  .btn {
+    min-height: 38px;
+    padding: 0.4rem 0.75rem;
+  }
+
+  /* ---- Page header: stack vertically ---- */
+  .d-flex.justify-content-between.align-items-center.mb-4 {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.75rem;
+  }
+
+  /* ---- Modal: full-width on mobile ---- */
+  .modal-dialog {
+    margin: 0.5rem;
+    max-width: calc(100vw - 1rem);
+  }
+
+  .modal-dialog.modal-xl,
+  .modal-dialog.modal-lg {
+    max-width: calc(100vw - 1rem);
+  }
+
+  /* ---- Statistic icon badges ---- */
+  .role-badge-owner,
+  .role-badge-karyawan {
+    width: 60px;
+    height: 60px;
   }
 }
 .navbar form .form-control {
