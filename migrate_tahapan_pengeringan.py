@@ -13,17 +13,19 @@ from datetime import datetime
 MONGO_URI = "mongodb://localhost:27017/"
 DB_NAME = "argopuro_walida"  # Sesuaikan dengan nama database Anda
 
-# Urutan tahapan yang benar
+# Referensi urutan (dokumentasi; sinkron dengan app.validate_sequential_tahapan)
 URUTAN_TAHAPAN = {
     "Sortasi": 1,
     "Fermentasi": 2,
-    "Pencucian": 3,
-    "Pengeringan Awal": 4,
-    "Pengeringan Akhir": 5,
-    "Hulling": 6,
-    "Roasting": 7,
-    "Grinding": 8,
-    "Pengemasan": 9
+    "Pulping": 3,
+    "Pencucian": 4,
+    "Pengeringan Awal": 5,
+    "Pengeringan Akhir": 6,
+    "Hulling": 7,
+    "Hand Sortasi": 8,
+    "Grinding": 9,
+    "Pengemasan": 10,
+    "Roasting": 99,  # legacy
 }
 
 def migrate_tahapan_pengeringan():

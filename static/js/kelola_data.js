@@ -16,12 +16,12 @@ let currentDeleteType = null; // 'produk', 'proses', 'jenisKopi', 'varietas', 'r
 const ALL_TAHAPAN = {
   Sortasi: "Sortasi Cherry atau Buah Kopi",
   Fermentasi: "Fermentasi",
+  Pulping: "Pulping",
   Pencucian: "Pencucian",
   "Pengeringan Awal": "Pengeringan Awal",
   "Pengeringan Akhir": "Pengeringan Akhir",
   Hulling: "Pengupasan Kulit Tanduk (Hulling)",
   "Hand Sortasi": "Hand Sortasi atau Sortasi Biji Kopi",
-  Roasting: "Roasting",
   Grinding: "Grinding",
   Pengemasan: "Pengemasan (Tahapan Akhir)",
 };

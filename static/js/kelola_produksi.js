@@ -255,12 +255,12 @@ async function loadBahanDataProduksi() {
 const ALL_TAHAPAN = {
   Sortasi: "Sortasi Cherry atau Buah Kopi",
   Fermentasi: "Fermentasi",
+  Pulping: "Pulping",
   Pencucian: "Pencucian",
   "Pengeringan Awal": "Pengeringan Awal",
   "Pengeringan Akhir": "Pengeringan Akhir",
   Hulling: "Pengupasan Kulit Tanduk (Hulling)",
   "Hand Sortasi": "Hand Sortasi atau Sortasi Biji Kopi",
-  Roasting: "Roasting",
   Grinding: "Grinding",
   Pengemasan: "Pengemasan (Tahapan Akhir)",
 };
@@ -569,25 +569,25 @@ async function loadTahapanFromMasterProduksi() {
   const tahapanMap = {
     Sortasi: "Sortasi Cherry atau Buah Kopi",
     Fermentasi: "Fermentasi",
+    Pulping: "Pulping",
     Pencucian: "Pencucian",
     "Pengeringan Awal": "Pengeringan Awal",
     "Pengeringan Akhir": "Pengeringan Akhir",
     Hulling: "Pengupasan Kulit Tanduk (Hulling)",
     "Hand Sortasi": "Hand Sortasi atau Sortasi Biji Kopi",
-    Roasting: "Roasting",
     Grinding: "Grinding",
     Pengemasan: "Pengemasan (Tahapan Akhir)",
   };
-  // Urutan baku tahapan: Sortasi → Fermentasi → Pencucian → Pengeringan Awal → Pengeringan Akhir → Hulling → Hand Sortasi → Roasting → Grinding → Pengemasan
+  // Urutan baku: Sortasi → Fermentasi → Pulping → Pencucian → … → Hand Sortasi → Grinding → Pengemasan
   const urutanTahapan = [
     "Sortasi",
     "Fermentasi",
+    "Pulping",
     "Pencucian",
     "Pengeringan Awal",
     "Pengeringan Akhir",
     "Hulling",
     "Hand Sortasi",
-    "Roasting",
     "Grinding",
     "Pengemasan",
   ];
@@ -692,6 +692,7 @@ async function loadTahapanFromMasterProduksi() {
       "Sortasi Cherry atau Buah Kopi": "Sortasi",
       "Sortasi Buah": "Sortasi",  // Kompatibilitas nama lama
       "Fermentasi": "Fermentasi",
+      "Pulping": "Pulping",
       "Pencucian": "Pencucian",
       "Pengeringan Awal": "Pengeringan Awal",
       "Pengeringan Akhir": "Pengeringan Akhir",
@@ -705,12 +706,12 @@ async function loadTahapanFromMasterProduksi() {
     const urutanTahapan = [
       "Sortasi",
       "Fermentasi",
+      "Pulping",
       "Pencucian",
       "Pengeringan Awal",
       "Pengeringan Akhir",
       "Hulling",
       "Hand Sortasi",
-      "Roasting",
       "Grinding",
       "Pengemasan",
     ];
@@ -756,11 +757,12 @@ async function loadTahapanFromMasterProduksi() {
                 const map = {
                   Sortasi: "Sortasi",
                   Fermentasi: "Fermentasi",
+                  Pulping: "Pulping",
                   Pencucian: "Pencucian",
                   "Pengeringan Awal": "Pengeringan Awal",
                   "Pengeringan Akhir": "Pengeringan Akhir",
                   Hulling: "Hulling",
-                  Roasting: "Roasting",
+                  "Hand Sortasi": "Hand Sortasi",
                   Grinding: "Grinding",
                   Pengemasan: "Pengemasan",
                 };
@@ -888,6 +890,7 @@ function validateSequentialTahapan() {
     "Sortasi Cherry atau Buah Kopi": "Sortasi",
     "Sortasi Buah": "Sortasi",  // Kompatibilitas nama lama
     Fermentasi: "Fermentasi",
+    Pulping: "Pulping",
     Pencucian: "Pencucian",
     "Pengeringan Awal": "Pengeringan Awal",
     "Pengeringan Akhir": "Pengeringan Akhir",
@@ -901,12 +904,12 @@ function validateSequentialTahapan() {
   const urutanTahapan = [
     "Sortasi",
     "Fermentasi",
+    "Pulping",
     "Pencucian",
     "Pengeringan Awal",
     "Pengeringan Akhir",
     "Hulling",
     "Hand Sortasi",
-    "Roasting",
     "Grinding",
     "Pengemasan",
   ];
@@ -947,12 +950,12 @@ function validateSequentialTahapan() {
           const map = {
             Sortasi: "Sortasi Cherry atau Buah Kopi",
             Fermentasi: "Fermentasi",
+            Pulping: "Pulping",
             Pencucian: "Pencucian",
             "Pengeringan Awal": "Pengeringan Awal",
             "Pengeringan Akhir": "Pengeringan Akhir",
             Hulling: "Pengupasan Kulit Tanduk (Hulling)",
             "Hand Sortasi": "Hand Sortasi atau Sortasi Biji Kopi",
-            Roasting: "Roasting",
             Grinding: "Grinding",
             Pengemasan: "Pengemasan",
           };
@@ -986,6 +989,7 @@ function validateSequentialTahapanBeforeSave(
     "Sortasi Cherry atau Buah Kopi": "Sortasi",
     "Sortasi Buah": "Sortasi",  // Kompatibilitas nama lama
     Fermentasi: "Fermentasi",
+    Pulping: "Pulping",
     Pencucian: "Pencucian",
     "Pengeringan Awal": "Pengeringan Awal",
     "Pengeringan Akhir": "Pengeringan Akhir",
@@ -999,12 +1003,12 @@ function validateSequentialTahapanBeforeSave(
   const urutanTahapan = [
     "Sortasi",
     "Fermentasi",
+    "Pulping",
     "Pencucian",
     "Pengeringan Awal",
     "Pengeringan Akhir",
     "Hulling",
     "Hand Sortasi",
-    "Roasting",
     "Grinding",
     "Pengemasan",
   ];
@@ -1047,12 +1051,12 @@ function validateSequentialTahapanBeforeSave(
             const map = {
               Sortasi: "Sortasi Cherry atau Buah Kopi",
               Fermentasi: "Fermentasi",
+              Pulping: "Pulping",
               Pencucian: "Pencucian",
               "Pengeringan Awal": "Pengeringan Awal",
               "Pengeringan Akhir": "Pengeringan Akhir",
               Hulling: "Pengupasan Kulit Tanduk (Hulling)",
               "Hand Sortasi": "Hand Sortasi atau Sortasi Biji Kopi",
-              Roasting: "Roasting",
               Grinding: "Grinding",
               Pengemasan: "Pengemasan",
             };
@@ -1094,12 +1098,12 @@ function validateSequentialTahapanBeforeSave(
               const map = {
                 Sortasi: "Sortasi Cherry atau Buah Kopi",
                 Fermentasi: "Fermentasi",
+                Pulping: "Pulping",
                 Pencucian: "Pencucian",
                 "Pengeringan Awal": "Pengeringan Awal",
                 "Pengeringan Akhir": "Pengeringan Akhir",
                 Hulling: "Pengupasan Kulit Tanduk (Hulling)",
                 "Hand Sortasi": "Hand Sortasi atau Sortasi Biji Kopi",
-                Roasting: "Roasting",
                 Grinding: "Grinding",
                 Pengemasan: "Pengemasan",
               };
@@ -2195,12 +2199,12 @@ window.saveProduksi = async function saveProduksi() {
     const urutanTahapan = [
       "Sortasi",
       "Fermentasi",
+      "Pulping",
       "Pencucian",
       "Pengeringan Awal",
       "Pengeringan Akhir",
       "Hulling",
       "Hand Sortasi",
-      "Roasting",
       "Grinding",
       "Pengemasan",
     ];
@@ -2218,6 +2222,7 @@ window.saveProduksi = async function saveProduksi() {
         "Sortasi Cherry atau Buah Kopi": "Sortasi",
         "Sortasi Buah": "Sortasi",  // Kompatibilitas nama lama
         "Fermentasi": "Fermentasi",
+        "Pulping": "Pulping",
         "Pencucian": "Pencucian",
         "Pengeringan Awal": "Pengeringan Awal",
         "Pengeringan Akhir": "Pengeringan Akhir",

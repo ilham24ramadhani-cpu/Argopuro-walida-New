@@ -36,11 +36,13 @@ window.getProsesPengolahanBadgeClass = function (proses) {
 };
 window.getStatusTahapanBadgeClass = function (tahapan) {
   const t = (tahapan || "").toLowerCase();
-  if (t.includes("sortasi")) return "bg-info";
+  if (t.includes("sortasi") && !t.includes("hand")) return "bg-info";
   if (t.includes("fermentasi")) return "bg-secondary";
+  if (t.includes("pulping")) return "text-bg-dark";
   if (t.includes("pencucian")) return "bg-primary";
   if (t.includes("pengeringan")) return "bg-warning text-dark";
   if (t.includes("hulling") || t.includes("pengupasan")) return "bg-dark";
+  if (t.includes("hand") && t.includes("sortasi")) return "bg-info text-dark";
   if (t.includes("roasting")) return "bg-danger";
   if (t.includes("grinding")) return "bg-light text-dark";
   if (t.includes("pengemasan")) return "bg-success";

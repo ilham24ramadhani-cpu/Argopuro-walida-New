@@ -151,19 +151,20 @@ def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_t
             'Sortasi Cherry atau Buah Kopi': 'Sortasi',
             'Sortasi Buah': 'Sortasi',  # Kompatibilitas nama lama
             'Fermentasi': 'Fermentasi',
+            'Pulping': 'Pulping',
             'Pencucian': 'Pencucian',
             'Pengeringan Awal': 'Pengeringan Awal',
             'Pengeringan Akhir': 'Pengeringan Akhir',
             'Pengupasan Kulit Tanduk (Hulling)': 'Hulling',
             'Hand Sortasi atau Sortasi Biji Kopi': 'Hand Sortasi',
-            'Roasting': 'Roasting',
+            'Roasting': 'Roasting',  # legacy (data lama)
             'Grinding': 'Grinding',
             'Pengemasan': 'Pengemasan'
         }
         
         # Daftar urutan tahapan (sesuai urutan logis)
-        # Urutan: Sortasi → Fermentasi → Pencucian → Pengeringan Awal → Pengeringan Akhir → Hulling → Hand Sortasi → Roasting → Grinding → Pengemasan
-        urutan_tahapan = ['Sortasi', 'Fermentasi', 'Pencucian', 'Pengeringan Awal', 'Pengeringan Akhir', 'Hulling', 'Hand Sortasi', 'Roasting', 'Grinding', 'Pengemasan']
+        # Sortasi → Fermentasi → Pulping → Pencucian → … → Hand Sortasi → Grinding → Pengemasan (Roasting tidak dipakai di master baru)
+        urutan_tahapan = ['Sortasi', 'Fermentasi', 'Pulping', 'Pencucian', 'Pengeringan Awal', 'Pengeringan Akhir', 'Hulling', 'Hand Sortasi', 'Grinding', 'Pengemasan']
         
         # Mapping urutan tahapan untuk mendapatkan index
         urutan_map = {tahapan: idx for idx, tahapan in enumerate(urutan_tahapan)}
