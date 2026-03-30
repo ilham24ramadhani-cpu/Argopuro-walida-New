@@ -255,6 +255,8 @@ async function loadAllReportData() {
     if (!Array.isArray(keuangan)) keuangan = [];
     if (!Array.isArray(pemesanan)) pemesanan = [];
 
+    refreshBahanPemasokFilterOptions();
+
     const endTime = performance.now();
     const loadTime = ((endTime - startTime) / 1000).toFixed(2);
     console.log(
@@ -530,7 +532,7 @@ function getPeriodMeta(date, range) {
 }
 
 const tableFilters = {
-  bahan: { mode: "all", value: "" },
+  bahan: { mode: "all", value: "", pemasok: "" },
   produksi: { mode: "all", value: "" },
   hasil: { mode: "all", value: "" },
   sanitasi: { mode: "all", value: "" },
@@ -606,6 +608,7 @@ const LAPORAN_REKAP_CONFIG = {
         value: (item) => formatDate(item.tanggalMasuk),
       },
       { label: "Kualitas", value: (item) => item.kualitas || "-" },
+      { label: "Lunas", value: (item) => (item.lunas ? "Lunas" : "Belum") },
     ],
     filterKey: "bahan",
     dataset: () => bahan,
@@ -1042,7 +1045,13 @@ function initializeTableFilters() {
 
     if (resetButton) {
       resetButton.addEventListener("click", () => {
-        tableFilters[category] = { mode: "all", value: "" };
+        if (category === "bahan") {
+          tableFilters[category] = { mode: "all", value: "", pemasok: "" };
+          const pemSel = document.getElementById("bahanFilterPemasok");
+          if (pemSel) pemSel.value = "";
+        } else {
+          tableFilters[category] = { mode: "all", value: "" };
+        }
         if (modeSelect) modeSelect.value = "all";
         if (valueInput) {
           valueInput.value = "";
@@ -1091,10 +1100,94 @@ function applyTableFilter(category, data, dateGetter) {
   return data.filter((item) => matchesDateFilter(dateGetter(item), filter));
 }
 
+/** Bahan masuk: filter waktu + opsional pemasok (untuk tabel & rekap). */
+function getBahanFilteredForDisplay() {
+  let data = applyTableFilter("bahan", bahan, (item) => item.tanggalMasuk);
+  const pem = tableFilters.bahan && tableFilters.bahan.pemasok;
+  if (pem) {
+    data = data.filter((item) => (item.pemasok || "") === pem);
+  }
+  return data;
+}
+
+function refreshBahanPemasokFilterOptions() {
+  const sel = document.getElementById("bahanFilterPemasok");
+  if (!sel) return;
+  const prev =
+    tableFilters.bahan && Object.prototype.hasOwnProperty.call(tableFilters.bahan, "pemasok")
+      ? tableFilters.bahan.pemasok
+      : "";
+  const names = new Set();
+  (pemasok || []).forEach((p) => {
+    if (p && p.nama) names.add(String(p.nama).trim());
+  });
+  (bahan || []).forEach((b) => {
+    if (b && b.pemasok) names.add(String(b.pemasok).trim());
+  });
+  sel.innerHTML = "";
+  const optAll = document.createElement("option");
+  optAll.value = "";
+  optAll.textContent = "Semua pemasok";
+  sel.appendChild(optAll);
+  [...names]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "id"))
+    .forEach((n) => {
+      const o = document.createElement("option");
+      o.value = n;
+      o.textContent = n;
+      sel.appendChild(o);
+    });
+  if (!tableFilters.bahan) tableFilters.bahan = { mode: "all", value: "", pemasok: "" };
+  const keep = prev && names.has(prev) ? prev : "";
+  tableFilters.bahan.pemasok = keep;
+  sel.value = keep;
+}
+
+function initializeBahanPemasokFilterListener() {
+  const sel = document.getElementById("bahanFilterPemasok");
+  if (!sel || sel.dataset.laporanBound === "1") return;
+  sel.dataset.laporanBound = "1";
+  sel.addEventListener("change", () => {
+    if (!tableFilters.bahan) tableFilters.bahan = { mode: "all", value: "", pemasok: "" };
+    tableFilters.bahan.pemasok = sel.value;
+    renderTableByCategory("bahan");
+  });
+}
+
+function updateBahanPemasokInsight() {
+  const el = document.getElementById("bahanPemasokInsight");
+  if (!el) return;
+  const dateFiltered = applyTableFilter("bahan", bahan, (item) => item.tanggalMasuk);
+  const pemFilter = tableFilters.bahan && tableFilters.bahan.pemasok;
+  if (pemFilter) {
+    const sub = dateFiltered.filter((item) => (item.pemasok || "") === pemFilter);
+    const kg = sub.reduce((s, i) => s + safeNumber(i.jumlah), 0);
+    el.innerHTML = `<span class="text-dark fw-semibold">${pemFilter}</span> — total masuk <strong>${formatKgValue(
+      kg
+    )}</strong> dari <strong>${sub.length}</strong> transaksi (sesuai filter waktu).`;
+    return;
+  }
+  const bySupplier = {};
+  dateFiltered.forEach((item) => {
+    const p = (item.pemasok || "").trim() || "(Tanpa nama)";
+    bySupplier[p] = (bySupplier[p] || 0) + safeNumber(item.jumlah);
+  });
+  const ranked = Object.entries(bySupplier).sort((a, b) => b[1] - a[1]);
+  if (ranked.length === 0) {
+    el.textContent = "Tidak ada data pada filter waktu saat ini.";
+    return;
+  }
+  const [topName, topKg] = ranked[0];
+  el.innerHTML = `Pemasok dengan total berat terbanyak (sesuai filter waktu): <span class="text-success fw-semibold">${topName}</span> — <strong>${formatKgValue(
+    topKg
+  )}</strong>.`;
+}
+
 function getFilteredDataForCategory(category) {
   switch (category) {
     case "bahan":
-      return applyTableFilter("bahan", bahan, (item) => item.tanggalMasuk);
+      return getBahanFilteredForDisplay();
     case "produksi":
       return applyTableFilter(
         "produksi",
@@ -1117,20 +1210,21 @@ function getFilteredDataForCategory(category) {
 
 function getFilterDescription(category) {
   const filter = tableFilters[category];
-  if (!filter || filter.mode === "all" || !filter.value) {
-    return "Periode: Semua";
+  let timePart = "Periode: Semua";
+  if (filter && filter.mode !== "all" && filter.value) {
+    if (filter.mode === "daily") {
+      timePart = `Periode: Harian (${formatDate(filter.value)})`;
+    } else if (filter.mode === "monthly") {
+      const date = new Date(`${filter.value}-01`);
+      timePart = `Periode: Bulanan (${formatMonthYear(date)})`;
+    } else if (filter.mode === "yearly") {
+      timePart = `Periode: Tahunan (${filter.value})`;
+    }
   }
-  if (filter.mode === "daily") {
-    return `Periode: Harian (${formatDate(filter.value)})`;
+  if (category === "bahan" && filter && filter.pemasok) {
+    return `${timePart} | Pemasok: ${filter.pemasok}`;
   }
-  if (filter.mode === "monthly") {
-    const date = new Date(`${filter.value}-01`);
-    return `Periode: Bulanan (${formatMonthYear(date)})`;
-  }
-  if (filter.mode === "yearly") {
-    return `Periode: Tahunan (${filter.value})`;
-  }
-  return "Periode: Semua";
+  return timePart;
 }
 
 async function exportRekap(category) {
@@ -1694,30 +1788,28 @@ function displayBahan() {
   if (bahan.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="11" class="text-center text-muted py-4">
+        <td colspan="12" class="text-center text-muted py-4">
           <i class="bi bi-inbox fs-1 d-block mb-2"></i>
           Tidak ada data bahan
         </td>
       </tr>
     `;
+    updateBahanPemasokInsight();
     return;
   }
 
-  const filteredBahan = applyTableFilter(
-    "bahan",
-    bahan,
-    (item) => item.tanggalMasuk
-  );
+  const filteredBahan = getBahanFilteredForDisplay();
 
   if (filteredBahan.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="11" class="text-center text-muted py-4">
+        <td colspan="12" class="text-center text-muted py-4">
           <i class="bi bi-funnel d-block mb-2"></i>
           Tidak ada data sesuai filter.
         </td>
       </tr>
     `;
+    updateBahanPemasokInsight();
     return;
   }
 
@@ -1738,6 +1830,11 @@ function displayBahan() {
       <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => 'bg-secondary'))(item.jenisKopi)}">${item.jenisKopi || "-"}</span></td>
       <td>${formatDate(item.tanggalMasuk)}</td>
       <td><span class="badge ${(window.getKualitasBadgeClass || (() => 'bg-secondary'))(item.kualitas)}">${item.kualitas || "-"}</span></td>
+      <td>${
+        item.lunas
+          ? '<span class="badge bg-success">Lunas</span>'
+          : '<span class="badge bg-secondary">Belum</span>'
+      }</td>
       <td class="text-center">
           <button class="btn btn-sm btn-primary" onclick="generateBahanPDF(${
             item.id
@@ -1749,6 +1846,7 @@ function displayBahan() {
     `;
     })
     .join("");
+  updateBahanPemasokInsight();
 }
 
 // Display tabel produksi
@@ -2008,6 +2106,20 @@ function generateBahanPDF(id) {
   doc.text("Kualitas:", 20, y);
   doc.setFont(undefined, "normal");
   doc.text(item.kualitas || "-", 60, y);
+
+  y += 10;
+  doc.setFont(undefined, "bold");
+  doc.text("Pembayaran:", 20, y);
+  doc.setFont(undefined, "normal");
+  if (item.lunas) {
+    doc.setTextColor(25, 135, 84);
+    doc.setFont(undefined, "bold");
+    doc.text("LUNAS", 60, y);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont(undefined, "normal");
+  } else {
+    doc.text("Belum lunas", 60, y);
+  }
 
   // Laporan bahan masuk hanya berisi data bahan masuk (tanpa detail alur produksi)
   // Blok DETAIL ALUR PRODUKSI dihapus sesuai permintaan
@@ -2450,6 +2562,19 @@ function generateHasilProduksiPDF(id) {
     doc.text("Kualitas:", 20, y);
     doc.setFont(undefined, "normal");
     doc.text(bahanData.kualitas || "-", 60, y);
+    y += 10;
+    doc.setFont(undefined, "bold");
+    doc.text("Pembayaran:", 20, y);
+    doc.setFont(undefined, "normal");
+    if (bahanData.lunas) {
+      doc.setTextColor(25, 135, 84);
+      doc.setFont(undefined, "bold");
+      doc.text("LUNAS", 60, y);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont(undefined, "normal");
+    } else {
+      doc.text("Belum lunas", 60, y);
+    }
   }
 
   // === DATA PRODUKSI ===
@@ -3607,6 +3732,19 @@ async function generateDataKemasanPDF(id) {
       detailDoc.text("Kualitas:", 20, detailY);
       detailDoc.setFont(undefined, "normal");
       detailDoc.text(bahanData.kualitas || "-", 60, detailY);
+      detailY += 10;
+      detailDoc.setFont(undefined, "bold");
+      detailDoc.text("Pembayaran:", 20, detailY);
+      detailDoc.setFont(undefined, "normal");
+      if (bahanData.lunas) {
+        detailDoc.setTextColor(25, 135, 84);
+        detailDoc.setFont(undefined, "bold");
+        detailDoc.text("LUNAS", 60, detailY);
+        detailDoc.setTextColor(0, 0, 0);
+        detailDoc.setFont(undefined, "normal");
+      } else {
+        detailDoc.text("Belum lunas", 60, detailY);
+      }
     }
 
     // === DATA PRODUKSI ===
@@ -4487,6 +4625,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // Initialize hashes
       await initializeHashes();
       initializeTableFilters();
+      initializeBahanPemasokFilterListener();
 
       // Display semua tabel
       await refreshAllTables();

@@ -249,7 +249,7 @@ async function displayBahan() {
   if (filteredBahan.length === 0) {
     tableBody.innerHTML = `
       <tr>
-        <td colspan="11" class="text-center py-4 text-muted">
+        <td colspan="12" class="text-center py-4 text-muted">
           <i class="bi bi-inbox fs-1 d-block mb-2"></i>
           Tidak ada data bahan
         </td>
@@ -286,6 +286,11 @@ async function displayBahan() {
       <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => 'bg-secondary'))(jenisKopi)}">${jenisKopi}</span></td>
       <td>${new Date(tanggalMasuk).toLocaleDateString("id-ID")}</td>
       <td><span class="badge ${(window.getKualitasBadgeClass || (() => 'bg-secondary'))(kualitas)}">${kualitas}</span></td>
+      <td>${
+        b.lunas
+          ? '<span class="badge bg-success">Lunas</span>'
+          : '<span class="badge bg-secondary">Belum</span>'
+      }</td>
       <td class="text-center">
         <button 
           class="btn btn-sm btn-info btn-action" 
@@ -314,7 +319,7 @@ async function displayBahan() {
     console.error("Error rendering bahan table:", error);
     tableBody.innerHTML = `
       <tr>
-        <td colspan="11" class="text-center py-4 text-danger">
+        <td colspan="12" class="text-center py-4 text-danger">
           <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
           Error menampilkan data: ${error.message}
         </td>
@@ -446,6 +451,8 @@ async function openModal(mode = "add") {
     document.getElementById("haccpBendaAsing").checked = false;
     document.getElementById("haccpHamaJamur").checked = false;
     document.getElementById("haccpKondisiBaik").checked = false;
+    const lunasEl = document.getElementById("bahanLunas");
+    if (lunasEl) lunasEl.checked = false;
     if (kloterDropdown) kloterDropdown.value = "";
     const hargaPerKgGlobalEl = document.getElementById("hargaPerKgGlobal");
     if (hargaPerKgGlobalEl) hargaPerKgGlobalEl.value = "";
@@ -517,6 +524,8 @@ async function editBahan(id) {
       document.getElementById("haccpHamaJamur").checked = false;
       document.getElementById("haccpKondisiBaik").checked = false;
     }
+    const lunasEdit = document.getElementById("bahanLunas");
+    if (lunasEdit) lunasEdit.checked = !!b.lunas;
 
     await loadPemasokOptions();
     await loadJenisKopiOptions();
@@ -656,6 +665,16 @@ function cetakInvoiceBahan(idBahan) {
   doc.text(`Pemasok: ${b.pemasok || "-"}`, MARGIN, yPos);
   yPos += 4;
 
+  if (b.lunas) {
+    doc.setTextColor(25, 135, 84);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6);
+    doc.text("LUNAS", CENTER, yPos, { align: "center" });
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "normal");
+    yPos += 4;
+  }
+
   doc.setFont("helvetica", "bold");
   doc.text("Detail Kloter", MARGIN, yPos);
   yPos += 3;
@@ -778,6 +797,8 @@ async function saveBahan() {
     kondisiBaik: haccpKondisiBaik,
   };
 
+  const lunas = document.getElementById("bahanLunas")?.checked === true;
+
   try {
     const bahanData = {
       pemasok,
@@ -786,6 +807,7 @@ async function saveBahan() {
       tanggalMasuk,
       kualitas,
       haccp,
+      lunas,
       detailKloter,
       hargaPerKg, // Harga per kg diinput sekali (bukan per kloter)
     };

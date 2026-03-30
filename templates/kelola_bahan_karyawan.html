@@ -335,6 +335,7 @@
                       <th scope="col">Jenis Kopi</th>
                       <th scope="col">Tanggal Masuk</th>
                       <th scope="col">Kualitas</th>
+                      <th scope="col">Lunas</th>
                       <th scope="col" class="text-center">Aksi</th>
                     </tr>
                   </thead>
@@ -421,6 +422,18 @@
                         <option value="Grade B">Grade B</option>
                         <option value="Grade C">Grade C</option>
                       </select>
+                    </div>
+                  </div>
+                  <div class="mt-3">
+                    <div class="form-check form-check-lunas rounded-3 border border-success border-opacity-50 bg-success bg-opacity-10 px-3 py-2">
+                      <input
+                        class="form-check-input"
+                        type="checkbox"
+                        id="bahanLunas"
+                      />
+                      <label class="form-check-label fw-semibold text-success" for="bahanLunas">
+                        Lunas <span class="text-muted fw-normal small">(pembayaran ke pemasok sudah lunas — tampil di invoice)</span>
+                      </label>
                     </div>
                   </div>
                 </div>

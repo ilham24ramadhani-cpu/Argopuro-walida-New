@@ -76,6 +76,18 @@ def json_serialize(data):
         return data.isoformat()
     return data
 
+def parse_bool_payload(val, default=False):
+    """Parse boolean dari JSON (bool, angka, atau string)."""
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return bool(val)
+    if isinstance(val, str):
+        return val.strip().lower() in ('true', '1', 'yes', 'on')
+    return default
+
 # Helper function to get next ID for a collection
 def get_next_id(collection_name):
     counter_collection = db.counters
@@ -1203,6 +1215,8 @@ def create_bahan():
         # HACCP if provided
         if 'haccp' in data:
             bahan_data['haccp'] = data['haccp']
+
+        bahan_data['lunas'] = parse_bool_payload(data.get('lunas'), False)
         
         print(f"🔵 [BAHAN CREATE] Inserting to MongoDB collection 'bahan': {bahan_data}")
         result = db.bahan.insert_one(bahan_data)
@@ -1274,6 +1288,9 @@ def update_bahan(bahan_id):
         
         if 'haccp' in data:
             update_data['haccp'] = data['haccp']
+
+        if 'lunas' in data:
+            update_data['lunas'] = parse_bool_payload(data.get('lunas'), False)
         
         db.bahan.update_one(
             {'_id': bahan['_id']},

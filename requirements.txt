@@ -12,7 +12,7 @@ Jinja2==3.1.6
 MarkupSafe==3.0.3
 packaging==26.0
 PyJWT==2.8.0
-pymongo==3.11.0
+pymongo==4.7.3
 python-dotenv==1.0.1
 requests==2.33.0
 urllib3==2.6.3
