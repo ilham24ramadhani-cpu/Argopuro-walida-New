@@ -221,6 +221,78 @@ def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_t
     except Exception as e:
         return False, f'Error validasi tahapan: {str(e)}'
 
+
+def _clean_detail_kloter_list(detail_kloter):
+    """Normalize detailKloter: only rows with berat > 0, renumber kloter."""
+    detail_kloter_clean = []
+    if not detail_kloter or not isinstance(detail_kloter, list):
+        return detail_kloter_clean
+    for k in detail_kloter:
+        berat = float(k.get('berat', 0) or 0)
+        if berat > 0:
+            detail_kloter_clean.append({
+                'kloter': len(detail_kloter_clean) + 1,
+                'berat': berat,
+                'keterangan': k.get('keterangan', '') or ''
+            })
+    return detail_kloter_clean
+
+
+def _normalize_proses_bahan_payload(proses_bahan_raw):
+    """
+    Validate prosesBahan[] against master dataProses.
+    Returns (clean_list, total_berat, error_message).
+    """
+    if not proses_bahan_raw or not isinstance(proses_bahan_raw, list) or len(proses_bahan_raw) == 0:
+        return None, 0, 'prosesBahan wajib berisi minimal satu proses dengan kloter timbangan'
+    pro_names = []
+    proses_bahan_clean = []
+    for item in proses_bahan_raw:
+        pn = (item.get('prosesPengolahan') or '').strip()
+        if not pn:
+            return None, 0, 'Setiap baris wajib memiliki nama proses pengolahan'
+        if pn in pro_names:
+            return None, 0, f'Proses "{pn}" tidak boleh duplikat pada satu bahan'
+        pro_names.append(pn)
+        if not db.dataProses.find_one({'nama': pn}):
+            return None, 0, f'Proses pengolahan "{pn}" tidak terdaftar di master data'
+        dk = _clean_detail_kloter_list(item.get('detailKloter') or item.get('kloter') or [])
+        if not dk:
+            return None, 0, f'Minimal satu kloter dengan berat > 0 untuk proses "{pn}"'
+        subtotal = sum(k['berat'] for k in dk)
+        proses_bahan_clean.append({
+            'prosesPengolahan': pn,
+            'detailKloter': dk,
+            'jumlahBeratProses': round(subtotal, 4)
+        })
+    total = sum(x['jumlahBeratProses'] for x in proses_bahan_clean)
+    return proses_bahan_clean, total, None
+
+
+def _sisa_bahan_line(bahan_doc, id_bahan, proses_pengolahan):
+    """
+    Sisa berat untuk kombinasi idBahan + proses (atau legacy: satu pool per idBahan).
+    Returns (sisa_float, error_message or None).
+    """
+    lines = bahan_doc.get('prosesBahan') or []
+    if lines:
+        if not proses_pengolahan:
+            return None, 'prosesPengolahan wajib untuk bahan yang memiliki pemisahan proses'
+        line = next((l for l in lines if l.get('prosesPengolahan') == proses_pengolahan), None)
+        if not line:
+            return None, f'Proses "{proses_pengolahan}" tidak terdaftar pada bahan ini'
+        cap = float(line.get('jumlahBeratProses', 0) or 0)
+        used = sum(
+            float(p.get('beratAwal', 0) or 0)
+            for p in db.produksi.find({'idBahan': id_bahan, 'prosesPengolahan': proses_pengolahan})
+        )
+        return max(0.0, cap - used), None
+    # Legacy: satu pool stok per idBahan
+    cap = float(bahan_doc.get('jumlah', 0) or 0)
+    used = sum(float(p.get('beratAwal', 0) or 0) for p in db.produksi.find({'idBahan': id_bahan}))
+    return max(0.0, cap - used), None
+
+
 # Helper function untuk validasi khusus tahapan Pengeringan Awal dan Akhir
 def validate_pengeringan_tahapan(status_tahapan_baru, kadar_air_baru, berat_terkini_baru, produksi_lama=None):
     """
@@ -597,20 +669,33 @@ def create_produksi():
         # Auto-generate idProduksi (ignore any value from frontend)
         id_produksi = generate_id_produksi()
         
-        # Validate sisa bahan (for new produksi only)
+        # Validate sisa bahan (per jalur proses jika ada prosesBahan)
         bahan = db.bahan.find_one({'idBahan': data['idBahan']})
         if not bahan:
             return jsonify({'error': 'Bahan not found'}), 400
         
-        # Calculate sisa bahan
-        produksi_list = list(db.produksi.find({'idBahan': data['idBahan']}))
-        total_digunakan = sum(p.get('beratAwal', 0) for p in produksi_list)
-        sisa_bahan = bahan.get('jumlah', 0) - total_digunakan
+        lines = bahan.get('prosesBahan') or []
+        if lines:
+            if not data.get('prosesPengolahan'):
+                return jsonify({'error': 'prosesPengolahan wajib untuk bahan dengan pemisahan proses'}), 400
+            line = next((l for l in lines if l.get('prosesPengolahan') == data['prosesPengolahan']), None)
+            if not line:
+                return jsonify({'error': 'Proses pengolahan tidak terdaftar pada bahan ini'}), 400
+            cap = float(line.get('jumlahBeratProses', 0) or 0)
+            produksi_list = list(db.produksi.find({'idBahan': data['idBahan'], 'prosesPengolahan': data['prosesPengolahan']}))
+            total_digunakan = sum(float(p.get('beratAwal', 0) or 0) for p in produksi_list)
+            sisa_bahan = max(0.0, cap - total_digunakan)
+            total_bahan_ref = cap
+        else:
+            produksi_list = list(db.produksi.find({'idBahan': data['idBahan']}))
+            total_digunakan = sum(float(p.get('beratAwal', 0) or 0) for p in produksi_list)
+            total_bahan_ref = float(bahan.get('jumlah', 0) or 0)
+            sisa_bahan = max(0.0, total_bahan_ref - total_digunakan)
         
-        if data['beratAwal'] > sisa_bahan:
+        if float(data['beratAwal']) > sisa_bahan:
             return jsonify({
                 'error': 'Sisa bahan tidak mencukupi',
-                'totalBahan': bahan.get('jumlah', 0),
+                'totalBahan': total_bahan_ref,
                 'sudahDigunakan': total_digunakan,
                 'sisaTersedia': sisa_bahan,
                 'beratDiminta': data['beratAwal']
@@ -765,6 +850,10 @@ def update_produksi(produksi_id):
         # Validate ID Bahan tidak berubah (edit mode)
         if produksi.get('idBahan') != data['idBahan']:
             return jsonify({'error': 'ID Bahan tidak dapat diubah setelah produksi dibuat'}), 400
+        
+        # Proses pengolahan ditetapkan saat bahan masuk — tidak boleh diubah
+        if produksi.get('prosesPengolahan') != data['prosesPengolahan']:
+            return jsonify({'error': 'Proses pengolahan tidak dapat diubah setelah produksi dibuat'}), 400
         
         # Validate berat awal tidak berubah (edit mode)
         if produksi.get('beratAwal') != float(data['beratAwal']):
@@ -1124,46 +1213,28 @@ def get_bahan_by_id(bahan_id):
 
 @app.route('/api/bahan', methods=['POST'])
 def create_bahan():
-    """Create new bahan. Supports two formats:
-    1. Legacy: idBahan, pemasok, jumlah, varietas, hargaPerKg, totalPengeluaran, jenisKopi, tanggalMasuk, kualitas
-    2. Kloter: pemasok, varietas, jenisKopi, tanggalMasuk, kualitas, detailKloter[] (idBahan auto-generated if omitted)
+    """Create new bahan.
+    Format utama: prosesBahan[] (per proses: prosesPengolahan + detailKloter[]), hargaPerKg sekali, idBahan auto.
+    Legacy single-row (idBahan + jumlah manual) tetap didukung tanpa field kualitas.
     """
     try:
         data = request.json
         
-        # Mode: detailKloter (kloter-based) vs legacy (single values)
-        detail_kloter = data.get('detailKloter') or data.get('kloter')
-        
-        if detail_kloter and isinstance(detail_kloter, list):
-            # Kloter mode: hargaPerKg diinput sekali (bukan per kloter)
+        proses_bahan_raw = data.get('prosesBahan')
+        if proses_bahan_raw and isinstance(proses_bahan_raw, list) and len(proses_bahan_raw) > 0:
             harga_per_kg = float(data.get('hargaPerKg', 0) or 0)
             if harga_per_kg <= 0:
                 return jsonify({'error': 'Harga per Kg wajib diisi dan harus lebih dari 0'}), 400
             
-            total_berat = 0
-            detail_kloter_clean = []
-            for i, k in enumerate(detail_kloter):
-                berat = float(k.get('berat', 0) or 0)
-                if berat > 0:  # Hanya simpan kloter dengan berat > 0
-                    total_berat += berat
-                    detail_kloter_clean.append({
-                        'kloter': len(detail_kloter_clean) + 1,
-                        'berat': berat,
-                        'keterangan': k.get('keterangan', '') or ''
-                    })
+            proses_bahan_clean, total_berat, err = _normalize_proses_bahan_payload(proses_bahan_raw)
+            if err:
+                return jsonify({'error': err}), 400
             
-            if total_berat <= 0:
-                return jsonify({'error': 'Minimal 1 kloter dengan berat > 0'}), 400
-            
-            jumlah = total_berat
-            total_pengeluaran = harga_per_kg * total_berat  # Total harga = hargaPerKg × total berat
-            
-            # Metadata required
-            for field in ['pemasok', 'varietas', 'jenisKopi', 'tanggalMasuk', 'kualitas']:
+            for field in ['pemasok', 'varietas', 'jenisKopi', 'tanggalMasuk']:
                 if field not in data:
                     return jsonify({'error': f'Missing required field: {field}'}), 400
             
-            # Always auto-generate idBahan on create (ignore frontend idBahan for consistency)
+            total_pengeluaran = harga_per_kg * total_berat
             new_id = get_next_id('bahan')
             id_bahan = f"BHN{str(new_id).zfill(3)}"
             
@@ -1171,20 +1242,19 @@ def create_bahan():
                 'id': new_id,
                 'idBahan': id_bahan,
                 'pemasok': data['pemasok'],
-                'jumlah': jumlah,
+                'jumlah': total_berat,
                 'varietas': data['varietas'],
                 'hargaPerKg': round(harga_per_kg, 2),
                 'totalPengeluaran': round(total_pengeluaran, 2),
                 'jenisKopi': data['jenisKopi'],
                 'tanggalMasuk': data['tanggalMasuk'],
-                'kualitas': data['kualitas'],
-                'detailKloter': detail_kloter_clean
+                'prosesBahan': proses_bahan_clean
             }
         else:
-            # Legacy mode: single values
-            required_fields = ['idBahan', 'pemasok', 'jumlah', 'varietas', 
-                              'hargaPerKg', 'totalPengeluaran', 'jenisKopi', 
-                              'tanggalMasuk', 'kualitas']
+            # Legacy mode: single values (tanpa kualitas)
+            required_fields = ['idBahan', 'pemasok', 'jumlah', 'varietas',
+                              'hargaPerKg', 'totalPengeluaran', 'jenisKopi',
+                              'tanggalMasuk']
             for field in required_fields:
                 if field not in data:
                     return jsonify({'error': f'Missing required field: {field}'}), 400
@@ -1205,7 +1275,6 @@ def create_bahan():
                 'totalPengeluaran': float(data['totalPengeluaran']),
                 'jenisKopi': data['jenisKopi'],
                 'tanggalMasuk': data['tanggalMasuk'],
-                'kualitas': data['kualitas']
             }
         
         # Check idBahan unique
@@ -1255,37 +1324,52 @@ def update_bahan(bahan_id):
                 return jsonify({'error': 'ID Bahan already exists'}), 400
         
         update_data = {}
-        for field in ['idBahan', 'pemasok', 'varietas', 'jenisKopi', 'tanggalMasuk', 'kualitas']:
+        extra_unset = {}
+        for field in ['idBahan', 'pemasok', 'varietas', 'jenisKopi', 'tanggalMasuk']:
             if field in data:
                 update_data[field] = data[field]
         
-        # Support detailKloter for edit: hargaPerKg diinput sekali
-        detail_kloter = data.get('detailKloter') or data.get('kloter')
-        if detail_kloter and isinstance(detail_kloter, list):
+        if 'prosesBahan' in data and isinstance(data.get('prosesBahan'), list):
             harga_per_kg = float(data.get('hargaPerKg', 0) or 0)
             if harga_per_kg <= 0:
                 return jsonify({'error': 'Harga per Kg wajib diisi dan harus lebih dari 0'}), 400
-            
-            total_berat = 0
-            detail_kloter_clean = []
-            for i, k in enumerate(detail_kloter):
-                berat = float(k.get('berat', 0) or 0)
-                if berat > 0:
-                    total_berat += berat
-                    detail_kloter_clean.append({
-                        'kloter': len(detail_kloter_clean) + 1,
-                        'berat': berat,
-                        'keterangan': k.get('keterangan', '') or ''
-                    })
-            if total_berat > 0:
-                update_data['jumlah'] = total_berat
-                update_data['hargaPerKg'] = round(harga_per_kg, 2)
-                update_data['totalPengeluaran'] = round(harga_per_kg * total_berat, 2)  # Total = hargaPerKg × total berat
-                update_data['detailKloter'] = detail_kloter_clean
+            proses_bahan_clean, total_berat, err = _normalize_proses_bahan_payload(data['prosesBahan'])
+            if err:
+                return jsonify({'error': err}), 400
+            update_data['prosesBahan'] = proses_bahan_clean
+            update_data['jumlah'] = total_berat
+            update_data['hargaPerKg'] = round(harga_per_kg, 2)
+            update_data['totalPengeluaran'] = round(harga_per_kg * total_berat, 2)
+            extra_unset['detailKloter'] = ''
+            extra_unset['kualitas'] = ''
         else:
-            for field in ['jumlah', 'hargaPerKg', 'totalPengeluaran']:
-                if field in data:
-                    update_data[field] = float(data[field])
+            # Legacy: detailKloter flat (bahan tanpa prosesBahan)
+            detail_kloter = data.get('detailKloter') or data.get('kloter')
+            if detail_kloter and isinstance(detail_kloter, list):
+                harga_per_kg = float(data.get('hargaPerKg', 0) or 0)
+                if harga_per_kg <= 0:
+                    return jsonify({'error': 'Harga per Kg wajib diisi dan harus lebih dari 0'}), 400
+                
+                total_berat = 0
+                detail_kloter_clean = []
+                for i, k in enumerate(detail_kloter):
+                    berat = float(k.get('berat', 0) or 0)
+                    if berat > 0:
+                        total_berat += berat
+                        detail_kloter_clean.append({
+                            'kloter': len(detail_kloter_clean) + 1,
+                            'berat': berat,
+                            'keterangan': k.get('keterangan', '') or ''
+                        })
+                if total_berat > 0:
+                    update_data['jumlah'] = total_berat
+                    update_data['hargaPerKg'] = round(harga_per_kg, 2)
+                    update_data['totalPengeluaran'] = round(harga_per_kg * total_berat, 2)
+                    update_data['detailKloter'] = detail_kloter_clean
+            else:
+                for field in ['jumlah', 'hargaPerKg', 'totalPengeluaran']:
+                    if field in data:
+                        update_data[field] = float(data[field])
         
         if 'haccp' in data:
             update_data['haccp'] = data['haccp']
@@ -1293,10 +1377,10 @@ def update_bahan(bahan_id):
         if 'lunas' in data:
             update_data['lunas'] = parse_bool_payload(data.get('lunas'), False)
         
-        db.bahan.update_one(
-            {'_id': bahan['_id']},
-            {'$set': update_data}
-        )
+        update_op = {'$set': update_data}
+        if extra_unset:
+            update_op['$unset'] = extra_unset
+        db.bahan.update_one({'_id': bahan['_id']}, update_op)
         
         updated = db.bahan.find_one({'_id': bahan['_id']})
         return jsonify(json_serialize(updated)), 200
@@ -1330,21 +1414,41 @@ def delete_bahan(bahan_id):
 
 @app.route('/api/bahan/sisa/<id_bahan>', methods=['GET'])
 def get_sisa_bahan(id_bahan):
-    """Calculate sisa bahan (jumlah - total used in produksi)"""
+    """Sisa berat: per jalur proses (?proses=Nama) jika bahan punya prosesBahan; legacy = satu pool."""
     try:
         bahan = db.bahan.find_one({'idBahan': id_bahan})
         if not bahan:
             return jsonify({'error': 'Bahan not found'}), 404
         
-        produksi_list = list(db.produksi.find({'idBahan': id_bahan}))
-        total_digunakan = sum(p.get('beratAwal', 0) for p in produksi_list)
-        sisa = bahan.get('jumlah', 0) - total_digunakan
+        proses_q = request.args.get('proses')
+        lines = bahan.get('prosesBahan') or []
+        if lines:
+            if not proses_q:
+                return jsonify({'error': 'Parameter query proses wajib untuk bahan dengan pemisahan proses'}), 400
+            line = next((l for l in lines if l.get('prosesPengolahan') == proses_q), None)
+            if not line:
+                return jsonify({'error': f'Proses "{proses_q}" tidak ada pada bahan ini'}), 404
+            cap = float(line.get('jumlahBeratProses', 0) or 0)
+            produksi_list = list(db.produksi.find({'idBahan': id_bahan, 'prosesPengolahan': proses_q}))
+            total_digunakan = sum(float(p.get('beratAwal', 0) or 0) for p in produksi_list)
+            sisa = max(0.0, cap - total_digunakan)
+            return jsonify({
+                'idBahan': id_bahan,
+                'prosesPengolahan': proses_q,
+                'totalBahan': cap,
+                'totalDigunakan': total_digunakan,
+                'sisaTersedia': sisa
+            }), 200
         
+        produksi_list = list(db.produksi.find({'idBahan': id_bahan}))
+        total_digunakan = sum(float(p.get('beratAwal', 0) or 0) for p in produksi_list)
+        cap = float(bahan.get('jumlah', 0) or 0)
+        sisa = max(0.0, cap - total_digunakan)
         return jsonify({
             'idBahan': id_bahan,
-            'totalBahan': bahan.get('jumlah', 0),
+            'totalBahan': cap,
             'totalDigunakan': total_digunakan,
-            'sisaTersedia': max(0, sisa)
+            'sisaTersedia': sisa
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1619,13 +1723,18 @@ def get_stok_bahan():
             total_digunakan = total_digunakan_map.get(id_bahan, 0)
             sisa_tersedia = max(0, total_bahan - total_digunakan)
             
+            proses_lines = bahan.get('prosesBahan') or []
+            ringkasan_proses = ', '.join(
+                f"{x.get('prosesPengolahan', '')} ({float(x.get('jumlahBeratProses', 0) or 0):g} kg)"
+                for x in proses_lines
+            ) if proses_lines else ''
             stok_bahan_array.append({
                 'id': bahan.get('id'),
                 'idBahan': id_bahan,
                 'pemasok': bahan.get('pemasok', ''),
                 'varietas': bahan.get('varietas', ''),
                 'jenisKopi': bahan.get('jenisKopi', ''),
-                'kualitas': bahan.get('kualitas', ''),
+                'ringkasanProses': ringkasan_proses,
                 'tanggalMasuk': bahan.get('tanggalMasuk', ''),
                 'totalBahan': total_bahan,
                 'totalDigunakan': total_digunakan,

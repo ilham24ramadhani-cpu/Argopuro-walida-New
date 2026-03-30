@@ -351,7 +351,7 @@ async function displayStokBahan() {
               <td>${b.pemasok || "-"}</td>
               <td>${b.varietas || "-"}</td>
               <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => 'bg-secondary'))(b.jenisKopi)}">${b.jenisKopi || "-"}</span></td>
-              <td><span class="badge ${(window.getKualitasBadgeClass || (() => 'bg-secondary'))(b.kualitas)}">${b.kualitas || "-"}</span></td>
+              <td><small class="text-muted">${b.ringkasanProses || "—"}</small></td>
               <td class="text-end"><strong>${(b.totalBahan || 0).toLocaleString(
                 "id-ID",
                 {

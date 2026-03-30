@@ -296,9 +296,13 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
       return await apiCall(`/bahan/${id}`, "DELETE");
     },
 
-    async getSisa(idBahan) {
-      // MONGODB ONLY - NO FALLBACK
-      return await apiCall(`/bahan/sisa/${idBahan}`);
+    async getSisa(idBahan, prosesPengolahan) {
+      // MONGODB ONLY — untuk bahan dengan prosesBahan, query ?proses= wajib
+      let path = `/bahan/sisa/${encodeURIComponent(idBahan)}`;
+      if (prosesPengolahan != null && String(prosesPengolahan).trim() !== "") {
+        path += `?proses=${encodeURIComponent(String(prosesPengolahan).trim())}`;
+      }
+      return await apiCall(path);
     },
 
     async getNextId() {

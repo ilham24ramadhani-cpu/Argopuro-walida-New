@@ -7,6 +7,211 @@ let currentDeleteId = null;
 const MIN_KLOTER = 1;
 const MAX_KLOTER = 100;
 
+let masterProsesNamaBahan = [];
+/** Data lama (tanpa prosesBahan): isi kloter dipakai sekali saat proses pertama dicentang. */
+let legacyKloterOneShotPrefill = null;
+
+function prosesSectionDomId(name) {
+  return "pb_" + encodeURIComponent(name).replace(/%/g, "_");
+}
+
+function initKloterCountSelect(selectEl) {
+  if (!selectEl) return;
+  selectEl.innerHTML = '<option value="">Pilih jumlah kloter</option>';
+  for (let i = MIN_KLOTER; i <= MAX_KLOTER; i++) {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = `${i} kloter`;
+    selectEl.appendChild(opt);
+  }
+}
+
+async function loadProsesMasterUntukBahan() {
+  masterProsesNamaBahan = [];
+  try {
+    let dataProses = [];
+    if (window.API?.MasterData?.proses) {
+      dataProses = await window.API.MasterData.proses.getAll();
+    } else {
+      const r = await fetch("/api/dataProses");
+      if (r.ok) dataProses = await r.json();
+    }
+    masterProsesNamaBahan = (dataProses || [])
+      .map((p) => p.nama)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, "id"));
+  } catch (e) {
+    console.error("loadProsesMasterUntukBahan:", e);
+  }
+  return masterProsesNamaBahan;
+}
+
+function renderProsesCheckboxGrid() {
+  const host = document.getElementById("prosesCheckboxesContainer");
+  if (!host) return;
+  host.innerHTML = "";
+  masterProsesNamaBahan.forEach((nama) => {
+    const col = document.createElement("div");
+    col.className = "col";
+    const wrap = document.createElement("div");
+    wrap.className = "form-check border rounded px-3 py-2 h-100";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "form-check-input proses-bahan-cb";
+    const cid = `cb_${prosesSectionDomId(nama)}`;
+    cb.id = cid;
+    cb.dataset.prosesNama = nama;
+    const lbl = document.createElement("label");
+    lbl.className = "form-check-label";
+    lbl.htmlFor = cid;
+    lbl.textContent = nama;
+    wrap.appendChild(cb);
+    wrap.appendChild(lbl);
+    col.appendChild(wrap);
+    host.appendChild(col);
+    cb.addEventListener("change", () => {
+      toggleProsesBahanSection(nama, cb.checked);
+      if (
+        cb.checked &&
+        legacyKloterOneShotPrefill &&
+        legacyKloterOneShotPrefill.length
+      ) {
+        prefillProsesSection(nama, legacyKloterOneShotPrefill);
+        legacyKloterOneShotPrefill = null;
+      }
+      hitungFromKloter();
+    });
+  });
+}
+
+function renderKloterRowsInTbody(tbody, n) {
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  const num = Math.max(0, Math.min(MAX_KLOTER, parseInt(n, 10) || 0));
+  for (let i = 1; i <= num; i++) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="text-center">${i}</td>
+      <td><span class="badge bg-info text-white fw-semibold">Kloter ${i}</span></td>
+      <td>
+        <input type="number" class="form-control berat-karung" data-kloter="${i}"
+          placeholder="0" min="0" step="0.01" inputmode="decimal" />
+      </td>
+      <td>
+        <input type="text" class="form-control keterangan" data-kloter="${i}"
+          placeholder="Masukkan keterangan" />
+      </td>`;
+    tbody.appendChild(tr);
+  }
+  tbody.querySelectorAll(".berat-karung").forEach((el) => {
+    el.addEventListener("input", hitungFromKloter);
+    el.addEventListener("change", hitungFromKloter);
+  });
+}
+
+function toggleProsesBahanSection(prosesNama, show) {
+  const host = document.getElementById("prosesBahanSectionsHost");
+  if (!host) return;
+  const sid = prosesSectionDomId(prosesNama);
+  const existing = document.getElementById(sid);
+  if (!show) {
+    if (existing) existing.remove();
+    return;
+  }
+  if (existing) return;
+  const card = document.createElement("div");
+  card.className = "card mb-3";
+  card.id = sid;
+  card.setAttribute("data-proses-bahan-section", prosesNama);
+  const head = document.createElement("div");
+  head.className = "card-header py-2";
+  const sp = document.createElement("span");
+  sp.className = "fw-semibold";
+  const ic = document.createElement("i");
+  ic.className = "bi bi-gear me-2";
+  sp.appendChild(ic);
+  sp.appendChild(document.createTextNode(prosesNama));
+  head.appendChild(sp);
+  const body = document.createElement("div");
+  body.className = "card-body";
+  body.innerHTML = `
+      <div class="row mb-2">
+        <div class="col-md-4">
+          <label class="form-label">Jumlah kloter <span class="text-danger">*</span></label>
+          <select class="form-select jumlah-kloter-proses">
+            <option value="">Pilih</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-responsive proses-kloter-wrap" style="display:none">
+        <table class="table table-bordered align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:50px">No</th>
+              <th>Kloter</th>
+              <th>Berat sesi timbangan (KG)</th>
+              <th>Keterangan</th>
+            </tr>
+          </thead>
+          <tbody class="kloter-tbody-proses"></tbody>
+        </table>
+      </div>`;
+  card.appendChild(head);
+  card.appendChild(body);
+  host.appendChild(card);
+  const sel = card.querySelector(".jumlah-kloter-proses");
+  initKloterCountSelect(sel);
+  const wrap = card.querySelector(".proses-kloter-wrap");
+  const tbody = card.querySelector(".kloter-tbody-proses");
+  sel.addEventListener("change", () => {
+    const v = sel.value;
+    if (!v) {
+      wrap.style.display = "none";
+      if (tbody) tbody.innerHTML = "";
+    } else {
+      wrap.style.display = "block";
+      renderKloterRowsInTbody(tbody, v);
+    }
+    hitungFromKloter();
+  });
+}
+
+function clearProsesBahanUI() {
+  legacyKloterOneShotPrefill = null;
+  const host = document.getElementById("prosesBahanSectionsHost");
+  if (host) host.innerHTML = "";
+  document.querySelectorAll(".proses-bahan-cb").forEach((cb) => {
+    cb.checked = false;
+  });
+}
+
+function collectProsesBahanPayload() {
+  const sections = document.querySelectorAll("[data-proses-bahan-section]");
+  if (!sections.length) {
+    alert("Centang minimal satu proses pengolahan dan isi kloter per proses.");
+    return null;
+  }
+  const out = [];
+  for (const sec of sections) {
+    const nama = sec.getAttribute("data-proses-bahan-section");
+    const tbody = sec.querySelector(".kloter-tbody-proses");
+    const detailKloter = [];
+    if (tbody) {
+      tbody.querySelectorAll("tr").forEach((row) => {
+        const berat = parseFloat(row.querySelector(".berat-karung")?.value) || 0;
+        const keterangan = row.querySelector(".keterangan")?.value?.trim() || "";
+        if (berat > 0) detailKloter.push({ kloter: detailKloter.length + 1, berat, keterangan });
+      });
+    }
+    if (detailKloter.length === 0) {
+      alert(`Isi minimal satu kloter berat > 0 untuk proses "${nama}".`);
+      return null;
+    }
+    out.push({ prosesPengolahan: nama, detailKloter });
+  }
+  return out;
+}
+
 // Wait for API to be ready (event-based + polling fallback)
 async function waitForAPI() {
   // Check if already available
@@ -242,7 +447,11 @@ async function displayBahan() {
         (b.pemasok && b.pemasok.toLowerCase().includes(searchTerm)) ||
         (b.varietas && b.varietas.toLowerCase().includes(searchTerm)) ||
         (b.jenisKopi && b.jenisKopi.toLowerCase().includes(searchTerm)) ||
-        (b.kualitas && b.kualitas.toLowerCase().includes(searchTerm))
+        ((b.prosesBahan || []).some(
+          (x) =>
+            x.prosesPengolahan &&
+            String(x.prosesPengolahan).toLowerCase().includes(searchTerm)
+        ))
     );
   }
 
@@ -271,7 +480,11 @@ async function displayBahan() {
         const jenisKopi = b.jenisKopi || "-";
         const tanggalMasuk =
           b.tanggalMasuk || new Date().toISOString().split("T")[0];
-        const kualitas = b.kualitas || "-";
+        const prosesLabel =
+          (b.prosesBahan || [])
+            .map((x) => x.prosesPengolahan)
+            .filter(Boolean)
+            .join(", ") || "—";
         const id = b.id || index;
 
         return `
@@ -285,7 +498,7 @@ async function displayBahan() {
       <td>Rp ${totalPengeluaran.toLocaleString("id-ID")}</td>
       <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => 'bg-secondary'))(jenisKopi)}">${jenisKopi}</span></td>
       <td>${new Date(tanggalMasuk).toLocaleDateString("id-ID")}</td>
-      <td><span class="badge ${(window.getKualitasBadgeClass || (() => 'bg-secondary'))(kualitas)}">${kualitas}</span></td>
+      <td><small class="text-muted">${prosesLabel}</small></td>
       <td>${
         b.lunas
           ? '<span class="badge bg-success">Lunas</span>'
@@ -331,166 +544,110 @@ async function displayBahan() {
   console.log(`Displaying ${filteredBahan.length} bahan items`);
 }
 
-// Init dropdown jumlah kloter (1–MAX_KLOTER)
-function initKloterDropdown() {
-  const dropdown = document.getElementById("kloterTimbangan");
-  if (!dropdown) return;
-  dropdown.innerHTML = '<option value="">Pilih jumlah kloter</option>';
-  for (let i = MIN_KLOTER; i <= MAX_KLOTER; i++) {
-    const opt = document.createElement("option");
-    opt.value = String(i);
-    opt.textContent = `${i} kloter`;
-    dropdown.appendChild(opt);
-  }
-}
-
-// Render form kloter dinamis (model Kalkulator Timbang)
-function renderKloterForms(n) {
-  const dropdown = document.getElementById("kloterTimbangan");
-  const container = document.getElementById("formKloterContainer");
-  const tbody = document.getElementById("kloterForms");
-  const hasilContainer = document.getElementById("hasilPerhitunganContainer");
-
-  const num = Math.max(0, Math.min(MAX_KLOTER, parseInt(n, 10) || 0));
-  tbody.innerHTML = "";
-  if (num === 0) {
-    if (container) container.style.display = "none";
-    if (hasilContainer) hasilContainer.style.display = "none";
-    return;
-  }
-  if (container) container.style.display = "block";
-  for (let i = 1; i <= num; i++) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="text-center">${i}</td>
-      <td><span class="badge bg-info text-white fw-semibold">Kloter ${i}</span></td>
-      <td>
-        <input type="number" class="form-control berat-karung" data-kloter="${i}"
-          placeholder="0" min="0" step="0.01" inputmode="decimal" />
-      </td>
-      <td>
-        <input type="text" class="form-control keterangan" data-kloter="${i}"
-          placeholder="Masukkan keterangan" />
-      </td>
-    `;
-    tbody.appendChild(tr);
-  }
-  attachKloterInputListeners();
-  hitungFromKloter();
-  if (hasilContainer) hasilContainer.style.display = "flex";
-}
-
-// Attach listeners untuk perhitungan real-time
-function attachKloterInputListeners() {
-  const tbody = document.getElementById("kloterForms");
-  if (!tbody) return;
-  tbody.querySelectorAll(".berat-karung").forEach((el) => {
-    el.removeEventListener("input", onKloterInput);
-    el.removeEventListener("change", onKloterInput);
-    el.addEventListener("input", onKloterInput);
-    el.addEventListener("change", onKloterInput);
+function prefillProsesSection(prosesNama, detailKloter) {
+  const sid = prosesSectionDomId(prosesNama);
+  const card = document.getElementById(sid);
+  if (!card || !detailKloter?.length) return;
+  const sel = card.querySelector(".jumlah-kloter-proses");
+  const n = Math.min(MAX_KLOTER, Math.max(1, detailKloter.length));
+  if (sel) sel.value = String(n);
+  const wrap = card.querySelector(".proses-kloter-wrap");
+  const tbody = card.querySelector(".kloter-tbody-proses");
+  if (wrap) wrap.style.display = "block";
+  renderKloterRowsInTbody(tbody, n);
+  detailKloter.forEach((k, idx) => {
+    const row = tbody?.children[idx];
+    if (row) {
+      const be = row.querySelector(".berat-karung");
+      const ke = row.querySelector(".keterangan");
+      if (be) be.value = k.berat ?? "";
+      if (ke) ke.value = k.keterangan ?? "";
+    }
   });
-  const hargaGlobalEl = document.getElementById("hargaPerKgGlobal");
-  if (hargaGlobalEl) {
-    hargaGlobalEl.removeEventListener("input", onKloterInput);
-    hargaGlobalEl.removeEventListener("change", onKloterInput);
-    hargaGlobalEl.addEventListener("input", onKloterInput);
-    hargaGlobalEl.addEventListener("change", onKloterInput);
-  }
-}
-
-function onKloterInput() {
   hitungFromKloter();
 }
 
-// Perhitungan real-time: hargaPerKg diinput sekali, totalHarga = hargaPerKg × totalBerat
+// Perhitungan real-time: semua berat dari tiap proses
 function hitungFromKloter() {
-  const tbody = document.getElementById("kloterForms");
   const elTotalBerat = document.getElementById("totalBeratDisplay");
   const elTotalHarga = document.getElementById("totalHargaDisplay");
   const elRataRata = document.getElementById("rataRataHargaDisplay");
   const hargaPerKgEl = document.getElementById("hargaPerKgGlobal");
+  const hasilContainer = document.getElementById("hasilPerhitunganContainer");
 
   let totalBerat = 0;
-  if (tbody) {
-    tbody.querySelectorAll("tr").forEach((row) => {
-      const beratEl = row.querySelector(".berat-karung");
-      const berat = parseFloat(beratEl?.value) || 0;
-      totalBerat += berat;
+  document
+    .querySelectorAll("#prosesBahanSectionsHost .berat-karung")
+    .forEach((el) => {
+      totalBerat += parseFloat(el.value) || 0;
     });
-  }
+
   const hargaPerKg = parseFloat(hargaPerKgEl?.value) || 0;
-  const totalHarga = totalBerat * hargaPerKg; // Total harga = hargaPerKg × total berat
-  const rataRata = totalBerat > 0 ? totalHarga / totalBerat : 0; // Rata-rata = totalHarga ÷ totalBerat (sama dengan hargaPerKg)
+  const totalHarga = totalBerat * hargaPerKg;
+  const rataRata = totalBerat > 0 ? totalHarga / totalBerat : 0;
 
   if (elTotalBerat) elTotalBerat.textContent = `${totalBerat.toLocaleString("id-ID")} kg`;
   if (elTotalHarga) elTotalHarga.textContent = `Rp ${totalHarga.toLocaleString("id-ID")}`;
   if (elRataRata) elRataRata.textContent = `Rp ${rataRata.toLocaleString("id-ID", { maximumFractionDigits: 2 })}`;
+  if (hasilContainer)
+    hasilContainer.style.display = totalBerat > 0 ? "flex" : "none";
 }
 
-// Fungsi untuk membuka modal tambah/edit
-async function openModal(mode = "add") {
+function bindHargaPerKgGlobalOnce() {
+  const hargaGlobalEl = document.getElementById("hargaPerKgGlobal");
+  if (hargaGlobalEl && !hargaGlobalEl.dataset.hargaBahanBound) {
+    hargaGlobalEl.dataset.hargaBahanBound = "1";
+    hargaGlobalEl.addEventListener("input", hitungFromKloter);
+    hargaGlobalEl.addEventListener("change", hitungFromKloter);
+  }
+}
+
+// Fungsi untuk membuka modal tambah
+async function openModal() {
   currentEditId = null;
-  const modal = document.getElementById("modalBahan");
   const modalLabel = document.getElementById("modalBahanLabel");
   const form = document.getElementById("formBahan");
   const idBahanDisplay = document.getElementById("idBahanDisplay");
   const idBahanHidden = document.getElementById("idBahan");
-  const kloterDropdown = document.getElementById("kloterTimbangan");
-  const formKloterContainer = document.getElementById("formKloterContainer");
   const hasilContainer = document.getElementById("hasilPerhitunganContainer");
 
-  initKloterDropdown();
+  modalLabel.textContent = "Tambah Bahan";
+  form.reset();
+  document.getElementById("bahanId").value = "";
+  idBahanHidden.value = "";
+  if (idBahanDisplay) idBahanDisplay.value = "";
+  document.getElementById("haccpBendaAsing").checked = false;
+  document.getElementById("haccpHamaJamur").checked = false;
+  document.getElementById("haccpKondisiBaik").checked = false;
+  const lunasEl = document.getElementById("bahanLunas");
+  if (lunasEl) lunasEl.checked = false;
+  const hargaPerKgGlobalEl = document.getElementById("hargaPerKgGlobal");
+  if (hargaPerKgGlobalEl) hargaPerKgGlobalEl.value = "";
+  if (hasilContainer) hasilContainer.style.display = "none";
 
-  if (mode === "add") {
-    modalLabel.textContent = "Tambah Bahan";
-    form.reset();
-    document.getElementById("bahanId").value = "";
-    idBahanHidden.value = "";
-    if (idBahanDisplay) idBahanDisplay.value = "";
-    document.getElementById("haccpBendaAsing").checked = false;
-    document.getElementById("haccpHamaJamur").checked = false;
-    document.getElementById("haccpKondisiBaik").checked = false;
-    const lunasEl = document.getElementById("bahanLunas");
-    if (lunasEl) lunasEl.checked = false;
-    if (kloterDropdown) kloterDropdown.value = "";
-    const hargaPerKgGlobalEl = document.getElementById("hargaPerKgGlobal");
-    if (hargaPerKgGlobalEl) hargaPerKgGlobalEl.value = "";
-    if (formKloterContainer) formKloterContainer.style.display = "none";
-    if (hasilContainer) hasilContainer.style.display = "none";
-    document.getElementById("kloterForms").innerHTML = "";
+  await loadProsesMasterUntukBahan();
+  clearProsesBahanUI();
+  renderProsesCheckboxGrid();
+  bindHargaPerKgGlobalOnce();
 
-    // Fetch auto-generated idBahan untuk preview
-    if (window.API && window.API.Bahan && window.API.Bahan.getNextId) {
-      try {
-        const nextId = await window.API.Bahan.getNextId();
-        if (nextId && idBahanDisplay) {
-          idBahanDisplay.value = nextId;
-          idBahanHidden.value = nextId;
-        }
-      } catch (e) {
-        console.warn("Could not fetch next idBahan:", e);
+  if (window.API && window.API.Bahan && window.API.Bahan.getNextId) {
+    try {
+      const nextId = await window.API.Bahan.getNextId();
+      if (nextId && idBahanDisplay) {
+        idBahanDisplay.value = nextId;
+        idBahanHidden.value = nextId;
       }
+    } catch (e) {
+      console.warn("Could not fetch next idBahan:", e);
     }
-
-    loadPemasokOptions();
-    loadJenisKopiOptions();
-    loadVarietasOptions();
-  } else {
-    modalLabel.textContent = "Edit Bahan";
-    loadPemasokOptions();
-    loadJenisKopiOptions();
-    loadVarietasOptions();
   }
 
-  // Event listener untuk dropdown kloter (jika belum ada)
-  if (kloterDropdown && !kloterDropdown.dataset.kloterBound) {
-    kloterDropdown.dataset.kloterBound = "1";
-    kloterDropdown.addEventListener("change", () => {
-      const val = kloterDropdown.value;
-      renderKloterForms(val);
-    });
-  }
+  loadPemasokOptions();
+  loadJenisKopiOptions();
+  loadVarietasOptions();
+
+  const modal = new bootstrap.Modal(document.getElementById("modalBahan"));
+  modal.show();
 }
 
 // Fungsi untuk edit bahan
@@ -505,6 +662,7 @@ async function editBahan(id) {
     }
 
     currentEditId = id;
+    document.getElementById("modalBahanLabel").textContent = "Edit Bahan";
     document.getElementById("bahanId").value = b.id || b._id;
     document.getElementById("idBahan").value = b.idBahan;
     const idBahanDisplay = document.getElementById("idBahanDisplay");
@@ -513,7 +671,6 @@ async function editBahan(id) {
     document.getElementById("varietas").value = b.varietas;
     document.getElementById("jenisKopi").value = b.jenisKopi;
     document.getElementById("tanggalMasuk").value = b.tanggalMasuk;
-    document.getElementById("kualitas").value = b.kualitas;
 
     if (b.haccp) {
       document.getElementById("haccpBendaAsing").checked = b.haccp.bebasBendaAsing || false;
@@ -530,40 +687,35 @@ async function editBahan(id) {
     await loadPemasokOptions();
     await loadJenisKopiOptions();
     await loadVarietasOptions();
+    await loadProsesMasterUntukBahan();
+    clearProsesBahanUI();
+    bindHargaPerKgGlobalOnce();
 
-    // Set hargaPerKg global (diinput sekali, bukan per kloter)
     const hargaPerKgEl = document.getElementById("hargaPerKgGlobal");
-    if (hargaPerKgEl) {
-      hargaPerKgEl.value = b.hargaPerKg || "";
-    }
+    if (hargaPerKgEl) hargaPerKgEl.value = b.hargaPerKg || "";
 
-    // Render kloter: jika ada detailKloter gunakan, else 1 baris dari jumlah
-    const detailKloter = b.detailKloter || b.kloter;
-    let kloterData = [];
-    if (detailKloter && Array.isArray(detailKloter) && detailKloter.length > 0) {
-      kloterData = detailKloter;
+    const lines = b.prosesBahan && Array.isArray(b.prosesBahan) ? b.prosesBahan : [];
+    if (lines.length > 0) {
+      renderProsesCheckboxGrid();
+      for (const line of lines) {
+        const nama = line.prosesPengolahan;
+        if (!nama) continue;
+        document.querySelectorAll(".proses-bahan-cb").forEach((cb) => {
+          if (cb.dataset.prosesNama === nama) {
+            cb.checked = true;
+            toggleProsesBahanSection(nama, true);
+            prefillProsesSection(nama, line.detailKloter || []);
+          }
+        });
+      }
     } else {
-      kloterData = [{ berat: b.jumlah || 0, keterangan: "" }];
-    }
-
-    const kloterDropdown = document.getElementById("kloterTimbangan");
-    initKloterDropdown();
-    kloterDropdown.value = String(kloterData.length);
-    renderKloterForms(kloterData.length);
-
-    // Pre-fill kloter values (hanya berat dan keterangan)
-    const tbody = document.getElementById("kloterForms");
-    if (tbody) {
-      tbody.querySelectorAll("tr").forEach((row, idx) => {
-        const k = kloterData[idx];
-        if (k) {
-          const beratEl = row.querySelector(".berat-karung");
-          const ketEl = row.querySelector(".keterangan");
-          if (beratEl) beratEl.value = k.berat || "";
-          if (ketEl) ketEl.value = k.keterangan || "";
-        }
-      });
-      hitungFromKloter();
+      renderProsesCheckboxGrid();
+      const detailKloter = b.detailKloter || b.kloter;
+      if (detailKloter && Array.isArray(detailKloter) && detailKloter.length > 0) {
+        legacyKloterOneShotPrefill = detailKloter;
+      } else {
+        legacyKloterOneShotPrefill = [{ berat: b.jumlah || 0, keterangan: "" }];
+      }
     }
 
     const modal = new bootstrap.Modal(document.getElementById("modalBahan"));
@@ -586,9 +738,29 @@ function cetakInvoiceBahan(idBahan) {
     return;
   }
   let dataKloter = [];
+  const prosesLines = b.prosesBahan && Array.isArray(b.prosesBahan) ? b.prosesBahan : [];
+  if (prosesLines.length > 0) {
+    const globalHargaPerKg = parseFloat(b.hargaPerKg) || 0;
+    let no = 0;
+    prosesLines.forEach((pl) => {
+      const pname = pl.prosesPengolahan || "-";
+      (pl.detailKloter || []).forEach((k, idx) => {
+        const berat = parseFloat(k.berat) || 0;
+        if (berat <= 0 && globalHargaPerKg <= 0) return;
+        no += 1;
+        dataKloter.push({
+          no,
+          kloter: `${pname} · Kloter ${idx + 1}`,
+          berat,
+          hargaPerKg: globalHargaPerKg,
+          hargaKloter: berat * globalHargaPerKg,
+          keterangan: k.keterangan || "-",
+        });
+      });
+    });
+  }
   const detailKloter = b.detailKloter || b.kloter;
-  if (detailKloter && Array.isArray(detailKloter) && detailKloter.length > 0) {
-    // hargaPerKg per kloter atau fallback ke global b.hargaPerKg
+  if (dataKloter.length === 0 && detailKloter && Array.isArray(detailKloter) && detailKloter.length > 0) {
     const globalHargaPerKg = parseFloat(b.hargaPerKg) || 0;
     dataKloter = detailKloter.map((k, idx) => {
       const berat = parseFloat(k.berat) || 0;
@@ -602,7 +774,8 @@ function cetakInvoiceBahan(idBahan) {
         keterangan: k.keterangan || "-",
       };
     });
-  } else {
+  }
+  if (dataKloter.length === 0) {
     const jumlah = parseFloat(b.jumlah) || 0;
     const hargaPerKg = parseFloat(b.hargaPerKg) || 0;
     if (jumlah > 0 || hargaPerKg > 0) {
@@ -728,24 +901,7 @@ function cetakInvoiceBahan(idBahan) {
   doc.save(fileName);
 }
 
-// Kumpulkan data kloter dari tabel (tanpa hargaPerKg per kloter)
-function collectDetailKloter() {
-  const tbody = document.getElementById("kloterForms");
-  if (!tbody) return [];
-  const detailKloter = [];
-  tbody.querySelectorAll("tr").forEach((row, idx) => {
-    const beratEl = row.querySelector(".berat-karung");
-    const ketEl = row.querySelector(".keterangan");
-    const berat = parseFloat(beratEl?.value) || 0;
-    const keterangan = ketEl?.value?.trim() || "";
-    if (berat > 0) {
-      detailKloter.push({ kloter: idx + 1, berat, keterangan });
-    }
-  });
-  return detailKloter;
-}
-
-// Fungsi untuk menyimpan bahan (tambah/edit) - model kloter Kalkulator Timbang
+// Fungsi untuk menyimpan bahan (tambah/edit) — prosesBahan + kloter per proses
 async function saveBahan() {
   const form = document.getElementById("formBahan");
   if (!form.checkValidity()) {
@@ -762,12 +918,17 @@ async function saveBahan() {
     return;
   }
 
-  const detailKloter = collectDetailKloter();
-  const totalBerat = detailKloter.reduce((s, k) => s + k.berat, 0);
+  const prosesBahan = collectProsesBahanPayload();
+  if (!prosesBahan) return;
+
+  const totalBerat = prosesBahan.reduce((s, x) => {
+    const sub = (x.detailKloter || []).reduce((t, k) => t + (parseFloat(k.berat) || 0), 0);
+    return s + sub;
+  }, 0);
   const hargaPerKg = parseFloat(document.getElementById("hargaPerKgGlobal")?.value) || 0;
 
   if (totalBerat <= 0) {
-    alert("Minimal 1 kloter dengan berat > 0. Silakan pilih jumlah kloter dan isi data.");
+    alert("Total berat harus lebih dari 0.");
     return;
   }
   if (hargaPerKg <= 0) {
@@ -776,7 +937,7 @@ async function saveBahan() {
     return;
   }
 
-  const totalHarga = totalBerat * hargaPerKg; // Total harga = hargaPerKg × total berat
+  const totalHarga = totalBerat * hargaPerKg;
 
   const bahanId = document.getElementById("bahanId").value;
   const idBahan = document.getElementById("idBahan").value;
@@ -784,7 +945,6 @@ async function saveBahan() {
   const varietas = document.getElementById("varietas").value;
   const jenisKopi = document.getElementById("jenisKopi").value;
   const tanggalMasuk = document.getElementById("tanggalMasuk").value;
-  const kualitas = document.getElementById("kualitas").value;
 
   if (!window.API || !window.API.Bahan) {
     alert("❌ API.Bahan tidak tersedia. Pastikan backend aktif.");
@@ -805,11 +965,10 @@ async function saveBahan() {
       varietas,
       jenisKopi,
       tanggalMasuk,
-      kualitas,
       haccp,
       lunas,
-      detailKloter,
-      hargaPerKg, // Harga per kg diinput sekali (bukan per kloter)
+      prosesBahan,
+      hargaPerKg,
     };
 
     let savedIdBahan = idBahan;
@@ -1087,20 +1246,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Load options dan bind kloter dropdown saat modal dibuka
   const modalBahan = document.getElementById("modalBahan");
   if (modalBahan) {
     modalBahan.addEventListener("show.bs.modal", () => {
       loadPemasokOptions();
       loadJenisKopiOptions();
       loadVarietasOptions();
-      const kloterDropdown = document.getElementById("kloterTimbangan");
-      if (kloterDropdown && !kloterDropdown.dataset.kloterBound) {
-        kloterDropdown.dataset.kloterBound = "1";
-        kloterDropdown.addEventListener("change", () => {
-          renderKloterForms(kloterDropdown.value);
-        });
-      }
     });
   }
 });

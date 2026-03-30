@@ -309,9 +309,13 @@ const BahanAPI = {
     }
   },
 
-  async getSisa(idBahan) {
+  async getSisa(idBahan, prosesPengolahan) {
     try {
-      return await apiCall(`/bahan/sisa/${idBahan}`);
+      let path = `/bahan/sisa/${encodeURIComponent(idBahan)}`;
+      if (prosesPengolahan != null && String(prosesPengolahan).trim() !== "") {
+        path += `?proses=${encodeURIComponent(String(prosesPengolahan).trim())}`;
+      }
+      return await apiCall(path);
     } catch (error) {
       const bahan = JSON.parse(localStorage.getItem("bahan") || "[]");
       const produksi = JSON.parse(localStorage.getItem("produksi") || "[]");

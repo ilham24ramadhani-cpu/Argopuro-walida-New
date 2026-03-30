@@ -378,11 +378,11 @@
                   <small class="text-muted"><i class="bi bi-info-circle"></i> ID Produksi dihasilkan otomatis (format PRD-YYYYMM-XXXX)</small>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label for="idBahan" class="form-label">ID Bahan <span class="text-danger">*</span></label>
+                  <label for="idBahan" class="form-label">ID Bahan &amp; proses <span class="text-danger">*</span></label>
                   <select class="form-select" id="idBahan" required onchange="loadBahanDataProduksi()">
-                    <option value="">Pilih ID Bahan</option>
+                    <option value="">Pilih kombinasi ID Bahan + proses</option>
                   </select>
-                  <small class="text-muted">Pilih ID Bahan untuk auto-fill data dari bahan masuk</small>
+                  <small class="text-muted">Dari bahan masuk. Tahapan mengikuti proses ini.</small>
                 </div>
               </div>
               <div class="row">
@@ -396,7 +396,7 @@
                 <div class="col-md-6 mb-3">
                   <label for="beratAwal" class="form-label">Berat Awal (kg) <span class="text-danger">*</span></label>
                   <input type="number" class="form-control" id="beratAwal" placeholder="Pilih ID Bahan terlebih dahulu" min="0" step="0.01" required />
-                  <small class="text-muted" id="beratAwalInfo">Info sisa bahan muncul setelah memilih ID Bahan.</small>
+                  <small class="text-muted" id="beratAwalInfo">Berat awal otomatis dari sisa jalur proses yang dipilih.</small>
                   <small class="text-warning d-none" id="beratAwalWarning">Berat awal hanya bisa diubah saat menambah produksi baru.</small>
                 </div>
                 <div class="col-md-6 mb-3">
@@ -425,14 +425,13 @@
                 </div>
               </div>
               <div class="row">
-                <div class="col-md-6 mb-3">
-                  <label for="prosesPengolahan" class="form-label">Proses Pengolahan <span class="text-danger">*</span></label>
-                  <select class="form-select" id="prosesPengolahan" required onchange="loadTahapanFromMasterProduksi()">
-                    <option value="">Pilih Proses Pengolahan</option>
+                <div class="col-md-6 mb-3 d-none" aria-hidden="true">
+                  <label for="prosesPengolahan" class="form-label">Proses (sinkron)</label>
+                  <select class="form-select" id="prosesPengolahan" onchange="loadTahapanFromMasterProduksi()">
+                    <option value="">—</option>
                   </select>
-                  <small class="text-muted">Pilih dari Master Data. Tahapan dimuat otomatis.</small>
                 </div>
-                <div class="col-md-6 mb-3" id="kadarAirField">
+                <div class="col-md-12 mb-3" id="kadarAirField">
                   <label for="kadarAir" class="form-label">Kadar Air (%) <span class="text-danger" id="kadarAirAsterisk" style="display: none;">*</span></label>
                   <input type="number" class="form-control" id="kadarAir" placeholder="Masukkan kadar air" min="0" max="100" step="0.1" />
                   <small class="text-muted" id="kadarAirInfo">Wajib untuk tahapan Pengeringan Awal dan Pengeringan Akhir.</small>

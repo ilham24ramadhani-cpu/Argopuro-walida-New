@@ -9,6 +9,12 @@ let keuangan = [];
 let pemesanan = []; // TAMBAHAN: Data pemesanan untuk laporan
 let selectedWeeklyYear = new Date().getFullYear();
 
+function ringkasanProsesBahanLaporan(item) {
+  const lines = item && Array.isArray(item.prosesBahan) ? item.prosesBahan : [];
+  const s = lines.map((x) => x.prosesPengolahan).filter(Boolean).join(", ");
+  return s || "—";
+}
+
 // Wait for API to be ready (event-based + polling fallback)
 async function waitForAPI() {
   // Check if already available
@@ -607,7 +613,10 @@ const LAPORAN_REKAP_CONFIG = {
         label: "Tanggal Masuk",
         value: (item) => formatDate(item.tanggalMasuk),
       },
-      { label: "Kualitas", value: (item) => item.kualitas || "-" },
+      {
+        label: "Proses pengolahan",
+        value: (item) => ringkasanProsesBahanLaporan(item),
+      },
       { label: "Lunas", value: (item) => (item.lunas ? "Lunas" : "Belum") },
     ],
     filterKey: "bahan",
@@ -1829,7 +1838,7 @@ function displayBahan() {
         }</td>
       <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => 'bg-secondary'))(item.jenisKopi)}">${item.jenisKopi || "-"}</span></td>
       <td>${formatDate(item.tanggalMasuk)}</td>
-      <td><span class="badge ${(window.getKualitasBadgeClass || (() => 'bg-secondary'))(item.kualitas)}">${item.kualitas || "-"}</span></td>
+      <td><small class="text-muted">${ringkasanProsesBahanLaporan(item)}</small></td>
       <td>${
         item.lunas
           ? '<span class="badge bg-success">Lunas</span>'
@@ -2103,9 +2112,9 @@ function generateBahanPDF(id) {
 
   y += 10;
   doc.setFont(undefined, "bold");
-  doc.text("Kualitas:", 20, y);
+  doc.text("Proses pengolahan:", 20, y);
   doc.setFont(undefined, "normal");
-  doc.text(item.kualitas || "-", 60, y);
+  doc.text(ringkasanProsesBahanLaporan(item), 60, y);
 
   y += 10;
   doc.setFont(undefined, "bold");
@@ -2559,9 +2568,9 @@ function generateHasilProduksiPDF(id) {
     y += 10;
 
     doc.setFont(undefined, "bold");
-    doc.text("Kualitas:", 20, y);
+    doc.text("Proses pengolahan:", 20, y);
     doc.setFont(undefined, "normal");
-    doc.text(bahanData.kualitas || "-", 60, y);
+    doc.text(ringkasanProsesBahanLaporan(bahanData), 60, y);
     y += 10;
     doc.setFont(undefined, "bold");
     doc.text("Pembayaran:", 20, y);
@@ -3729,9 +3738,9 @@ async function generateDataKemasanPDF(id) {
       detailY += 10;
 
       detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Kualitas:", 20, detailY);
+      detailDoc.text("Proses pengolahan:", 20, detailY);
       detailDoc.setFont(undefined, "normal");
-      detailDoc.text(bahanData.kualitas || "-", 60, detailY);
+      detailDoc.text(ringkasanProsesBahanLaporan(bahanData), 60, detailY);
       detailY += 10;
       detailDoc.setFont(undefined, "bold");
       detailDoc.text("Pembayaran:", 20, detailY);
