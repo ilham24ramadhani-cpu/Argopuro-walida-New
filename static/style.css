@@ -240,38 +240,15 @@ body {
   margin-top: 70px;
 }
 
+/* Hamburger hidden on desktop (Bootstrap d-none di HTML) */
+.navbar-hamburger {
+  display: none;
+}
+
 /* =============================================
-   RESPONSIVE — Tablet (≤ 768px)
+   RESPONSIVE — Tablet: hanya penyesuaian konten (layout sidebar → lihat blok ≤992px)
    ============================================= */
 @media (max-width: 768px) {
-  .sidebar {
-    width: 220px;
-  }
-
-  .sidebar.close {
-    width: 70px;
-  }
-
-  .home {
-    left: 220px;
-    width: calc(100% - 220px);
-  }
-
-  .sidebar.close ~ .home {
-    left: 70px;
-    width: calc(100% - 70px);
-  }
-
-  .home .navbar {
-    left: 220px;
-    width: calc(100% - 220px);
-  }
-
-  .sidebar.close ~ .home .navbar {
-    left: 70px;
-    width: calc(100% - 70px);
-  }
-
   /* Reduce chart height on tablet */
   .card-body canvas {
     max-height: 220px;
@@ -279,15 +256,17 @@ body {
 }
 
 /* =============================================
-   RESPONSIVE — Mobile (≤ 576px)
+   RESPONSIVE — Drawer sidebar + konten mobile (≤ 991.98px, sama seperti Bootstrap lg)
    ============================================= */
-@media (max-width: 576px) {
+@media (max-width: 991.98px) {
   /* ---- Sidebar: overlay mode ---- */
   .sidebar {
     width: 260px;
     transform: translateX(-100%);
     z-index: 1050;
-    transition: transform 0.3s ease, width 0.3s ease;
+    transition:
+      transform 0.3s ease,
+      width 0.3s ease;
   }
 
   /* When sidebar is "open" on mobile (remove .close, add .mobile-open) */
@@ -299,6 +278,13 @@ body {
   .sidebar.close {
     width: 260px;
     transform: translateX(-100%);
+  }
+
+  /* Penting: di desktop .sidebar.close menyembunyikan teks menu; di drawer mobile teks harus tetap terlihat */
+  .sidebar.close .text,
+  .sidebar.close .header-text {
+    opacity: 1 !important;
+    pointer-events: auto !important;
   }
 
   /* Sidebar overlay backdrop */
@@ -325,7 +311,6 @@ body {
     left: 0 !important;
     width: 100% !important;
   }
-
   /* ---- Navbar: full width ---- */
   .home .navbar,
   .sidebar.close ~ .home .navbar {
@@ -339,9 +324,10 @@ body {
     display: none;
   }
 
-  /* Hamburger button (visible only on mobile) */
-  .navbar-hamburger {
-    display: flex !important;
+  /* Hamburger: spesifikasinya lebih tinggi dari Bootstrap .d-none */
+  body .home .navbar .navbar-hamburger,
+  body .home .navbar button.navbar-hamburger {
+    display: inline-flex !important;
     align-items: center;
     justify-content: center;
     background: none;

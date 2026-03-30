@@ -51,6 +51,11 @@ if MONGODB_URI:
 
 client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=8080)
 db = client[DB_NAME]
+try:
+    client.admin.command('ping')
+    print("DEBUG: KONEKSI BERHASIL!")
+except Exception as e:
+    print(f"DEBUG: KONEKSI GAGAL KARENA: {e}")
 
 TOKEN_KEY = 'mytoken'
 
