@@ -1,56 +1,24 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
+    <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dashboard Admin - Argopuro Walida</title>
-    <!-- Boxicons -->
-    <link
-      href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css"
-      rel="stylesheet"
-    />
+    <title>Calculator Randoman - Argopuro Walida</title>
+    <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
     <script src="https://unpkg.com/boxicons@2.1.3/dist/boxicons.js"></script>
-
-    <!-- Bootstrap CSS -->
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
-      crossorigin="anonymous"
-    />
-    <!-- Bootstrap Icons -->
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
-      rel="stylesheet"
-    />
-    <!-- Custom CSS -->
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='style.css') }}"
-    />
-    <!-- Bootstrap JS -->
-    <script
-      defer
-      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
-    ></script>
-    <!-- Bootstrap Primary Color Override -->
-    <link
-      rel="stylesheet"
-      href="{{ url_for('static', filename='bootstrap-primary-override.css') }}"
-    />
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script
-      src="{{ url_for('static', filename='js/api-service.js') }}"
-      defer
-    ></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-primary-override.css') }}" />
+    <script src="{{ url_for('static', filename='js/api-service.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/kelola_calculator_randoman.js') }}" defer></script>
   </head>
-  <body data-role="admin">
+  <body>
     <!-- Sidebar overlay backdrop (mobile) -->
     <div class="sidebar-overlay"></div>
 
-    <!-- ===== Sidebar Start ===== -->
     <nav class="sidebar close">
       <header>
         <div class="image-text">
@@ -168,6 +136,7 @@
               type="search"
               placeholder="Search"
               aria-label="Search"
+              id="searchInput"
             />
             <button class="btn btn-outline-primary" type="submit">
               Search
@@ -179,7 +148,7 @@
             class="navbar-icons d-flex align-items-center list-unstyled mb-0"
             style="gap: 1rem"
           >
-            <!-- Notification Dropdown -->
+                        <!-- Notification Dropdown -->
             <li class="nav-item dropdown">
               <a
                 class="text-dark fs-4 position-relative dropdown-toggle"
@@ -274,204 +243,57 @@
                 </li>
               </ul>
             </li>
-
-            <!-- Language Dropdown -->
-            <li class="nav-item dropdown">
-              <a
-                class="text-dark fs-4 dropdown-toggle d-flex align-items-center"
-                href="#"
-                id="languageDropdown"
-                role="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                <i class="bi bi-globe"></i>
-              </a>
-              <ul
-                class="dropdown-menu dropdown-menu-end shadow"
-                aria-labelledby="languageDropdown"
-              >
-                <li><h6 class="dropdown-header">Pilih Bahasa</h6></li>
-                <li>
-                  <a class="dropdown-item d-flex align-items-center" href="#">
-                    <img
-                      src="https://flagcdn.com/id.svg"
-                      width="20"
-                      class="me-2"
-                      alt="ID"
-                    />
-                    Indonesia
-                  </a>
-                </li>
-                <li>
-                  <a class="dropdown-item d-flex align-items-center" href="#">
-                    <img
-                      src="https://flagcdn.com/gb.svg"
-                      width="20"
-                      class="me-2"
-                      alt="EN"
-                    />
-                    English
-                  </a>
-                </li>
-                <li>
-                  <a class="dropdown-item d-flex align-items-center" href="#">
-                    <img
-                      src="https://flagcdn.com/ru.svg"
-                      width="20"
-                      class="me-2"
-                      alt="RU"
-                    />
-                    Russian
-                  </a>
-                </li>
-              </ul>
-            </li>
           </ul>
         </div>
       </nav>
 
-      <!-- Main Content -->
-      <div class="home-content" style="margin-top: 80px; padding: 2rem">
-        <div class="container-fluid">
-          <div
-            class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-4 gap-3"
-          >
+      <!-- Content -->
+      <div class="content">
+        <div class="container-fluid p-4">
+          <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
             <div>
-              <p class="text-uppercase text-muted mb-1 small">
-                Manajemen Sistem
+              <h2 class="fw-bold mb-1">Calculator Randoman</h2>
+              <p class="text-muted mb-0">
+                Perbandingan total berat bahan masuk (per ID Bahan) dengan produksi yang sudah di tahap
+                <strong>pengemasan</strong> dan memiliki <strong>berat akhir</strong> &gt; 0, dengan
+                <strong>ID Bahan yang sama</strong>. Hasil hanya ditampilkan di layar — tidak disimpan.
               </p>
-              <h2 class="mb-0">Dashboard Admin</h2>
             </div>
-            <div class="d-flex gap-2 flex-wrap">
+            <div class="dropdown">
               <button
-                class="btn btn-outline-primary"
-                onclick="refreshAllStatistics(true)"
-                id="refreshBtn"
-                title="Refresh Statistik"
+                class="btn btn-primary dropdown-toggle"
+                type="button"
+                id="crCountDropdown"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
               >
-                <i class="bi bi-arrow-clockwise" id="refreshIcon"></i> Refresh
+                <i class="bi bi-ui-checks-grid me-1"></i>
+                <span id="crCountLabel">1 kalkulator</span>
               </button>
+              <ul
+                class="dropdown-menu dropdown-menu-end"
+                id="crCountMenu"
+                aria-labelledby="crCountDropdown"
+                style="max-height: 280px; overflow-y: auto"
+              ></ul>
             </div>
           </div>
-
-          <!-- Statistics Cards -->
-          <div class="row g-4 mb-4" id="statisticsCards">
-            <!-- Cards akan diisi oleh JavaScript -->
-          </div>
-
-          <!-- Charts Section -->
-          <div class="row g-4 mb-4">
-            <!-- Grafik Bahan -->
-            <div class="col-lg-6">
-              <div class="card shadow-sm">
-                <div class="card-header bg-white">
-                  <h5 class="mb-0 fw-bold">
-                    <i class="bi bi-graph-up me-2"></i>Trend Bahan Masuk
-                  </h5>
-                </div>
-                <div
-                  class="card-body"
-                  style="height: 300px; position: relative"
-                >
-                  <canvas id="bahanChart"></canvas>
-                </div>
-              </div>
-            </div>
-
-            <!-- Grafik Produksi -->
-            <div class="col-lg-6">
-              <div class="card shadow-sm">
-                <div class="card-header bg-white">
-                  <h5 class="mb-0 fw-bold">
-                    <i class="bi bi-graph-up-arrow me-2"></i>Trend Produksi
-                  </h5>
-                </div>
-                <div
-                  class="card-body"
-                  style="height: 300px; position: relative"
-                >
-                  <canvas id="produksiChart"></canvas>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Stok Chart -->
-          <div class="row g-4 mb-4">
-            <div class="col-lg-12">
-              <div class="card shadow-sm">
-                <div class="card-header bg-white">
-                  <h5 class="mb-0 fw-bold">
-                    <i class="bi bi-bar-chart me-2"></i>Distribusi Stok Produk
-                  </h5>
-                </div>
-                <div
-                  class="card-body"
-                  style="height: 350px; position: relative"
-                >
-                  <canvas id="stokChart"></canvas>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Recent Activity and Summary -->
-          <div class="row g-4 mb-4">
-            <!-- Recent Activity -->
-            <div class="col-lg-8">
-              <div class="card shadow-sm">
-                <div class="card-header bg-white">
-                  <h5 class="mb-0 fw-bold">
-                    <i class="bi bi-activity me-2"></i>Aktivitas Terkini
-                  </h5>
-                </div>
-                <div class="card-body">
-                  <div id="recentActivity">
-                    <!-- Activity akan diisi oleh JavaScript -->
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Quick Summary -->
-            <div class="col-lg-4">
-              <div class="card shadow-sm">
-                <div class="card-header bg-white">
-                  <h5 class="mb-0 fw-bold">
-                    <i class="bi bi-info-circle me-2"></i>Ringkasan
-                  </h5>
-                </div>
-                <div class="card-body">
-                  <div id="quickSummary">
-                    <!-- Summary akan diisi oleh JavaScript -->
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <p id="crLoadStatus" class="small text-muted mb-3">Memuat data bahan &amp; produksi…</p>
+          <div id="crCalculatorsHost"></div>
         </div>
       </div>
     </section>
 
     <!-- Script untuk sidebar toggle -->
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/dashboard_stats.js') }}"></script>
-    <!-- Notification System - Load setelah api-service.js -->
     <script src="{{ url_for('static', filename='js/notification-system.js') }}"></script>
-
-    <!-- Authentication Guard - Proteksi halaman -->
+    <!-- Authentication Guard -->
     <script src="{{ url_for('static', filename='js/auth-guard.js') }}"></script>
-    <script>
-      // Cek autentikasi saat halaman dimuat
-      // Halaman ini hanya dapat diakses oleh Admin
+      <script>
       document.addEventListener("DOMContentLoaded", async function () {
-        const authResult = await checkAuth("Admin");
-        if (!authResult) {
-          // Jika belum login, checkAuth akan redirect otomatis
-          return;
-        }
-        console.log("✓ Access granted to Admin Dashboard");
+        const authResult = await checkAuth(["Admin", "Owner"]);
+        if (!authResult) return;
+        console.log("Access granted to Calculator Randoman");
       });
     </script>
   </body>
