@@ -5,7 +5,7 @@ let currentDeleteId = null;
 
 // Kloter timbangan (model Kalkulator Timbang)
 const MIN_KLOTER = 1;
-const MAX_KLOTER = 30;
+const MAX_KLOTER = 100;
 
 // Wait for API to be ready (event-based + polling fallback)
 async function waitForAPI() {
@@ -331,7 +331,7 @@ async function displayBahan() {
   console.log(`Displaying ${filteredBahan.length} bahan items`);
 }
 
-// Init dropdown jumlah kloter (1-30)
+// Init dropdown jumlah kloter (1–MAX_KLOTER)
 function initKloterDropdown() {
   const dropdown = document.getElementById("kloterTimbangan");
   if (!dropdown) return;
