@@ -280,6 +280,11 @@ body {
     transform: translateX(-100%);
   }
 
+  /* Hamburger menambah .mobile-open sementara .close tetap ada; tanpa ini .sidebar.close menang dan drawer tak terlihat */
+  .sidebar.close.mobile-open {
+    transform: translateX(0);
+  }
+
   /* Penting: di desktop .sidebar.close menyembunyikan teks menu; di drawer mobile teks harus tetap terlihat */
   .sidebar.close .text,
   .sidebar.close .header-text {

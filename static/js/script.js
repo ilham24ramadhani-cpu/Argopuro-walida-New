@@ -31,24 +31,45 @@ document.addEventListener("click", (e) => {
 
 const MOBILE_DRAWER_MAX = 991.98;
 
+/** Hanya berubah true/false saat lebar melewati breakpoint — jangan reset drawer di setiap resize (Safari portrait memicu resize saat chrome alamat) */
+let lastDrawerViewportIsMobile = null;
+
 function syncSidebarLayout() {
   const sidebar = document.querySelector(".sidebar");
   if (!sidebar) return;
 
   const overlay = document.querySelector(".sidebar-overlay");
   const w = window.innerWidth;
+  const isMobile = w <= MOBILE_DRAWER_MAX;
 
-  if (w <= MOBILE_DRAWER_MAX) {
-    sidebar.classList.remove("mobile-open");
-    if (overlay) overlay.classList.remove("active");
+  if (lastDrawerViewportIsMobile === null) {
+    lastDrawerViewportIsMobile = isMobile;
+    if (!isMobile) {
+      sidebar.classList.remove("mobile-open");
+      if (overlay) overlay.classList.remove("active");
+      sidebar.classList.remove("close");
+    }
+    return;
+  }
+
+  if (lastDrawerViewportIsMobile === isMobile) {
+    return;
+  }
+
+  lastDrawerViewportIsMobile = isMobile;
+  sidebar.classList.remove("mobile-open");
+  if (overlay) overlay.classList.remove("active");
+  if (isMobile) {
+    sidebar.classList.add("close");
   } else {
-    sidebar.classList.remove("mobile-open");
-    if (overlay) overlay.classList.remove("active");
     sidebar.classList.remove("close");
   }
 }
 
 window.addEventListener("resize", syncSidebarLayout);
+window.addEventListener("orientationchange", () => {
+  requestAnimationFrame(syncSidebarLayout);
+});
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", syncSidebarLayout);
 } else {
