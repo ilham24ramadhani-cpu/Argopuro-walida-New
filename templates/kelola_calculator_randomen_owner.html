@@ -1,29 +1,30 @@
-<!doctype html>
-<html lang="en">
-    <head>
+<!DOCTYPE html>
+<html lang="id">
+  <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Calculator Randoman - Argopuro Walida</title>
+    <title>Calculator Randomen - Argopuro Walida</title>
     <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
     <script src="https://unpkg.com/boxicons@2.1.3/dist/boxicons.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
-    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
     <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap-primary-override.css') }}" />
     <script src="{{ url_for('static', filename='js/api-service.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/kelola_calculator_randoman.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/kelola_calculator_randomen.js') }}" defer></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
   </head>
-  <body>
+  <body data-role="owner">
     <!-- Sidebar overlay backdrop (mobile) -->
     <div class="sidebar-overlay"></div>
 
+    <!-- ===== Sidebar Start ===== -->
     <nav class="sidebar close">
       <header>
         <div class="image-text">
           <a
-            href="{{ url_for('dashboard') }}"
+            href="{{ url_for('dashboard_owner') }}"
             class="d-flex align-items-center text-decoration-none"
             style="color: inherit"
           >
@@ -36,6 +37,7 @@
 
             <div class="text header-text">
               <span class="name">Argopuro Walida</span>
+              <span class="text profession">Owner Dashboard</span>
             </div>
           </a>
         </div>
@@ -46,69 +48,27 @@
       <div class="menu-bar">
         <ul class="menu-links">
           <li>
-            <a href="{{ url_for('kelola_pengguna') }}"
-              ><i class="bi bi-person-circle"></i
-              ><span class="text">Kelola Pengguna</span></a
+            <a href="{{ url_for('dashboard_owner') }}"
+              ><i class="bi bi-house-door"></i
+              ><span class="text">Dashboard</span></a
             >
           </li>
           <li>
-            <a href="{{ url_for('kelola_bahan') }}">
-              <i class="bi bi-flower1"></i>
-              <span class="text">Kelola Bahan</span></a
-            >
-          </li>
-          <li>
-            <a href="{{ url_for('kelola_produksi') }}"
-              ><i class="bi bi-building-gear"></i
-              ><span class="text">Kelola Produksi</span></a
-            >
-          </li>
-          <li>
-            <a href="{{ url_for('kelola_calculator_randoman') }}"
-              ><i class="bi bi-calculator"></i
-              ><span class="text">Calculator Randoman</span></a
-            >
-          </li>
-          <li>
-            <a href="{{ url_for('kelola_stok') }}"
-              ><i class="bi bi-boxes"></i
-              ><span class="text">Kelola Stok</span></a
-            >
-          </li>
-          <li>
-            <a href="{{ url_for('kelola_pemasok') }}"
-              ><i class="bi bi-person-heart"></i
-              ><span class="text">Kelola Pemasok</span></a
-            >
-          </li>
-          <li>
-            <a href="{{ url_for('kelola_sanitasi') }}"
-              ><i class="bi bi-shield-check"></i
-              ><span class="text">Kelola Sanitasi</span></a
-            >
-          </li>
-          <li>
-            <a href="{{ url_for('kelola_keuangan') }}"
-              ><i class="bi bi-currency-dollar"></i
-              ><span class="text">Kelola Keuangan</span></a
-            >
-          </li>
-          <li>
-            <a href="{{ url_for('kelola_laporan') }}"
+            <a href="{{ url_for('kelola_laporan_owner') }}"
               ><i class="bi bi-file-text"></i
-              ><span class="text">Kelola Laporan</span></a
+              ><span class="text">Laporan</span></a
             >
           </li>
           <li>
-            <a href="{{ url_for('kelola_data') }}"
-              ><i class="bi bi-database"></i
-              ><span class="text">Kelola Data</span></a
+            <a href="{{ url_for('kelola_calculator_randomen_owner') }}"
+              ><i class="bi bi-calculator"></i
+              ><span class="text">Calculator Randomen</span></a
             >
           </li>
           <li>
-            <a href="{{ url_for('kelola_pemesanan') }}"
-              ><i class="bi bi-cart"></i
-              ><span class="text">Kelola Pemesanan</span></a
+            <a href="{{ url_for('profile_owner') }}"
+              ><i class="bi bi-person-circle"></i
+              ><span class="text">Profil</span></a
             >
           </li>
         </ul>
@@ -127,7 +87,7 @@
           </button>
 
           <!-- Brand -->
-          <span class="fw-bold fs-5">Argopuro Walida System <span class="badge bg-primary ms-2">Admin</span></span>
+          <span class="fw-bold fs-5">Argopuro Walida System <span class="badge bg-warning text-dark ms-2">Owner</span></span>
 
           <!-- Search Bar -->
           <form class="d-flex ms-auto me-3" role="search">
@@ -136,7 +96,6 @@
               type="search"
               placeholder="Search"
               aria-label="Search"
-              id="searchInput"
             />
             <button class="btn btn-outline-primary" type="submit">
               Search
@@ -213,22 +172,27 @@
                 data-bs-toggle="dropdown"
                 aria-expanded="false"
               >
-                <i class="bi bi-person-circle"></i>
+                <i class="bi bi-person-badge"></i>
+                <span class="ms-2 d-none d-md-inline" id="usernameDisplay"
+                  >Owner</span
+                >
               </a>
               <ul
                 class="dropdown-menu dropdown-menu-end shadow"
                 aria-labelledby="userDropdown"
               >
                 <li>
-                  <h6 class="dropdown-header">Akun Pengguna</h6>
+                  <h6 class="dropdown-header">Akun Owner</h6>
                 </li>
                 <li>
-                  <a class="dropdown-item" href="{{ url_for('profile') }}"
+                  <a class="dropdown-item" href="{{ url_for('profile_owner') }}"
                     >Profil Saya</a
                   >
                 </li>
                 <li>
-                  <a class="dropdown-item" href="{{ url_for('pengaturan') }}"
+                  <a
+                    class="dropdown-item"
+                    href="{{ url_for('pengaturan_owner') }}"
                     >Pengaturan</a
                   >
                 </li>
@@ -243,6 +207,49 @@
                 </li>
               </ul>
             </li>
+
+            <!-- Language Dropdown -->
+            <li class="nav-item dropdown">
+              <a
+                class="text-dark fs-4 dropdown-toggle d-flex align-items-center"
+                href="#"
+                id="languageDropdown"
+                role="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+              >
+                <i class="bi bi-globe"></i>
+              </a>
+              <ul
+                class="dropdown-menu dropdown-menu-end shadow"
+                aria-labelledby="languageDropdown"
+              >
+                <li><h6 class="dropdown-header">Pilih Bahasa</h6></li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img
+                      src="https://flagcdn.com/id.svg"
+                      width="20"
+                      class="me-2"
+                      alt="ID"
+                    />
+                    Indonesia
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img src="https://flagcdn.com/gb.svg" width="20" class="me-2" alt="EN" />
+                    English
+                  </a>
+                </li>
+                <li>
+                  <a class="dropdown-item d-flex align-items-center" href="#">
+                    <img src="https://flagcdn.com/ru.svg" width="20" class="me-2" alt="RU" />
+                    Russian
+                  </a>
+                </li>
+              </ul>
+            </li>
           </ul>
         </div>
       </nav>
@@ -252,7 +259,7 @@
         <div class="container-fluid p-4">
           <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
             <div>
-              <h2 class="fw-bold mb-1">Calculator Randoman</h2>
+              <h2 class="fw-bold mb-1">Calculator Randomen</h2>
               <p class="text-muted mb-0">
                 Perbandingan total berat bahan masuk (per ID Bahan) dengan produksi yang sudah di tahap
                 <strong>pengemasan</strong> dan memiliki <strong>berat akhir</strong> &gt; 0, dengan
@@ -287,13 +294,18 @@
     <!-- Script untuk sidebar toggle -->
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
     <script src="{{ url_for('static', filename='js/notification-system.js') }}"></script>
-    <!-- Authentication Guard -->
+    <!-- Authentication Guard - Proteksi halaman -->
     <script src="{{ url_for('static', filename='js/auth-guard.js') }}"></script>
-      <script>
+    <script>
+      // Cek autentikasi saat halaman dimuat
+      // Halaman ini hanya dapat diakses oleh Owner
       document.addEventListener("DOMContentLoaded", async function () {
-        const authResult = await checkAuth("Admin");
-        if (!authResult) return;
-        console.log("Access granted to Calculator Randoman");
+        const authResult = await checkAuth("Owner");
+        if (!authResult) {
+          // Jika belum login, checkAuth akan redirect otomatis
+          return;
+        }
+        console.log("✓ Access granted to Calculator Randomen (Owner)");
       });
     </script>
   </body>

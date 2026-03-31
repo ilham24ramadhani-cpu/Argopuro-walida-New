@@ -536,20 +536,15 @@ def kelola_pemesanan():
     """Pemesanan management page"""
     return render_template('kelola_pemesanan.html')
 
-@app.route('/kelola/calculator-randoman')
-def kelola_calculator_randoman():
-    """Kalkulator pembanding berat bahan vs produksi (hanya tampilan, tidak disimpan)."""
-    return render_template('kelola_calculator_randoman.html')
+@app.route('/kelola/calculator-randomen')
+def kelola_calculator_randomen():
+    """Calculator Randomen — kalkulator pembanding berat bahan vs produksi (hanya tampilan, Admin)."""
+    return render_template('kelola_calculator_randomen.html')
 
-@app.route('/kelola/calculator-randoman/owner')
-def kelola_calculator_randoman_owner():
-    """Calculator Randoman — tampilan Owner (sidebar & navbar Owner)."""
-    return render_template('kelola_calculator_randoman_owner.html')
-
-@app.route('/kelola/calculator-randoman/karyawan')
-def kelola_calculator_randoman_karyawan():
-    """Calculator Randoman — akses karyawan."""
-    return render_template('kelola_calculator_randoman_karyawan.html')
+@app.route('/kelola/calculator-randomen/owner')
+def kelola_calculator_randomen_owner():
+    """Calculator Randomen — tampilan Owner (sidebar & navbar Owner)."""
+    return render_template('kelola_calculator_randomen_owner.html')
 
 @app.route('/profile')
 def profile():

@@ -1,5 +1,5 @@
 /**
- * Calculator Randoman — hanya perhitungan tampilan, tidak menyimpan data.
+ * Calculator Randomen — hanya perhitungan tampilan, tidak menyimpan data.
  * Memakai total berat bahan masuk (jumlah) per idBahan dan produksi
  * dengan tahap pengemasan + berat akhir > 0 dari id bahan yang sama.
  */
