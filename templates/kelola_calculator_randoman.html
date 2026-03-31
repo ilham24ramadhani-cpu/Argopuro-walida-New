@@ -291,7 +291,7 @@
     <script src="{{ url_for('static', filename='js/auth-guard.js') }}"></script>
       <script>
       document.addEventListener("DOMContentLoaded", async function () {
-        const authResult = await checkAuth(["Admin", "Owner"]);
+        const authResult = await checkAuth("Admin");
         if (!authResult) return;
         console.log("Access granted to Calculator Randoman");
       });

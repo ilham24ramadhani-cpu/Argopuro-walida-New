@@ -541,6 +541,11 @@ def kelola_calculator_randoman():
     """Kalkulator pembanding berat bahan vs produksi (hanya tampilan, tidak disimpan)."""
     return render_template('kelola_calculator_randoman.html')
 
+@app.route('/kelola/calculator-randoman/owner')
+def kelola_calculator_randoman_owner():
+    """Calculator Randoman — tampilan Owner (sidebar & navbar Owner)."""
+    return render_template('kelola_calculator_randoman_owner.html')
+
 @app.route('/kelola/calculator-randoman/karyawan')
 def kelola_calculator_randoman_karyawan():
     """Calculator Randoman — akses karyawan."""
