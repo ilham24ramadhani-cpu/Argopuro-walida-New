@@ -536,16 +536,6 @@ def kelola_pemesanan():
     """Pemesanan management page"""
     return render_template('kelola_pemesanan.html')
 
-@app.route('/kelola/calculator-randomen')
-def kelola_calculator_randomen():
-    """Calculator Randomen — kalkulator pembanding berat bahan vs produksi (hanya tampilan, Admin)."""
-    return render_template('kelola_calculator_randomen.html')
-
-@app.route('/kelola/calculator-randomen/owner')
-def kelola_calculator_randomen_owner():
-    """Calculator Randomen — tampilan Owner (sidebar & navbar Owner)."""
-    return render_template('kelola_calculator_randomen_owner.html')
-
 @app.route('/profile')
 def profile():
     """Profile page"""

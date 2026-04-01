@@ -7,6 +7,23 @@ let pemasok = [];
 let keuangan = [];
 let selectedWeeklyYear = new Date().getFullYear();
 
+/** Produksi sudah tahap pengemasan dan punya berat akhir > 0 */
+function isProduksiPengemasanBeratAkhir(p) {
+  const st = (p.statusTahapan || "").toLowerCase();
+  if (!st.includes("pengemasan")) return false;
+  const ba = parseFloat(p.beratAkhir);
+  return Number.isFinite(ba) && ba > 0;
+}
+
+/** Randemen = total bahan (kg) ÷ total berat akhir pengemasan (kg); — jika penyebut 0 */
+function formatRandemenCell(totalBahanKg, totalPengemasanKg) {
+  const d = Number(totalPengemasanKg) || 0;
+  const n = Number(totalBahanKg) || 0;
+  if (d <= 0) return "—";
+  const r = n / d;
+  return r.toLocaleString("id-ID", { maximumFractionDigits: 4 });
+}
+
 // Load all data untuk laporan
 async function loadAllReportData() {
   try {
@@ -1152,6 +1169,7 @@ function renderWeeklyRecap() {
         totalPengeluaran: 0,
         batchProduksi: 0,
         totalOutputKg: 0,
+        totalPengemasanKg: 0,
       };
     }
     return recapMap[key];
@@ -1174,10 +1192,18 @@ function renderWeeklyRecap() {
   });
 
   produksi.forEach((item) => {
-    const date = parseValidDate(item.tanggalMasuk);
-    const weekData = upsertWeekData(date);
-    if (!weekData) return;
-    weekData.batchProduksi += 1;
+    const dateMasuk = parseValidDate(item.tanggalMasuk);
+    const wdMasuk = upsertWeekData(dateMasuk);
+    if (wdMasuk) wdMasuk.batchProduksi += 1;
+
+    if (isProduksiPengemasanBeratAkhir(item)) {
+      const datePem =
+        parseValidDate(item.tanggalSekarang) || parseValidDate(item.tanggalMasuk);
+      const wdP = upsertWeekData(datePem);
+      if (wdP) {
+        wdP.totalPengemasanKg += parseFloat(item.beratAkhir) || 0;
+      }
+    }
   });
 
   hasilProduksi.forEach((item) => {
@@ -1196,7 +1222,7 @@ function renderWeeklyRecap() {
   if (rows.length === 0) {
     tableBody.innerHTML = `
       <tr>
-        <td colspan="6" class="text-center text-muted py-4">
+        <td colspan="7" class="text-center text-muted py-4">
           Belum ada data mingguan pada tahun ${selectedWeeklyYear}.
         </td>
       </tr>
@@ -1222,6 +1248,10 @@ function renderWeeklyRecap() {
         }</td>
         <td>${row.batchProduksi}</td>
         <td>${formatKgValue(row.totalOutputKg)}</td>
+        <td class="text-nowrap" title="Total bahan (kg) ÷ total berat akhir pengemasan (kg) minggu ini">${formatRandemenCell(
+          row.totalBahanKg,
+          row.totalPengemasanKg
+        )}</td>
       </tr>
     `
     )

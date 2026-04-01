@@ -98,12 +98,6 @@
             >
           </li>
           <li>
-            <a href="{{ url_for('kelola_calculator_randomen_owner') }}"
-              ><i class="bi bi-calculator"></i
-              ><span class="text">Calculator Randomen</span></a
-            >
-          </li>
-          <li>
             <a href="{{ url_for('profile_owner') }}"
               ><i class="bi bi-person-circle"></i
               ><span class="text">Profil</span></a
@@ -313,7 +307,9 @@
                   <h5 class="fw-bold mb-1">Rekap Mingguan 12 Bulan Terakhir</h5>
                   <p class="text-muted mb-0">
                     Pantau ringkasan bahan, produksi, dan hasil per minggu untuk
-                    satu tahun.
+                    satu tahun. Kolom Randemen = total bahan masuk (kg) dibagi
+                    total berat akhir produksi yang sudah tahap pengemasan (kg)
+                    pada minggu yang sama.
                   </p>
                 </div>
                 <div class="d-flex align-items-center gap-2">
@@ -340,11 +336,12 @@
                       <th scope="col">Pengeluaran Bahan</th>
                       <th scope="col">Batch Produksi</th>
                       <th scope="col">Output Hasil (kg)</th>
+                      <th scope="col">Randemen</th>
                     </tr>
                   </thead>
                   <tbody id="weeklyRecapTable">
                     <tr>
-                      <td colspan="6" class="text-center text-muted py-4">
+                      <td colspan="7" class="text-center text-muted py-4">
                         Memuat ringkasan...
                       </td>
                     </tr>
