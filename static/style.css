@@ -377,6 +377,12 @@ body {
   /* ---- Content area ---- */
   .content {
     margin-top: 60px;
+    min-width: 0; /* izinkan anak (mis. .table-responsive) overflow-x scroll */
+  }
+
+  .home .content .container-fluid {
+    max-width: 100%;
+    min-width: 0;
   }
 
   .home-content {
