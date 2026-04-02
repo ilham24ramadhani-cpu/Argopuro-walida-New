@@ -2,6 +2,8 @@
 let bahan = [];
 let currentEditId = null;
 let currentDeleteId = null;
+/** Cegah show.bs.modal memuat ulang dropdown (menghapus nilai edit); varietas aman karena hanya datalist. */
+let skipModalOptionsReloadOnShow = false;
 
 // Kloter timbangan (model Kalkulator Timbang)
 const MIN_KLOTER = 1;
@@ -775,6 +777,7 @@ async function editBahan(id) {
       }
     }
 
+    skipModalOptionsReloadOnShow = true;
     const modal = new bootstrap.Modal(document.getElementById("modalBahan"));
     modal.show();
   } catch (error) {
@@ -1309,6 +1312,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const modalBahan = document.getElementById("modalBahan");
   if (modalBahan) {
     modalBahan.addEventListener("show.bs.modal", () => {
+      if (skipModalOptionsReloadOnShow) {
+        skipModalOptionsReloadOnShow = false;
+        return;
+      }
       loadPemasokOptions();
       loadJenisKopiOptions();
       loadVarietasOptions();
