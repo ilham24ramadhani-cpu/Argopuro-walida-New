@@ -35,6 +35,66 @@ function getKloterRowValuesFromTbody(tbody) {
   return rows;
 }
 
+/**
+ * Gabungkan isi DOM saat ini dengan snapshot server (hanya di-set saat prefill edit — tidak di-overwrite)
+ * agar saat kurangi lalu tambah jumlah kloter lagi, baris yang tidak tampil tetap bisa muncul lagi dari DB.
+ */
+function buildMergedKloterRows(tbody, card, newNum) {
+  const previous = getKloterRowValuesFromTbody(tbody);
+  const server = card._detailKloterServerSnapshot || [];
+  const out = [];
+  for (let i = 0; i < newNum; i++) {
+    if (i < previous.length) {
+      out.push({
+        berat: previous[i].berat,
+        keterangan: previous[i].keterangan || "",
+      });
+    } else {
+      const ini = server[i];
+      out.push({
+        berat: ini != null ? formatBeratForNumberInput(ini.berat) : "",
+        keterangan: ini?.keterangan != null ? String(ini.keterangan) : "",
+      });
+    }
+  }
+  return out;
+}
+
+/** Render tbody dari array { berat, keterangan } — berat pakai input text + inputmode decimal (lebih stabil di mobile vs type=number). */
+function renderKloterRowsFromRowData(tbody, rowValues) {
+  if (!tbody) return;
+  tbody.innerHTML = "";
+  const list = Array.isArray(rowValues) ? rowValues : [];
+  list.forEach((saved, idx) => {
+    const i = idx + 1;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="text-center">${i}</td>
+      <td><span class="badge bg-info text-white fw-semibold">Kloter ${i}</span></td>
+      <td>
+        <input type="text" class="form-control berat-karung" data-kloter="${i}"
+          placeholder="0" inputmode="decimal" autocomplete="off" />
+      </td>
+      <td>
+        <input type="text" class="form-control keterangan" data-kloter="${i}"
+          placeholder="Masukkan keterangan" autocomplete="off" />
+      </td>`;
+    tbody.appendChild(tr);
+    const be = tr.querySelector(".berat-karung");
+    const ke = tr.querySelector(".keterangan");
+    if (be) {
+      const b = saved?.berat;
+      be.value =
+        b != null && b !== "" ? formatBeratForNumberInput(b) : "";
+    }
+    if (ke) ke.value = saved?.keterangan != null ? String(saved.keterangan) : "";
+  });
+  tbody.querySelectorAll(".berat-karung").forEach((el) => {
+    el.addEventListener("input", hitungFromKloter);
+    el.addEventListener("change", hitungFromKloter);
+  });
+}
+
 /** Nilai untuk input type="date" dari string/Date API. */
 function toInputDateValue(raw) {
   if (raw == null || raw === "") return "";
@@ -148,44 +208,6 @@ function renderProsesCheckboxGrid() {
   });
 }
 
-/**
- * Render baris kloter. Jika preserveExisting=true (default), isi baris lama dipertahankan
- * saat user mengubah dropdown jumlah kloter (tambah/kurang).
- */
-function renderKloterRowsInTbody(tbody, n, options = {}) {
-  const preserveExisting = options.preserveExisting !== false;
-  if (!tbody) return;
-  const num = Math.max(0, Math.min(MAX_KLOTER, parseInt(n, 10) || 0));
-  const previous = preserveExisting ? getKloterRowValuesFromTbody(tbody) : [];
-  tbody.innerHTML = "";
-  for (let i = 1; i <= num; i++) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="text-center">${i}</td>
-      <td><span class="badge bg-info text-white fw-semibold">Kloter ${i}</span></td>
-      <td>
-        <input type="number" class="form-control berat-karung" data-kloter="${i}"
-          placeholder="0" min="0" step="0.01" inputmode="decimal" />
-      </td>
-      <td>
-        <input type="text" class="form-control keterangan" data-kloter="${i}"
-          placeholder="Masukkan keterangan" />
-      </td>`;
-    tbody.appendChild(tr);
-    const saved = previous[i - 1];
-    if (saved) {
-      const be = tr.querySelector(".berat-karung");
-      const ke = tr.querySelector(".keterangan");
-      if (be) be.value = formatBeratForNumberInput(saved.berat);
-      if (ke) ke.value = saved.keterangan;
-    }
-  }
-  tbody.querySelectorAll(".berat-karung").forEach((el) => {
-    el.addEventListener("input", hitungFromKloter);
-    el.addEventListener("change", hitungFromKloter);
-  });
-}
-
 function toggleProsesBahanSection(prosesNama, show) {
   const host = document.getElementById("prosesBahanSectionsHost");
   if (!host) return;
@@ -247,7 +269,9 @@ function toggleProsesBahanSection(prosesNama, show) {
       if (tbody) tbody.innerHTML = "";
     } else {
       wrap.style.display = "block";
-      renderKloterRowsInTbody(tbody, v);
+      const num = Math.min(MAX_KLOTER, Math.max(1, parseInt(v, 10) || 1));
+      const merged = buildMergedKloterRows(tbody, card, num);
+      renderKloterRowsFromRowData(tbody, merged);
     }
     hitungFromKloter();
   });
@@ -627,20 +651,16 @@ function prefillProsesSection(prosesNama, detailKloter) {
   if (!card || !detailKloter?.length) return;
   const sel = card.querySelector(".jumlah-kloter-proses");
   const n = Math.min(MAX_KLOTER, Math.max(1, detailKloter.length));
-  if (sel) sel.value = String(n);
+  card._detailKloterServerSnapshot = JSON.parse(JSON.stringify(detailKloter));
   const wrap = card.querySelector(".proses-kloter-wrap");
   const tbody = card.querySelector(".kloter-tbody-proses");
   if (wrap) wrap.style.display = "block";
-  renderKloterRowsInTbody(tbody, n, { preserveExisting: false });
-  detailKloter.forEach((k, idx) => {
-    const row = tbody?.children[idx];
-    if (row) {
-      const be = row.querySelector(".berat-karung");
-      const ke = row.querySelector(".keterangan");
-      if (be) be.value = formatBeratForNumberInput(k.berat);
-      if (ke) ke.value = k.keterangan != null ? String(k.keterangan) : "";
-    }
-  });
+  const rows = detailKloter.map((k) => ({
+    berat: formatBeratForNumberInput(k.berat),
+    keterangan: k.keterangan != null ? String(k.keterangan) : "",
+  }));
+  renderKloterRowsFromRowData(tbody, rows);
+  if (sel) sel.value = String(Math.min(n, rows.length));
   hitungFromKloter();
 }
 
