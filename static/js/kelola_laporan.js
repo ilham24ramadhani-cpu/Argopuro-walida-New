@@ -502,6 +502,30 @@ function safeNumber(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/**
+ * Rendemen agregat untuk daftar bahan terfilter: Σ jumlah (kg) ÷ Σ berat akhir pengemasan
+ * dari produksi yang idBahan-nya ada di daftar (sama dengan konsep kolom Randemen rekap mingguan).
+ */
+function computeRendemenAggregatForBahanItems(bahanItems) {
+  const totalBahanKg = (bahanItems || []).reduce(
+    (s, e) => s + safeNumber(e.jumlah),
+    0
+  );
+  const idSet = new Set(
+    (bahanItems || []).map((b) => b.idBahan).filter(Boolean)
+  );
+  if (idSet.size === 0) {
+    return { totalBahanKg, totalPengemasanKg: 0 };
+  }
+  let totalPengemasanKg = 0;
+  (produksi || []).forEach((p) => {
+    if (!p || !idSet.has(p.idBahan)) return;
+    if (!isProduksiPengemasanBeratAkhir(p)) return;
+    totalPengemasanKg += parseFloat(p.beratAkhir) || 0;
+  });
+  return { totalBahanKg, totalPengemasanKg };
+}
+
 function averageNumber(items, getter) {
   if (!Array.isArray(items) || items.length === 0) return null;
   let total = 0;
@@ -699,6 +723,21 @@ const LAPORAN_REKAP_CONFIG = {
           label: "Total Bahan",
           value: formatKgValue(totalBerat),
         },
+        (() => {
+          const { totalBahanKg, totalPengemasanKg } =
+            computeRendemenAggregatForBahanItems(items);
+          const rasio = formatRandemenCell(totalBahanKg, totalPengemasanKg);
+          const detail =
+            totalPengemasanKg > 0
+              ? `${rasio} | bahan ${formatKgValue(
+                  totalBahanKg
+                )}, pengemasan ${formatKgValue(totalPengemasanKg)}`
+              : `${rasio} | belum ada berat akhir pengemasan untuk ID bahan pada filter ini`;
+          return {
+            label: "Rendemen (Σ bahan kg ÷ Σ berat akhir pengemasan)",
+            value: detail,
+          };
+        })(),
       ];
     },
   },
@@ -1582,22 +1621,29 @@ function renderBahanPriceStats() {
     avgElement.textContent = "-";
     maxElement.textContent = "-";
     supplierElement.textContent = "-";
-    rangeElement.textContent = "Musim panen belum tersedia";
+    rangeElement.textContent = "Belum ada data";
     infoElement.textContent = "Belum ada data pembelian bahan baku.";
     return;
   }
 
-  const validEntries = bahan
+  const filtered = getBahanFilteredForDisplay();
+  const validEntries = filtered
     .map((item) => {
       const date = parseValidDate(item.tanggalMasuk);
       if (!date) return null;
+      const jumlah = safeNumber(item.jumlah);
+      if (jumlah <= 0) return null;
+      const hargaPerKg = safeNumber(item.hargaPerKg);
+      let totalPengeluaran = safeNumber(item.totalPengeluaran);
+      if (!totalPengeluaran || totalPengeluaran <= 0) {
+        totalPengeluaran = jumlah * hargaPerKg;
+      }
       return {
         ...item,
         date,
-        hargaPerKg:
-          typeof item.hargaPerKg === "number"
-            ? item.hargaPerKg
-            : parseFloat(item.hargaPerKg) || 0,
+        jumlah,
+        hargaPerKg,
+        totalPengeluaran,
       };
     })
     .filter(Boolean)
@@ -1607,52 +1653,41 @@ function renderBahanPriceStats() {
     avgElement.textContent = "-";
     maxElement.textContent = "-";
     supplierElement.textContent = "-";
-    rangeElement.textContent = "Musim panen belum tersedia";
-    infoElement.textContent = "Tanggal pembelian tidak valid.";
-    return;
-  }
-
-  const latestDate = validEntries[0].date;
-  const seasonEnd = new Date(latestDate);
-  const seasonStart = new Date(latestDate);
-  seasonStart.setMonth(seasonStart.getMonth() - 5);
-  seasonStart.setHours(0, 0, 0, 0);
-
-  const seasonEntries = validEntries.filter(
-    (entry) => entry.date >= seasonStart && entry.date <= seasonEnd
-  );
-
-  if (seasonEntries.length === 0) {
-    avgElement.textContent = "-";
-    maxElement.textContent = "-";
-    supplierElement.textContent = "-";
-    rangeElement.textContent =
-      "Tidak ada pembelian pada periode 6 bulan terakhir.";
+    rangeElement.textContent = "Tidak ada data sesuai filter";
     infoElement.textContent =
-      "Data ditemukan, namun tidak ada transaksi dalam jendela musim panen (6 bulan).";
+      "Sesuaikan filter waktu atau pemasok, atau periksa tanggal masuk / jumlah bahan.";
     return;
   }
 
-  const totalHarga = seasonEntries.reduce(
-    (sum, entry) => sum + entry.hargaPerKg,
-    0
-  );
-  const avgHarga = totalHarga / seasonEntries.length;
-  const maxEntry = seasonEntries.reduce((prev, curr) =>
-    curr.hargaPerKg > prev.hargaPerKg ? curr : prev
+  let totalPengeluaranAgg = 0;
+  let totalBeratAgg = 0;
+  validEntries.forEach((entry) => {
+    totalBeratAgg += entry.jumlah;
+    totalPengeluaranAgg += entry.totalPengeluaran;
+  });
+  const avgHargaTertimbang =
+    totalBeratAgg > 0 ? totalPengeluaranAgg / totalBeratAgg : 0;
+
+  const maxEntry = validEntries.reduce((prev, curr) =>
+    safeNumber(curr.hargaPerKg) > safeNumber(prev.hargaPerKg) ? curr : prev
   );
 
-  avgElement.textContent = formatCurrency(Math.round(avgHarga));
-  maxElement.textContent = formatCurrency(maxEntry.hargaPerKg);
+  const minT = Math.min(...validEntries.map((e) => e.date.getTime()));
+  const maxT = Math.max(...validEntries.map((e) => e.date.getTime()));
+
+  avgElement.textContent = formatCurrency(Math.round(avgHargaTertimbang));
+  maxElement.textContent = formatCurrency(safeNumber(maxEntry.hargaPerKg));
   supplierElement.textContent = `${maxEntry.pemasok || "Tanpa pemasok"}${
     maxEntry.idBahan ? ` (${maxEntry.idBahan})` : ""
   }`;
   rangeElement.textContent = `${formatShortDate(
-    seasonStart,
+    new Date(minT),
     true
-  )} - ${formatShortDate(seasonEnd, true)} • ${seasonEntries.length} transaksi`;
+  )} - ${formatShortDate(new Date(maxT), true)} • ${
+    validEntries.length
+  } transaksi`;
   infoElement.textContent =
-    "Musim panen diasumsikan mencakup 6 bulan terakhir dari pembelian terbaru.";
+    "Rata-rata dihitung tertimbang (total pengeluaran ÷ total berat), sama seperti ringkasan di Rekap — mengikuti filter waktu dan pemasok di atas tabel.";
 }
 
 function renderProduksiTimeline() {
@@ -1834,6 +1869,7 @@ function displayBahan() {
       </tr>
     `;
     updateBahanPemasokInsight();
+    renderBahanPriceStats();
     return;
   }
 
@@ -1849,6 +1885,7 @@ function displayBahan() {
       </tr>
     `;
     updateBahanPemasokInsight();
+    renderBahanPriceStats();
     return;
   }
 
@@ -1886,6 +1923,7 @@ function displayBahan() {
     })
     .join("");
   updateBahanPemasokInsight();
+  renderBahanPriceStats();
 }
 
 // Display tabel produksi
