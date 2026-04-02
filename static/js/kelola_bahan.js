@@ -7,6 +7,50 @@ let currentDeleteId = null;
 const MIN_KLOTER = 1;
 const MAX_KLOTER = 100;
 
+/** Parse berat dari input (format id-ID: koma sebagai pemisah desimal). */
+function parseBeratLocal(raw) {
+  if (raw == null || raw === "") return 0;
+  const s = String(raw).trim().replace(/\s/g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Nilai untuk input type="date" dari string/Date API. */
+function toInputDateValue(raw) {
+  if (raw == null || raw === "") return "";
+  const s = String(raw);
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  const d = new Date(s);
+  if (!Number.isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${y}-${mo}-${da}`;
+  }
+  return "";
+}
+
+/**
+ * Set nilai select; jika nilai tidak ada di master, tambahkan opsi agar edit tetap konsisten.
+ */
+function ensureSelectValue(selectEl, value) {
+  if (!selectEl) return;
+  if (value == null || value === "") {
+    selectEl.value = "";
+    return;
+  }
+  const v = String(value).trim();
+  const has = Array.from(selectEl.options).some((o) => o.value === v);
+  if (!has && v) {
+    const opt = document.createElement("option");
+    opt.value = v;
+    opt.textContent = v;
+    selectEl.appendChild(opt);
+  }
+  selectEl.value = v;
+}
+
 let masterProsesNamaBahan = [];
 /** Data lama (tanpa prosesBahan): isi kloter dipakai sekali saat proses pertama dicentang. */
 let legacyKloterOneShotPrefill = null;
@@ -198,7 +242,7 @@ function collectProsesBahanPayload() {
     const detailKloter = [];
     if (tbody) {
       tbody.querySelectorAll("tr").forEach((row) => {
-        const berat = parseFloat(row.querySelector(".berat-karung")?.value) || 0;
+        const berat = parseBeratLocal(row.querySelector(".berat-karung")?.value);
         const keterangan = row.querySelector(".keterangan")?.value?.trim() || "";
         if (berat > 0) detailKloter.push({ kloter: detailKloter.length + 1, berat, keterangan });
       });
@@ -579,7 +623,7 @@ function hitungFromKloter() {
   document
     .querySelectorAll("#prosesBahanSectionsHost .berat-karung")
     .forEach((el) => {
-      totalBerat += parseFloat(el.value) || 0;
+      totalBerat += parseBeratLocal(el.value);
     });
 
   const hargaPerKg = parseFloat(hargaPerKgEl?.value) || 0;
@@ -667,10 +711,6 @@ async function editBahan(id) {
     document.getElementById("idBahan").value = b.idBahan;
     const idBahanDisplay = document.getElementById("idBahanDisplay");
     if (idBahanDisplay) idBahanDisplay.value = b.idBahan;
-    document.getElementById("pemasok").value = b.pemasok;
-    document.getElementById("varietas").value = b.varietas;
-    document.getElementById("jenisKopi").value = b.jenisKopi;
-    document.getElementById("tanggalMasuk").value = b.tanggalMasuk;
 
     if (b.haccp) {
       document.getElementById("haccpBendaAsing").checked = b.haccp.bebasBendaAsing || false;
@@ -687,6 +727,14 @@ async function editBahan(id) {
     await loadPemasokOptions();
     await loadJenisKopiOptions();
     await loadVarietasOptions();
+    /* Setelah option di-rebuild — jangan set sebelum ini atau pemasok/jenis kopi hilang (varietas tetap karena input teks). */
+    ensureSelectValue(document.getElementById("pemasok"), b.pemasok);
+    ensureSelectValue(document.getElementById("jenisKopi"), b.jenisKopi);
+    const varietasEl = document.getElementById("varietas");
+    if (varietasEl) varietasEl.value = b.varietas != null ? String(b.varietas) : "";
+    const tanggalEl = document.getElementById("tanggalMasuk");
+    if (tanggalEl) tanggalEl.value = toInputDateValue(b.tanggalMasuk);
+
     await loadProsesMasterUntukBahan();
     clearProsesBahanUI();
     bindHargaPerKgGlobalOnce();
@@ -698,10 +746,10 @@ async function editBahan(id) {
     if (lines.length > 0) {
       renderProsesCheckboxGrid();
       for (const line of lines) {
-        const nama = line.prosesPengolahan;
+        const nama = (line.prosesPengolahan || "").trim();
         if (!nama) continue;
         document.querySelectorAll(".proses-bahan-cb").forEach((cb) => {
-          if (cb.dataset.prosesNama === nama) {
+          if ((cb.dataset.prosesNama || "").trim() === nama) {
             cb.checked = true;
             toggleProsesBahanSection(nama, true);
             prefillProsesSection(nama, line.detailKloter || []);
@@ -715,6 +763,15 @@ async function editBahan(id) {
         legacyKloterOneShotPrefill = detailKloter;
       } else {
         legacyKloterOneShotPrefill = [{ berat: b.jumlah || 0, keterangan: "" }];
+      }
+      /* Bahan lama tanpa prosesBahan: tanpa centang manual, kloter kosong dan simpan gagal — otomatis proses pertama + prefill (penting di mobile). */
+      const firstCb = document.querySelector(".proses-bahan-cb");
+      if (firstCb && legacyKloterOneShotPrefill?.length) {
+        const nama0 = firstCb.dataset.prosesNama;
+        firstCb.checked = true;
+        toggleProsesBahanSection(nama0, true);
+        prefillProsesSection(nama0, legacyKloterOneShotPrefill);
+        legacyKloterOneShotPrefill = null;
       }
     }
 
@@ -922,7 +979,10 @@ async function saveBahan() {
   if (!prosesBahan) return;
 
   const totalBerat = prosesBahan.reduce((s, x) => {
-    const sub = (x.detailKloter || []).reduce((t, k) => t + (parseFloat(k.berat) || 0), 0);
+    const sub = (x.detailKloter || []).reduce(
+      (t, k) => t + parseBeratLocal(k.berat),
+      0
+    );
     return s + sub;
   }, 0);
   const hargaPerKg = parseFloat(document.getElementById("hargaPerKgGlobal")?.value) || 0;
