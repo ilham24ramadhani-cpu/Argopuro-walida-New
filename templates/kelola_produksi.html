@@ -477,17 +477,30 @@
                     berat awal tidak dapat diubah.
                   </small>
                 </div>
-                <div class="col-md-6 mb-3">
+                <div class="col-12 mb-2" id="beratTerkiniMetodeRow">
+                  <label for="metodeBeratTerkini" class="form-label"
+                    >Metode pencatatan berat terkini</label
+                  >
+                  <select
+                    class="form-select"
+                    id="metodeBeratTerkini"
+                    onchange="if (window.toggleMetodeBeratTerkiniUI) toggleMetodeBeratTerkiniUI()"
+                  >
+                    <option value="total">Input total berat terkini (kg)</option>
+                    <option value="kloter">Per kloter (maks. 100 kloter; total = jumlah semua kloter)</option>
+                  </select>
+                </div>
+                <div class="col-md-6 mb-3" id="wrapBeratTerkiniTotal">
                   <label for="beratTerkini" class="form-label"
                     >Berat Terkini (kg) <span class="text-danger" id="beratTerkiniAsterisk">*</span></label
                   >
                   <input
-                    type="number"
+                    type="text"
                     class="form-control"
                     id="beratTerkini"
                     placeholder="Masukkan berat terkini pada tahapan ini"
-                    min="0"
-                    step="0.01"
+                    inputmode="decimal"
+                    autocomplete="off"
                     required
                   />
                   <small class="text-muted" id="beratTerkiniInfo">
@@ -495,6 +508,39 @@
                   </small>
                   <small class="text-warning d-none" id="beratTerkiniPengemasanInfo">
                     <i class="bi bi-lock"></i> <strong>Dikunci:</strong> Pada tahap Pengemasan, berat terkini dikunci dengan nilai terakhir. Hanya berat akhir yang perlu diinput.
+                  </small>
+                </div>
+                <div class="col-12 mb-3 d-none" id="wrapBeratTerkiniKloter">
+                  <label class="form-label">Kloter timbangan (berat terkini)</label>
+                  <div class="row mb-2">
+                    <div class="col-md-4">
+                      <label for="jumlahKloterBeratTerkini" class="form-label small text-muted mb-0">Jumlah kloter</label>
+                      <select
+                        class="form-select"
+                        id="jumlahKloterBeratTerkini"
+                        onchange="if (window.onJumlahKloterBeratTerkiniChange) onJumlahKloterBeratTerkiniChange()"
+                      ></select>
+                    </div>
+                  </div>
+                  <div class="alert alert-light border py-2 mb-2 small">
+                    <i class="bi bi-calculator me-1"></i> Total berat terkini (otomatis):
+                    <strong id="beratTerkiniKloterSumDisplay">0 kg</strong>
+                  </div>
+                  <div class="table-responsive">
+                    <table class="table table-sm table-bordered align-middle mb-0">
+                      <thead class="table-light">
+                        <tr>
+                          <th style="width:48px">No</th>
+                          <th style="width:120px">Kloter</th>
+                          <th>Berat (kg)</th>
+                          <th>Keterangan</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tbodyBeratTerkiniKloter"></tbody>
+                    </table>
+                  </div>
+                  <small class="text-muted d-block mt-2">
+                    Isi berat tiap kloter; total di atas dipakai sebagai nilai berat terkini saat menyimpan.
                   </small>
                 </div>
               </div>

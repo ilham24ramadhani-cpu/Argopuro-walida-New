@@ -72,6 +72,226 @@ function decodeBahanProduksiOption(encoded) {
   }
 }
 
+// ========== Berat terkini: total vs per kloter (maks. 100) ==========
+const MAX_KLOTER_BERAT_TERKINI = 100;
+
+/** Salinan detail kloter dari server saat edit (untuk isi baris baru saat ubah jumlah kloter). */
+let _beratTerkiniKloterServerSnapshot = null;
+
+function parseBeratProduksiLocal(raw) {
+  if (raw == null || raw === "") return 0;
+  const s = String(raw).trim().replace(/\s/g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatBeratProduksiInput(v) {
+  if (v == null || v === "") return "";
+  return String(v).trim().replace(/\s/g, "").replace(",", ".");
+}
+
+function initJumlahKloterBeratTerkiniSelect() {
+  const sel = document.getElementById("jumlahKloterBeratTerkini");
+  if (!sel) return;
+  if (sel.options && sel.options.length > 2) return;
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">Pilih jumlah kloter</option>';
+  for (let i = 1; i <= MAX_KLOTER_BERAT_TERKINI; i++) {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = `${i} kloter`;
+    sel.appendChild(opt);
+  }
+  if (keep && sel.querySelector(`option[value="${keep}"]`)) sel.value = keep;
+}
+
+function getBeratTerkiniKloterRowsFromDom() {
+  const tbody = document.getElementById("tbodyBeratTerkiniKloter");
+  if (!tbody) return [];
+  const rows = [];
+  tbody.querySelectorAll("tr").forEach((row) => {
+    const berat = row.querySelector(".berat-terkini-kloter-input")?.value ?? "";
+    const keterangan = row.querySelector(".keterangan-terkini-kloter")?.value ?? "";
+    rows.push({ berat, keterangan });
+  });
+  return rows;
+}
+
+function buildMergedBeratTerkiniKloterRows(newNum) {
+  const previous = getBeratTerkiniKloterRowsFromDom();
+  const server = _beratTerkiniKloterServerSnapshot || [];
+  const out = [];
+  for (let i = 0; i < newNum; i++) {
+    if (i < previous.length) {
+      out.push({
+        berat: previous[i].berat,
+        keterangan: previous[i].keterangan || "",
+      });
+    } else {
+      const ini = server[i];
+      out.push({
+        berat: ini != null ? formatBeratProduksiInput(ini.berat) : "",
+        keterangan: ini?.keterangan != null ? String(ini.keterangan) : "",
+      });
+    }
+  }
+  return out;
+}
+
+function renderBeratTerkiniKloterRows(n, prefilled) {
+  const tbody = document.getElementById("tbodyBeratTerkiniKloter");
+  if (!tbody) return;
+  const num = Math.max(0, Math.min(MAX_KLOTER_BERAT_TERKINI, parseInt(n, 10) || 0));
+  let rowsData = [];
+  if (prefilled && Array.isArray(prefilled) && prefilled.length) {
+    rowsData = prefilled.slice(0, num).map((k) => ({
+      berat: formatBeratProduksiInput(k.berat),
+      keterangan: k.keterangan != null ? String(k.keterangan) : "",
+    }));
+    while (rowsData.length < num) rowsData.push({ berat: "", keterangan: "" });
+  } else {
+    rowsData = buildMergedBeratTerkiniKloterRows(num);
+  }
+  tbody.innerHTML = "";
+  for (let idx = 0; idx < num; idx++) {
+    const i = idx + 1;
+    const saved = rowsData[idx] || { berat: "", keterangan: "" };
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="text-center">${i}</td>
+      <td><span class="badge bg-secondary">Kloter ${i}</span></td>
+      <td>
+        <input type="text" class="form-control berat-terkini-kloter-input" data-i="${i}"
+          placeholder="0" inputmode="decimal" autocomplete="off" />
+      </td>
+      <td>
+        <input type="text" class="form-control keterangan-terkini-kloter" placeholder="Opsional" autocomplete="off" />
+      </td>`;
+    tbody.appendChild(tr);
+    const be = tr.querySelector(".berat-terkini-kloter-input");
+    const ke = tr.querySelector(".keterangan-terkini-kloter");
+    if (be) be.value = saved.berat != null && saved.berat !== "" ? String(saved.berat) : "";
+    if (ke) ke.value = saved.keterangan || "";
+  }
+  tbody.querySelectorAll(".berat-terkini-kloter-input").forEach((el) => {
+    el.addEventListener("input", syncBeratTerkiniFromKloter);
+    el.addEventListener("change", syncBeratTerkiniFromKloter);
+  });
+  tbody.querySelectorAll(".keterangan-terkini-kloter").forEach((el) => {
+    el.addEventListener("input", syncBeratTerkiniFromKloter);
+  });
+  syncBeratTerkiniFromKloter();
+}
+
+function syncBeratTerkiniFromKloter() {
+  const tbody = document.getElementById("tbodyBeratTerkiniKloter");
+  const beratInput = document.getElementById("beratTerkini");
+  const sumEl = document.getElementById("beratTerkiniKloterSumDisplay");
+  if (!tbody || !beratInput) return;
+  let sum = 0;
+  tbody.querySelectorAll(".berat-terkini-kloter-input").forEach((el) => {
+    sum += parseBeratProduksiLocal(el.value);
+  });
+  if (sum > 0) {
+    const rounded = Math.round(sum * 10000) / 10000;
+    beratInput.value = String(rounded);
+  } else {
+    beratInput.value = "";
+  }
+  if (sumEl) {
+    sumEl.textContent = `${sum.toLocaleString("id-ID", { maximumFractionDigits: 4 })} kg`;
+  }
+}
+
+window.toggleMetodeBeratTerkiniUI = function toggleMetodeBeratTerkiniUI() {
+  const metode = document.getElementById("metodeBeratTerkini")?.value || "total";
+  const wrapTotal = document.getElementById("wrapBeratTerkiniTotal");
+  const wrapKloter = document.getElementById("wrapBeratTerkiniKloter");
+  const beratInput = document.getElementById("beratTerkini");
+  const pengemasan = isStatusPengemasanSelected();
+
+  if (pengemasan) return;
+
+  if (metode === "kloter") {
+    wrapTotal?.classList.add("d-none");
+    wrapKloter?.classList.remove("d-none");
+    if (beratInput) {
+      beratInput.readOnly = true;
+      beratInput.classList.add("bg-light");
+      beratInput.required = true;
+    }
+    const tbody = document.getElementById("tbodyBeratTerkiniKloter");
+    const hasRows = tbody && tbody.querySelectorAll("tr").length > 0;
+    initJumlahKloterBeratTerkiniSelect();
+    const jSel = document.getElementById("jumlahKloterBeratTerkini");
+    if (hasRows && jSel?.value) {
+      syncBeratTerkiniFromKloter();
+      return;
+    }
+    if (jSel && !jSel.value) {
+      jSel.value = "1";
+      renderBeratTerkiniKloterRows(1, null);
+    } else if (jSel?.value) {
+      renderBeratTerkiniKloterRows(parseInt(jSel.value, 10), null);
+    }
+    syncBeratTerkiniFromKloter();
+  } else {
+    wrapKloter?.classList.add("d-none");
+    wrapTotal?.classList.remove("d-none");
+    if (beratInput) {
+      beratInput.readOnly = false;
+      beratInput.classList.remove("bg-light");
+      beratInput.required = true;
+    }
+  }
+};
+
+window.onJumlahKloterBeratTerkiniChange = function onJumlahKloterBeratTerkiniChange() {
+  const jSel = document.getElementById("jumlahKloterBeratTerkini");
+  const v = jSel?.value;
+  if (!v) {
+    const tbody = document.getElementById("tbodyBeratTerkiniKloter");
+    if (tbody) tbody.innerHTML = "";
+    syncBeratTerkiniFromKloter();
+    return;
+  }
+  const n = Math.min(MAX_KLOTER_BERAT_TERKINI, Math.max(1, parseInt(v, 10) || 1));
+  renderBeratTerkiniKloterRows(n, null);
+};
+
+function isStatusPengemasanSelected() {
+  const st = document.getElementById("statusTahapan")?.value || "";
+  return st === "Pengemasan" || (st && st.includes("Pengemasan"));
+}
+
+function resetBeratTerkiniMetodeForAdd() {
+  _beratTerkiniKloterServerSnapshot = null;
+  const m = document.getElementById("metodeBeratTerkini");
+  if (m) m.value = "total";
+  const jSel = document.getElementById("jumlahKloterBeratTerkini");
+  if (jSel) jSel.value = "";
+  const tbody = document.getElementById("tbodyBeratTerkiniKloter");
+  if (tbody) tbody.innerHTML = "";
+  document.getElementById("wrapBeratTerkiniKloter")?.classList.add("d-none");
+  document.getElementById("wrapBeratTerkiniTotal")?.classList.remove("d-none");
+  const sumEl = document.getElementById("beratTerkiniKloterSumDisplay");
+  if (sumEl) sumEl.textContent = "0 kg";
+}
+
+function getBeratTerkiniDetailKloterPayload() {
+  const metode = document.getElementById("metodeBeratTerkini")?.value;
+  if (metode !== "kloter") return null;
+  const tbody = document.getElementById("tbodyBeratTerkiniKloter");
+  if (!tbody) return null;
+  const out = [];
+  tbody.querySelectorAll("tr").forEach((row, idx) => {
+    const berat = parseBeratProduksiLocal(row.querySelector(".berat-terkini-kloter-input")?.value);
+    const keterangan = row.querySelector(".keterangan-terkini-kloter")?.value?.trim() || "";
+    if (berat > 0) out.push({ kloter: idx + 1, berat, keterangan });
+  });
+  return out.length ? out : null;
+}
+
 // Load data bahan untuk dropdown (MONGODB ONLY)
 async function loadBahanOptionsProduksi() {
   try {
@@ -1428,7 +1648,13 @@ window.toggleBeratAkhirField = function toggleBeratAkhirField() {
     }
   }
 
+  const metodeRow = document.getElementById("beratTerkiniMetodeRow");
+
   if (isPengemasan) {
+    if (metodeRow) metodeRow.classList.add("d-none");
+    document.getElementById("wrapBeratTerkiniKloter")?.classList.add("d-none");
+    document.getElementById("wrapBeratTerkiniTotal")?.classList.remove("d-none");
+
     // Tampilkan dan aktifkan field berat akhir
     if (beratAkhirField) beratAkhirField.style.display = "block";
     if (beratAkhirInput) {
@@ -1472,6 +1698,8 @@ window.toggleBeratAkhirField = function toggleBeratAkhirField() {
       if (pengemasanInfo) pengemasanInfo.classList.remove("d-none");
     }
   } else {
+    if (metodeRow) metodeRow.classList.remove("d-none");
+
     // Sembunyikan field berat akhir dan data produk stok
     if (beratAkhirField) beratAkhirField.style.display = "none";
     if (beratAkhirInput) {
@@ -1492,11 +1720,19 @@ window.toggleBeratAkhirField = function toggleBeratAkhirField() {
       beratPixelEl.value = "";
     }
 
-    // Aktifkan kembali field berat terkini (wajib diisi)
+    // Aktifkan kembali field berat terkini (wajib diisi); mode kloter tetap readonly + diisi dari tabel
     if (beratTerkiniInput) {
-      beratTerkiniInput.readOnly = false; // Bisa diubah
-      beratTerkiniInput.required = true; // Wajib diisi
-      beratTerkiniInput.style.backgroundColor = ""; // Reset warna
+      const m = document.getElementById("metodeBeratTerkini")?.value;
+      if (m === "kloter") {
+        beratTerkiniInput.readOnly = true;
+        beratTerkiniInput.classList.add("bg-light");
+        beratTerkiniInput.required = true;
+      } else {
+        beratTerkiniInput.readOnly = false;
+        beratTerkiniInput.required = true;
+        beratTerkiniInput.style.backgroundColor = "";
+        beratTerkiniInput.classList.remove("bg-light");
+      }
       beratTerkiniInput.title =
         "Wajib diisi setiap kali update tahapan produksi";
 
@@ -1637,6 +1873,12 @@ window.openModal = async function openModal(mode = "add") {
       beratTerkiniInput.title =
         "Wajib diisi setiap kali update tahapan produksi";
     }
+    resetBeratTerkiniMetodeForAdd();
+    const mRow = document.getElementById("beratTerkiniMetodeRow");
+    if (mRow) mRow.classList.remove("d-none");
+    if (typeof toggleMetodeBeratTerkiniUI === "function") {
+      toggleMetodeBeratTerkiniUI();
+    }
 
     toggleBeratAkhirField();
     if (window.toggleKadarAirField) {
@@ -1752,6 +1994,10 @@ window.editProduksi = async function editProduksi(id) {
 
     if (beratTerkiniInput) {
       if (isPengemasan) {
+        document.getElementById("beratTerkiniMetodeRow")?.classList.add("d-none");
+        document.getElementById("wrapBeratTerkiniKloter")?.classList.add("d-none");
+        document.getElementById("wrapBeratTerkiniTotal")?.classList.remove("d-none");
+        _beratTerkiniKloterServerSnapshot = null;
         // Jika sudah Pengemasan: kunci dengan nilai terakhir sebelum pengemasan
         // Gunakan nilai berat terkini terakhir dari history atau dari data produksi
         const beratTerkiniTerakhir = p.beratTerkini || p.beratAwal || "";
@@ -1777,16 +2023,59 @@ window.editProduksi = async function editProduksi(id) {
         if (infoText) infoText.classList.add("d-none");
         if (pengemasanInfo) pengemasanInfo.classList.remove("d-none");
       } else {
-        // Jika bukan Pengemasan: wajib diisi setiap update tahapan
-        // Kosongkan field untuk memaksa user mengisi berat terkini baru setiap update
-        beratTerkiniInput.value = "";
-        beratTerkiniInput.readOnly = false; // Bisa diubah untuk update berat terkini
-        beratTerkiniInput.required = true;
-        beratTerkiniInput.style.backgroundColor = "";
-        beratTerkiniInput.style.borderLeft = "4px solid #0d6efd";
-        beratTerkiniInput.placeholder = `Masukkan berat terkini baru (Sebelumnya: ${(p.beratTerkini || p.beratAwal || 0).toLocaleString("id-ID")} kg)`;
-        beratTerkiniInput.title =
-          "Wajib diisi setiap kali update tahapan produksi. Masukkan berat terkini yang baru pada tahapan ini.";
+        _beratTerkiniKloterServerSnapshot = Array.isArray(p.beratTerkiniDetailKloter)
+          ? JSON.parse(JSON.stringify(p.beratTerkiniDetailKloter))
+          : null;
+        const metodeEl = document.getElementById("metodeBeratTerkini");
+        const metode =
+          p.metodeBeratTerkini === "kloter" ? "kloter" : "total";
+        if (metodeEl) metodeEl.value = metode;
+
+        const wrapTot = document.getElementById("wrapBeratTerkiniTotal");
+        const wrapKl = document.getElementById("wrapBeratTerkiniKloter");
+        document.getElementById("beratTerkiniMetodeRow")?.classList.remove("d-none");
+
+        if (
+          metode === "kloter" &&
+          Array.isArray(p.beratTerkiniDetailKloter) &&
+          p.beratTerkiniDetailKloter.length > 0
+        ) {
+          wrapTot?.classList.add("d-none");
+          wrapKl?.classList.remove("d-none");
+          initJumlahKloterBeratTerkiniSelect();
+          const n = Math.min(
+            MAX_KLOTER_BERAT_TERKINI,
+            p.beratTerkiniDetailKloter.length,
+          );
+          const jSel = document.getElementById("jumlahKloterBeratTerkini");
+          if (jSel) jSel.value = String(n);
+          beratTerkiniInput.readOnly = true;
+          beratTerkiniInput.classList.add("bg-light");
+          beratTerkiniInput.required = true;
+          renderBeratTerkiniKloterRows(n, p.beratTerkiniDetailKloter);
+          beratTerkiniInput.placeholder =
+            "Total dihitung dari kloter (isi timbangan per kloter di bawah)";
+          beratTerkiniInput.title =
+            "Berat terkini = jumlah berat semua kloter. Ubah jumlah kloter atau isi berat per kloter.";
+        } else {
+          _beratTerkiniKloterServerSnapshot = null;
+          if (metodeEl) metodeEl.value = "total";
+          wrapKl?.classList.add("d-none");
+          wrapTot?.classList.remove("d-none");
+          const tbody = document.getElementById("tbodyBeratTerkiniKloter");
+          if (tbody) tbody.innerHTML = "";
+          const jSel = document.getElementById("jumlahKloterBeratTerkini");
+          if (jSel) jSel.innerHTML = "";
+          beratTerkiniInput.value = "";
+          beratTerkiniInput.readOnly = false;
+          beratTerkiniInput.classList.remove("bg-light");
+          beratTerkiniInput.required = true;
+          beratTerkiniInput.style.backgroundColor = "";
+          beratTerkiniInput.style.borderLeft = "4px solid #0d6efd";
+          beratTerkiniInput.placeholder = `Masukkan berat terkini baru (Sebelumnya: ${(p.beratTerkini || p.beratAwal || 0).toLocaleString("id-ID")} kg)`;
+          beratTerkiniInput.title =
+            "Wajib diisi setiap kali update tahapan produksi. Masukkan berat terkini yang baru pada tahapan ini.";
+        }
 
         // Update label untuk tampilkan asterisk
         const asterisk = document.getElementById("beratTerkiniAsterisk");
@@ -2174,16 +2463,8 @@ window.saveProduksi = async function saveProduksi() {
           if (kadarAirElement) kadarAirElement.focus();
           return;
         }
-        
-        // Validasi: berat terkini Pengeringan Akhir ≤ berat terkini Pengeringan Awal
-        const beratTerkiniElement = document.getElementById("beratTerkini");
-        const beratTerkiniBaru = beratTerkiniElement ? parseFloat(beratTerkiniElement.value) : 0;
-        const beratTerkiniAwal = produksiLama.beratTerkini || 0;
-        if (beratTerkiniBaru > beratTerkiniAwal) {
-          alert(`Berat terkini Pengeringan Akhir (${beratTerkiniBaru} kg) tidak boleh lebih besar dari berat terkini Pengeringan Awal (${beratTerkiniAwal} kg)`);
-          if (beratTerkiniElement) beratTerkiniElement.focus();
-          return;
-        }
+        // Perbandingan berat terkini Pengeringan Akhir vs Awal dilakukan setelah
+        // sinkronisasi berat dari kloter (jika metode kloter), lihat blok GET BERAT TERKINI.
       }
     }
 
@@ -2379,6 +2660,20 @@ window.saveProduksi = async function saveProduksi() {
     const beratTerkiniElement = document.getElementById("beratTerkini");
     let beratTerkini;
 
+    if (!isPengemasan) {
+      const me = document.getElementById("metodeBeratTerkini")?.value;
+      if (me === "kloter") {
+        syncBeratTerkiniFromKloter();
+        const det = getBeratTerkiniDetailKloterPayload();
+        if (!det || det.length === 0) {
+          alert(
+            "Pilih jumlah kloter dan isi minimal satu berat kloter lebih dari 0.",
+          );
+          return;
+        }
+      }
+    }
+
     if (isPengemasan) {
       // Saat Pengemasan: gunakan nilai dari field (yang sudah dikunci dengan nilai terakhir)
       // atau dari produksi lama jika field kosong
@@ -2391,7 +2686,7 @@ window.saveProduksi = async function saveProduksi() {
       } else {
         const beratTerkiniValue = beratTerkiniElement.value;
         if (beratTerkiniValue && beratTerkiniValue.trim() !== "") {
-          beratTerkini = parseFloat(beratTerkiniValue);
+          beratTerkini = parseBeratProduksiLocal(beratTerkiniValue);
         } else {
           // Jika field kosong, ambil dari produksi lama
           beratTerkini =
@@ -2431,7 +2726,7 @@ window.saveProduksi = async function saveProduksi() {
         return;
       }
 
-      beratTerkini = parseFloat(beratTerkiniValue);
+      beratTerkini = parseBeratProduksiLocal(beratTerkiniValue);
       if (isNaN(beratTerkini) || beratTerkini <= 0) {
         console.error("❌ Berat terkini harus lebih dari 0!");
         alert("Berat terkini harus lebih dari 0!");
@@ -2764,6 +3059,13 @@ window.saveProduksi = async function saveProduksi() {
     if (isPengemasan) {
       produksiData.beratGreenBeans = parseFloat(getElementValue("beratGreenBeans")) || 0;
       produksiData.beratPixel = parseFloat(getElementValue("beratPixel")) || 0;
+    }
+
+    if (!isPengemasan) {
+      const me = document.getElementById("metodeBeratTerkini")?.value || "total";
+      produksiData.metodeBeratTerkini = me;
+      produksiData.beratTerkiniDetailKloter =
+        me === "kloter" ? getBeratTerkiniDetailKloterPayload() : null;
     }
 
     console.log("📦 Produksi data prepared for API:", {
