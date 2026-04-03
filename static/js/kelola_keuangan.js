@@ -44,7 +44,10 @@ async function loadKeuanganData() {
   }
 }
 
-// Fungsi untuk load data bahan baku untuk dropdown (MONGODB ONLY)
+/**
+ * ID bahan yang sudah punya baris keuangan "Pembelian Bahan Baku" tidak ditampilkan
+ * lagi di dropdown (tambah). Saat edit, ID milik baris yang sedang diedit tetap boleh dipilih.
+ */
 async function loadBahanBakuOptions() {
   try {
     let bahan = [];
@@ -52,11 +55,48 @@ async function loadBahanBakuOptions() {
       console.warn("⚠️ API.Bahan not available, skipping bahan baku options");
       return;
     }
+    try {
+      await loadKeuanganData();
+    } catch (e) {
+      console.warn("⚠️ Gagal refresh keuangan sebelum filter bahan:", e);
+    }
+
+    const usedIds = new Set(
+      (keuangan || [])
+        .filter(
+          (x) =>
+            x &&
+            x.jenisPengeluaran === "Pembelian Bahan Baku" &&
+            x.idBahanBaku,
+        )
+        .map((x) => String(x.idBahanBaku).trim()),
+    );
+
+    let allowId = null;
+    if (currentEditId) {
+      const cur = (keuangan || []).find(
+        (item) => item.id === currentEditId || item._id === currentEditId,
+      );
+      if (
+        cur &&
+        cur.jenisPengeluaran === "Pembelian Bahan Baku" &&
+        cur.idBahanBaku
+      ) {
+        allowId = String(cur.idBahanBaku).trim();
+      }
+    }
+
     bahan = await window.API.Bahan.getAll();
     const select = document.getElementById("idBahanBaku");
     if (select) {
       select.innerHTML = '<option value="">Pilih ID Bahan Baku</option>';
-      bahan.forEach((b) => {
+      let added = 0;
+      (bahan || []).forEach((b) => {
+        if (!b?.idBahan) return;
+        const id = String(b.idBahan).trim();
+        if (usedIds.has(id) && id !== allowId) {
+          return;
+        }
         const option = document.createElement("option");
         option.value = b.idBahan;
         option.textContent = `${b.idBahan} - ${
@@ -64,7 +104,16 @@ async function loadBahanBakuOptions() {
         } (Rp ${b.totalPengeluaran.toLocaleString("id-ID")})`;
         option.dataset.totalPengeluaran = b.totalPengeluaran;
         select.appendChild(option);
+        added++;
       });
+      if (added === 0 && !allowId) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.disabled = true;
+        opt.textContent =
+          "Semua ID bahan sudah tercatat di keuangan (Pembelian Bahan Baku)";
+        select.appendChild(opt);
+      }
     }
   } catch (error) {
     console.error("Error loading bahan baku options:", error);
