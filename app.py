@@ -293,6 +293,64 @@ def _sisa_bahan_line(bahan_doc, id_bahan, proses_pengolahan):
     return max(0.0, cap - used), None
 
 
+def _sync_produksi_proses_pengolahan_after_bahan_update(id_bahan, old_proses_rows, new_proses_rows):
+    """
+    Menyamakan prosesPengolahan pada dokumen produksi ketika baris proses di kelola bahan
+    diubah (nama/urutan). Produksi menyimpan salinan string proses saat dibuat; tanpa
+    sinkron ini data produksi tetap memakai nama lama walau master bahan sudah diperbarui.
+    """
+    if not id_bahan or not new_proses_rows:
+        return
+    old_list = old_proses_rows if isinstance(old_proses_rows, list) else []
+    new_list = new_proses_rows if isinstance(new_proses_rows, list) else []
+    if len(new_list) == 1:
+        only = (new_list[0].get('prosesPengolahan') or '').strip()
+        if only:
+            r = db.produksi.update_many(
+                {'idBahan': id_bahan},
+                {'$set': {'prosesPengolahan': only}}
+            )
+            if r.modified_count:
+                print(
+                    f"✅ [SYNC PROSES] idBahan={id_bahan}: semua produksi → '{only}' "
+                    f"({r.modified_count} dokumen)"
+                )
+        return
+    n = min(len(old_list), len(new_list))
+    changes = []
+    for i in range(n):
+        o = (old_list[i].get('prosesPengolahan') or '').strip()
+        nn = (new_list[i].get('prosesPengolahan') or '').strip()
+        if o and nn and o != nn:
+            changes.append((o, nn))
+    if not changes:
+        return
+    # Dua fase agar swap nama antar baris tidak saling menimpa
+    TEMP = '__sync_proses_pp__'
+    for idx, (o, _) in enumerate(changes):
+        mid = f'{TEMP}{idx}'
+        db.produksi.update_many(
+            {'idBahan': id_bahan, 'prosesPengolahan': o},
+            {'$set': {'prosesPengolahan': mid}}
+        )
+    for idx, (_, nn) in enumerate(changes):
+        mid = f'{TEMP}{idx}'
+        r = db.produksi.update_many(
+            {'idBahan': id_bahan, 'prosesPengolahan': mid},
+            {'$set': {'prosesPengolahan': nn}}
+        )
+        if r.modified_count:
+            print(
+                f"✅ [SYNC PROSES] idBahan={id_bahan}: '{nn}' "
+                f"({r.modified_count} dokumen)"
+            )
+    if len(old_list) > len(new_list):
+        print(
+            f"⚠️ [SYNC PROSES] idBahan={id_bahan}: jumlah baris proses berkurang; "
+            "produksi yang memakai nama proses yang dihapus tidak diubah otomatis."
+        )
+
+
 # Helper function untuk validasi khusus tahapan Pengeringan Awal dan Akhir
 def validate_pengeringan_tahapan(status_tahapan_baru, kadar_air_baru, berat_terkini_baru, produksi_lama=None):
     """
@@ -1428,6 +1486,13 @@ def update_bahan(bahan_id):
         if extra_unset:
             update_op['$unset'] = extra_unset
         db.bahan.update_one({'_id': bahan['_id']}, update_op)
+
+        if 'prosesBahan' in update_data:
+            _sync_produksi_proses_pengolahan_after_bahan_update(
+                bahan.get('idBahan'),
+                bahan.get('prosesBahan'),
+                update_data['prosesBahan']
+            )
         
         updated = db.bahan.find_one({'_id': bahan['_id']})
         return jsonify(json_serialize(updated)), 200
