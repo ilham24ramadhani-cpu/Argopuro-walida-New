@@ -310,6 +310,15 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
       const res = await apiCall("/bahan/next-id");
       return res?.idBahan || null;
     },
+
+    /** Sinkronkan prosesPengolahan di produksi dari master bahan (panggil setelah edit bahan). */
+    async syncProduksiProses(bahanDocId) {
+      return await apiCall(
+        `/bahan/${encodeURIComponent(bahanDocId)}/sync-produksi-proses`,
+        "POST",
+        {},
+      );
+    },
   };
 
   // ==================== PEMASOK API (MONGODB ONLY - NO localStorage fallback) ====================

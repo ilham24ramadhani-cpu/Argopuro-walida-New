@@ -1091,6 +1091,15 @@ async function saveBahan() {
       console.log("🔄 Updating bahan via API:", bahanId);
       await window.API.Bahan.update(bahanId, bahanData);
       console.log("✅ Bahan updated in MongoDB");
+
+      try {
+        if (typeof window.API.Bahan.syncProduksiProses === "function") {
+          await window.API.Bahan.syncProduksiProses(bahanId);
+          console.log("✅ Produksi diselaraskan dengan proses bahan (sync-produksi-proses)");
+        }
+      } catch (syncErr) {
+        console.warn("⚠️ Sinkron proses ke produksi (opsional):", syncErr);
+      }
       
       // Tampilkan notifikasi update
       if (window.showNotification) {

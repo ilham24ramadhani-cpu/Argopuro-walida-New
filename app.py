@@ -299,6 +299,7 @@ def _sync_produksi_proses_pengolahan_after_bahan_update(id_bahan, old_proses_row
     diubah (nama/urutan). Produksi menyimpan salinan string proses saat dibuat; tanpa
     sinkron ini data produksi tetap memakai nama lama walau master bahan sudah diperbarui.
     """
+    id_bahan = str(id_bahan or '').strip()
     if not id_bahan or not new_proses_rows:
         return
     old_list = old_proses_rows if isinstance(old_proses_rows, list) else []
@@ -310,10 +311,20 @@ def _sync_produksi_proses_pengolahan_after_bahan_update(id_bahan, old_proses_row
                 {'idBahan': id_bahan},
                 {'$set': {'prosesPengolahan': only}}
             )
-            if r.modified_count:
+            if r.matched_count and not r.modified_count:
+                print(
+                    f"ℹ️ [SYNC PROSES] idBahan={id_bahan}: produksi sudah '{only}' "
+                    f"({r.matched_count} dokumen)"
+                )
+            elif r.modified_count:
                 print(
                     f"✅ [SYNC PROSES] idBahan={id_bahan}: semua produksi → '{only}' "
                     f"({r.modified_count} dokumen)"
+                )
+            elif r.matched_count == 0:
+                print(
+                    f"⚠️ [SYNC PROSES] idBahan={id_bahan}: tidak ada produksi dengan idBahan ini. "
+                    "Periksa konsistensi penulisan idBahan di data produksi."
                 )
         return
     n = min(len(old_list), len(new_list))
@@ -1488,8 +1499,13 @@ def update_bahan(bahan_id):
         db.bahan.update_one({'_id': bahan['_id']}, update_op)
 
         if 'prosesBahan' in update_data:
+            eff_id_bahan = str(
+                (update_data.get('idBahan') if update_data.get('idBahan') is not None else None)
+                or bahan.get('idBahan')
+                or ''
+            ).strip()
             _sync_produksi_proses_pengolahan_after_bahan_update(
-                bahan.get('idBahan'),
+                eff_id_bahan,
                 bahan.get('prosesBahan'),
                 update_data['prosesBahan']
             )
@@ -1498,6 +1514,33 @@ def update_bahan(bahan_id):
         return jsonify(json_serialize(updated)), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/bahan/<bahan_id>/sync-produksi-proses', methods=['POST'])
+def post_sync_produksi_proses_from_bahan_master(bahan_id):
+    """
+    Menyelaraskan ulang prosesPengolahan pada produksi dari dokumen bahan terkini.
+    Berguna jika data produksi sempat tidak ikut ter-update. Untuk bahan dengan satu
+    baris proses, semua produksi dengan idBahan tersebut diset ke nama proses itu.
+    """
+    try:
+        try:
+            bahan = db.bahan.find_one({'_id': ObjectId(bahan_id)})
+        except Exception:
+            bahan = db.bahan.find_one({'id': int(bahan_id)}) if str(bahan_id).isdigit() else None
+        if not bahan:
+            bahan = db.bahan.find_one({'idBahan': bahan_id})
+        if not bahan:
+            return jsonify({'error': 'Bahan not found'}), 404
+        lines = bahan.get('prosesBahan') or []
+        if not lines:
+            return jsonify({'error': 'Bahan tidak memiliki prosesBahan'}), 400
+        eff_id = str(bahan.get('idBahan') or '').strip()
+        _sync_produksi_proses_pengolahan_after_bahan_update(eff_id, lines, lines)
+        return jsonify({'ok': True, 'idBahan': eff_id}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/bahan/<bahan_id>', methods=['DELETE'])
 def delete_bahan(bahan_id):

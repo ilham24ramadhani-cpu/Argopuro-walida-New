@@ -1393,6 +1393,19 @@ async function loadVarietasOptionsProduksi() {
   }
 }
 
+/** Tampilan proses: jika master bahan hanya punya satu baris proses, tampilkan nama itu (selaras dengan kelola bahan). */
+function getProsesPengolahanTampilan(prod, bahanById) {
+  const b =
+    prod?.idBahan && bahanById instanceof Map
+      ? bahanById.get(prod.idBahan)
+      : null;
+  const lines = b?.prosesBahan;
+  if (Array.isArray(lines) && lines.length === 1 && lines[0]?.prosesPengolahan) {
+    return String(lines[0].prosesPengolahan);
+  }
+  return prod?.prosesPengolahan || "-";
+}
+
 // Fungsi untuk menampilkan data produksi
 async function displayProduksi() {
   console.log("🔄 displayProduksi() called");
@@ -1404,6 +1417,18 @@ async function displayProduksi() {
   } catch (e) {
     console.error("❌ Error loading produksi:", e);
     produksi = [];
+  }
+
+  let bahanById = new Map();
+  try {
+    if (window.API?.Bahan) {
+      const bl = await window.API.Bahan.getAll();
+      for (const b of bl || []) {
+        if (b?.idBahan) bahanById.set(b.idBahan, b);
+      }
+    }
+  } catch (e) {
+    console.warn("⚠️ Gagal memuat bahan untuk kolom proses:", e);
   }
 
   const tableBody = document.getElementById("tableBody");
@@ -1456,6 +1481,7 @@ async function displayProduksi() {
   try {
     tableBody.innerHTML = filteredProduksi
       .map((p, index) => {
+        const prosesLabel = getProsesPengolahanTampilan(p, bahanById);
         return `
     <tr>
       <td>${index + 1}</td>
@@ -1464,7 +1490,7 @@ async function displayProduksi() {
       <td>${(p.beratAwal || 0).toLocaleString("id-ID")} kg</td>
       <td>${p.beratTerkini ? p.beratTerkini.toLocaleString("id-ID") : "-"} kg</td>
       <td>${p.beratAkhir ? p.beratAkhir.toLocaleString("id-ID") : "-"} kg</td>
-      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || (() => 'bg-secondary'))(p.prosesPengolahan)}">${p.prosesPengolahan || "-"}</span></td>
+      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || (() => 'bg-secondary'))(prosesLabel)}">${prosesLabel}</span></td>
       <td>${p.kadarAir || "-"}%</td>
       <td>${p.varietas || "-"}</td>
       <td>${new Date(p.tanggalMasuk).toLocaleDateString("id-ID")}</td>
