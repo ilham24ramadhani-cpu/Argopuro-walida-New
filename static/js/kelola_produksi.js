@@ -365,6 +365,9 @@ async function loadBahanOptionsProduksi() {
     select.innerHTML =
       '<option value="">Pilih ID Bahan dan proses pengolahan</option>';
 
+    /** Saat tambah produksi: sembunyikan jalur bahan yang sisa stoknya 0 (atau tidak ada). Mode edit: tampilkan semua (penyesuaian di editProduksi jika perlu). */
+    const isEditMode = !!currentEditId;
+
     let optionsAdded = 0;
     for (const b of bahan) {
       if (!b?.idBahan) continue;
@@ -373,11 +376,6 @@ async function loadBahanOptionsProduksi() {
           ? b.prosesBahan
           : null;
       if (!lines) {
-        const opt = document.createElement("option");
-        opt.disabled = true;
-        opt.value = "";
-        opt.textContent = `${b.idBahan} — perbarui data bahan masuk (belum ada proses & kloter per proses)`;
-        select.appendChild(opt);
         continue;
       }
       for (const line of lines) {
@@ -390,16 +388,29 @@ async function loadBahanOptionsProduksi() {
         } catch (e) {
           console.warn(`sisa ${b.idBahan}/${proses}:`, e);
         }
+        const sisaNum = Number(sisa);
+        if (!isEditMode && !(sisaNum > 0)) {
+          continue;
+        }
         const stableKey = { idBahan: b.idBahan, prosesPengolahan: proses };
         const option = document.createElement("option");
         option.value = encodeBahanProduksiOption(stableKey);
-        option.textContent = `${b.idBahan} — ${proses} · Sisa ${sisa.toLocaleString("id-ID")} kg (alokasi ${cap.toLocaleString("id-ID")} kg)`;
+        option.textContent = `${b.idBahan} — ${proses} · Sisa ${sisaNum.toLocaleString("id-ID")} kg (alokasi ${cap.toLocaleString("id-ID")} kg)`;
         option.dataset.bahan = JSON.stringify(b);
         option.dataset.prosesPengolahan = proses;
         option.dataset.beratLini = String(cap);
         select.appendChild(option);
         optionsAdded++;
       }
+    }
+
+    if (!isEditMode && optionsAdded === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.disabled = true;
+      opt.textContent =
+        "Tidak ada bahan dengan sisa tersedia (sisa harus lebih dari 0 kg)";
+      select.appendChild(opt);
     }
 
     console.log(`✅ Added ${optionsAdded} baris bahan×proses ke dropdown`);
