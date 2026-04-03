@@ -668,6 +668,17 @@ def health_check():
             'error': str(e)
         }), 200
 
+
+def _normalize_catatan_produksi(raw):
+    """Catatan opsional pada dokumen produksi; teks dipotong aman."""
+    if raw is None:
+        return ''
+    s = str(raw).strip()
+    if len(s) > 2000:
+        s = s[:2000]
+    return s
+
+
 # ==================== PRODUKSI ENDPOINTS ====================
 
 @app.route('/api/produksi/next-id', methods=['GET'])
@@ -901,6 +912,7 @@ def create_produksi():
             'haccp': data['haccp'],
             'historyTahapan': historyTahapan,
             'metodeBeratTerkini': metode_bt,
+            'catatan': _normalize_catatan_produksi(data.get('catatan')),
         }
         if detail_bt_kloter:
             produksi_data['beratTerkiniDetailKloter'] = detail_bt_kloter
@@ -1103,7 +1115,10 @@ def update_produksi(produksi_id):
             'tanggalSekarang': data['tanggalSekarang'],
             'statusTahapan': data['statusTahapan'],
             'haccp': data['haccp'],
-            'historyTahapan': historyTahapan
+            'historyTahapan': historyTahapan,
+            'catatan': _normalize_catatan_produksi(data.get('catatan'))
+            if 'catatan' in data
+            else (produksi.get('catatan') or ''),
         }
         if not isPengemasan:
             update_data['metodeBeratTerkini'] = metode_bt

@@ -1404,6 +1404,19 @@ async function loadVarietasOptionsProduksi() {
   }
 }
 
+function escapeHtmlProduksi(s) {
+  if (s == null || s === "") return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function attrEscapeProduksi(s) {
+  return escapeHtmlProduksi(s).replace(/\n/g, " ");
+}
+
 /** Tampilan proses: jika master bahan hanya punya satu baris proses, tampilkan nama itu (selaras dengan kelola bahan). */
 function getProsesPengolahanTampilan(prod, bahanById) {
   const b =
@@ -1468,7 +1481,8 @@ async function displayProduksi() {
         (p.prosesPengolahan &&
           p.prosesPengolahan.toLowerCase().includes(searchTerm)) ||
         (p.varietas && p.varietas.toLowerCase().includes(searchTerm)) ||
-        (p.statusTahapan && p.statusTahapan.toLowerCase().includes(searchTerm)),
+        (p.statusTahapan && p.statusTahapan.toLowerCase().includes(searchTerm)) ||
+        (p.catatan && String(p.catatan).toLowerCase().includes(searchTerm)),
     );
   }
 
@@ -1476,7 +1490,7 @@ async function displayProduksi() {
     console.log("⚠️ No produksi data to display (filtered or total)");
     tableBody.innerHTML = `
       <tr>
-        <td colspan="12" class="text-center py-4 text-muted">
+        <td colspan="13" class="text-center py-4 text-muted">
           <i class="bi bi-inbox fs-1 d-block mb-2"></i>
           Tidak ada data produksi
         </td>
@@ -1493,6 +1507,12 @@ async function displayProduksi() {
     tableBody.innerHTML = filteredProduksi
       .map((p, index) => {
         const prosesLabel = getProsesPengolahanTampilan(p, bahanById);
+        const catRaw = (p.catatan && String(p.catatan).trim()) || "";
+        const catShort =
+          catRaw.length > 36 ? `${catRaw.slice(0, 36)}…` : catRaw;
+        const catCell = catRaw
+          ? `<span class="small text-muted d-inline-block text-truncate" style="max-width: 10rem" title="${attrEscapeProduksi(catRaw)}">${escapeHtmlProduksi(catShort)}</span>`
+          : '<span class="text-muted">—</span>';
         return `
     <tr>
       <td>${index + 1}</td>
@@ -1509,6 +1529,7 @@ async function displayProduksi() {
       <td>
         <span class="badge ${(window.getStatusTahapanBadgeClass || (() => 'bg-secondary'))(p.statusTahapan)}">${p.statusTahapan || "-"}</span>
       </td>
+      <td class="small">${catCell}</td>
       <td class="text-center">
         <button 
           class="btn btn-sm btn-warning btn-action" 
@@ -1535,7 +1556,7 @@ async function displayProduksi() {
     console.error("❌ Error rendering produksi table:", error);
     tableBody.innerHTML = `
       <tr>
-        <td colspan="12" class="text-center py-4 text-danger">
+        <td colspan="13" class="text-center py-4 text-danger">
           <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
           Error menampilkan data: ${error.message}
         </td>
@@ -2141,6 +2162,7 @@ window.editProduksi = async function editProduksi(id) {
     setElementValue("varietas", p.varietas);
     setElementValue("tanggalMasuk", p.tanggalMasuk);
     setElementValue("tanggalSekarang", p.tanggalSekarang);
+    setElementValue("catatanProduksi", p.catatan || "");
 
     await loadProsesPengolahanOptions();
     setElementValue("prosesPengolahan", p.prosesPengolahan);
@@ -3092,6 +3114,9 @@ window.saveProduksi = async function saveProduksi() {
         bebasHamaJamur: Boolean(haccp.bebasHamaJamur),
         kondisiBaik: Boolean(haccp.kondisiBaik),
       },
+      catatan: String(
+        document.getElementById("catatanProduksi")?.value ?? "",
+      ).trim(),
     };
     if (isPengemasan) {
       produksiData.beratGreenBeans = parseFloat(getElementValue("beratGreenBeans")) || 0;
