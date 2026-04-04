@@ -32,6 +32,36 @@ function ringkasanProsesBahanLaporan(item) {
   return s || "—";
 }
 
+/** Map idBahan → dokumen bahan (selaras dengan Kelola Produksi). */
+function getBahanMapForLaporan() {
+  const m = new Map();
+  for (const b of bahan || []) {
+    if (b?.idBahan) m.set(b.idBahan, b);
+  }
+  return m;
+}
+
+/**
+ * Nama proses untuk tampilan: jika master bahan hanya punya satu baris proses,
+ * gunakan nama itu (sama seperti getProsesPengolahanTampilan di kelola_produksi.js).
+ * Menghindari selisih antara dokumen produksi (string lama) vs kelola bahan/produksi.
+ */
+function getProsesPengolahanTampilanLaporan(prod, bahanById) {
+  const map =
+    bahanById instanceof Map ? bahanById : getBahanMapForLaporan();
+  const b =
+    prod?.idBahan && map instanceof Map ? map.get(prod.idBahan) : null;
+  const lines = b?.prosesBahan;
+  if (
+    Array.isArray(lines) &&
+    lines.length === 1 &&
+    lines[0]?.prosesPengolahan
+  ) {
+    return String(lines[0].prosesPengolahan);
+  }
+  return prod?.prosesPengolahan || "-";
+}
+
 // Wait for API to be ready (event-based + polling fallback)
 async function waitForAPI() {
   // Check if already available
@@ -760,7 +790,10 @@ const LAPORAN_REKAP_CONFIG = {
             ? `${safeNumber(item.beratAkhir).toLocaleString("id-ID")} kg`
             : "-",
       },
-      { label: "Proses", value: (item) => item.prosesPengolahan || "-" },
+      {
+        label: "Proses",
+        value: (item) => getProsesPengolahanTampilanLaporan(item),
+      },
       {
         label: "Kadar Air",
         value: (item) => (item.kadarAir ? `${item.kadarAir}%` : "-"),
@@ -795,8 +828,10 @@ const LAPORAN_REKAP_CONFIG = {
 
       // Hitung proses pengolahan yang paling sering dan paling sedikit
       const prosesCount = {};
+      const bahanMapSummary = getBahanMapForLaporan();
       items.forEach((entry) => {
-        const proses = entry.prosesPengolahan || "-";
+        const proses =
+          getProsesPengolahanTampilanLaporan(entry, bahanMapSummary) || "-";
         prosesCount[proses] = (prosesCount[proses] || 0) + 1;
       });
 
@@ -1702,6 +1737,7 @@ function renderProduksiTimeline() {
   }
 
   emptyState?.classList.add("d-none");
+  const bahanById = getBahanMapForLaporan();
   const sortedProduksi = [...produksi].sort((a, b) => {
     const dateA =
       parseValidDate(a.tanggalSekarang) || parseValidDate(a.tanggalMasuk);
@@ -1711,14 +1747,16 @@ function renderProduksiTimeline() {
   });
 
   wrapper.innerHTML = sortedProduksi
-    .map((item, index) => buildTimelineItem(item, index === 0, index))
+    .map((item, index) =>
+      buildTimelineItem(item, index === 0, index, bahanById)
+    )
     .join("");
 }
 
-function buildTimelineItem(item, isFirst, index = 0) {
+function buildTimelineItem(item, isFirst, index = 0, bahanById) {
   const fallbackId = `${item.idProduksi || "produksi"}-${index}`;
   const timelineId = item.id ? `produksi-${item.id}` : fallbackId;
-  const steps = buildTimelineSteps(item)
+  const steps = buildTimelineSteps(item, bahanById)
     .map(
       (step) => `
       <li class="timeline-item">
@@ -1777,8 +1815,9 @@ function buildTimelineItem(item, isFirst, index = 0) {
   `;
 }
 
-function buildTimelineSteps(item) {
+function buildTimelineSteps(item, bahanById) {
   const steps = [];
+  const prosesLabel = getProsesPengolahanTampilanLaporan(item, bahanById);
   const beratAwalValue =
     typeof item.beratAwal === "number"
       ? item.beratAwal
@@ -1805,7 +1844,7 @@ function buildTimelineSteps(item) {
 
   steps.push({
     title: "Proses Pengolahan",
-    subtitle: item.prosesPengolahan || "-",
+    subtitle: prosesLabel,
     details: item.kadarAir
       ? `Kadar air ${item.kadarAir}%`
       : "Kadar air belum diinput",
@@ -1966,9 +2005,15 @@ function displayProduksi() {
     return;
   }
 
+  const bahanByIdTable = getBahanMapForLaporan();
+
   // Gunakan innerHTML dengan map.join() seperti di kelola_produksi.js
   tbody.innerHTML = filteredProduksi
     .map((item, index) => {
+      const prosesTampilan = getProsesPengolahanTampilanLaporan(
+        item,
+        bahanByIdTable
+      );
       return `
       <tr>
       <td>${index + 1}</td>
@@ -1980,7 +2025,7 @@ function displayProduksi() {
         <td>${
           item.beratAkhir ? item.beratAkhir.toLocaleString("id-ID") : "-"
         } kg</td>
-      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || (() => 'bg-secondary'))(item.prosesPengolahan)}">${item.prosesPengolahan || "-"}</span></td>
+      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || (() => 'bg-secondary'))(prosesTampilan)}">${prosesTampilan}</span></td>
       <td>${item.kadarAir ? item.kadarAir + "%" : "-"}</td>
       <td>${item.varietas || "-"}</td>
       <td>${formatDate(item.tanggalMasuk)}</td>
@@ -2221,6 +2266,8 @@ function generateProduksiPDF(id) {
   const item = produksi.find((p) => p.id === id || p._id === id);
   if (!item) return;
 
+  const prosesTampilanPdf = getProsesPengolahanTampilanLaporan(item);
+
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
 
@@ -2263,7 +2310,7 @@ function generateProduksiPDF(id) {
   doc.setFont(undefined, "bold");
   doc.text("Proses Pengolahan:", 20, y);
   doc.setFont(undefined, "normal");
-  doc.text(item.prosesPengolahan || "-", 60, y);
+  doc.text(prosesTampilanPdf, 60, y);
 
   y += 10;
   doc.setFont(undefined, "bold");
@@ -2712,7 +2759,11 @@ function generateHasilProduksiPDF(id) {
     doc.setFont(undefined, "bold");
     doc.text("Proses Pengolahan:", 20, y);
     doc.setFont(undefined, "normal");
-    doc.text(produksiData.prosesPengolahan || "-", 60, y);
+    doc.text(
+      getProsesPengolahanTampilanLaporan(produksiData),
+      60,
+      y
+    );
     y += 10;
 
     doc.setFont(undefined, "bold");
@@ -3882,7 +3933,11 @@ async function generateDataKemasanPDF(id) {
       detailDoc.setFont(undefined, "bold");
       detailDoc.text("Proses Pengolahan:", 20, detailY);
       detailDoc.setFont(undefined, "normal");
-      detailDoc.text(produksiData.prosesPengolahan || "-", 60, detailY);
+      detailDoc.text(
+        getProsesPengolahanTampilanLaporan(produksiData),
+        60,
+        detailY
+      );
       detailY += 10;
 
       detailDoc.setFont(undefined, "bold");
