@@ -679,6 +679,33 @@ def _normalize_catatan_produksi(raw):
     return s
 
 
+def _upsert_catatan_per_tahapan(existing, nama_tahapan, catatan, tanggal_sekarang):
+    """
+    Menyimpan catatan per nama tahapan. Entri dengan nama tahapan yang sama diganti
+    (update berulang di tahap yang sama). Saat pindah tahap, tahap lama dibekukan
+    lalu tahap baru diisi dari form — teks boleh sama (mengikuti alur pembaruan).
+    """
+    existing = list(existing) if isinstance(existing, list) else []
+    key = (nama_tahapan or '').strip()
+    norm = _normalize_catatan_produksi(catatan)
+    if tanggal_sekarang is not None and not isinstance(tanggal_sekarang, str):
+        tgl = str(tanggal_sekarang)
+    else:
+        tgl = tanggal_sekarang or ''
+    row = {
+        'namaTahapan': key,
+        'catatan': norm,
+        'tanggalSekarang': tgl,
+    }
+    for i, r in enumerate(existing):
+        nk = (r.get('namaTahapan') or r.get('tahapan') or '').strip()
+        if nk == key:
+            existing[i] = row
+            return existing
+    existing.append(row)
+    return existing
+
+
 # ==================== PRODUKSI ENDPOINTS ====================
 
 @app.route('/api/produksi/next-id', methods=['GET'])
@@ -896,6 +923,7 @@ def create_produksi():
             'kadarAir': kadar_air_history  # Kadar air bisa diinputkan untuk semua tahapan
         }]
         
+        catatan_norm = _normalize_catatan_produksi(data.get('catatan'))
         produksi_data = {
             'id': new_id,
             'idProduksi': id_produksi,
@@ -912,7 +940,10 @@ def create_produksi():
             'haccp': data['haccp'],
             'historyTahapan': historyTahapan,
             'metodeBeratTerkini': metode_bt,
-            'catatan': _normalize_catatan_produksi(data.get('catatan')),
+            'catatan': catatan_norm,
+            'catatanPerTahapan': _upsert_catatan_per_tahapan(
+                [], data['statusTahapan'], catatan_norm, data.get('tanggalSekarang')
+            ),
         }
         if detail_bt_kloter:
             produksi_data['beratTerkiniDetailKloter'] = detail_bt_kloter
@@ -1103,6 +1134,29 @@ def update_produksi(produksi_id):
             # Untuk tahapan non-pengeringan, gunakan nilai lama jika ada, atau None
             kadar_air_value = produksi.get('kadarAir')
         
+        old_status = (produksi.get('statusTahapan') or '').strip()
+        new_status = (data['statusTahapan'] or '').strip()
+        cp = produksi.get('catatanPerTahapan')
+        if not isinstance(cp, list):
+            cp = []
+        else:
+            cp = list(cp)
+        if old_status != new_status:
+            cp = _upsert_catatan_per_tahapan(
+                cp,
+                old_status,
+                produksi.get('catatan'),
+                produksi.get('tanggalSekarang'),
+            )
+        catatan_baru = (
+            _normalize_catatan_produksi(data.get('catatan'))
+            if 'catatan' in data
+            else _normalize_catatan_produksi(produksi.get('catatan'))
+        )
+        cp = _upsert_catatan_per_tahapan(
+            cp, new_status, catatan_baru, data.get('tanggalSekarang')
+        )
+
         update_data = {
             'idProduksi': data['idProduksi'],
             'idBahan': data['idBahan'],
@@ -1120,6 +1174,7 @@ def update_produksi(produksi_id):
             'catatan': _normalize_catatan_produksi(data.get('catatan'))
             if 'catatan' in data
             else (produksi.get('catatan') or ''),
+            'catatanPerTahapan': cp,
         }
         if not isPengemasan:
             update_data['metodeBeratTerkini'] = metode_bt

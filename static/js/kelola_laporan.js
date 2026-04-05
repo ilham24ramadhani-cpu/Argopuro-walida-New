@@ -97,34 +97,56 @@ function pdfAppendCatatanProduksi(doc, y, text, leftMargin = 25) {
 }
 
 /**
- * Blok HTML: catatan dari history (jika ada) + catatan tahap berjalan.
+ * Blok HTML: catatan per tahapan (catatanPerTahapan dari API) atau fallback history + terkini.
  */
 function buildHistoryCatatanSectionHtml(item) {
-  const hist = Array.isArray(item.historyTahapan) ? item.historyTahapan : [];
   const parts = [];
-  hist.forEach((h, i) => {
-    const cat = (h.catatan && String(h.catatan).trim()) || "";
-    if (!cat) return;
-    const label =
-      h.statusTahapan ||
-      h.namaTahapan ||
-      h.statusTahapanSebelumnya ||
-      "Tahapan";
-    const tgl = formatDate(h.tanggal);
-    parts.push(`
+  const perTahap = Array.isArray(item.catatanPerTahapan)
+    ? item.catatanPerTahapan
+    : [];
+
+  if (perTahap.length > 0) {
+    perTahap.forEach((row, i) => {
+      const cat = (row.catatan && String(row.catatan).trim()) || "";
+      if (!cat) return;
+      const label = row.namaTahapan || row.tahapan || "Tahapan";
+      const tgl = formatDate(row.tanggalSekarang);
+      parts.push(`
       <div class="mb-2 pb-2 border-bottom border-light-subtle">
         <div class="small text-muted">${i + 1}. ${escapeHtmlLaporan(
-          label
-        )} · ${escapeHtmlLaporan(tgl)}</div>
+        label
+      )} · ${escapeHtmlLaporan(tgl)}</div>
         <div class="small text-body mt-1" style="white-space: pre-wrap;">${escapeHtmlLaporan(
           cat
         )}</div>
       </div>
     `);
-  });
-  const cur = (item.catatan && String(item.catatan).trim()) || "";
-  if (cur) {
-    parts.push(`
+    });
+  } else {
+    const hist = Array.isArray(item.historyTahapan) ? item.historyTahapan : [];
+    hist.forEach((h, i) => {
+      const cat = (h.catatan && String(h.catatan).trim()) || "";
+      if (!cat) return;
+      const label =
+        h.statusTahapan ||
+        h.namaTahapan ||
+        h.statusTahapanSebelumnya ||
+        "Tahapan";
+      const tgl = formatDate(h.tanggal);
+      parts.push(`
+      <div class="mb-2 pb-2 border-bottom border-light-subtle">
+        <div class="small text-muted">${i + 1}. ${escapeHtmlLaporan(
+        label
+      )} · ${escapeHtmlLaporan(tgl)}</div>
+        <div class="small text-body mt-1" style="white-space: pre-wrap;">${escapeHtmlLaporan(
+          cat
+        )}</div>
+      </div>
+    `);
+    });
+    const cur = (item.catatan && String(item.catatan).trim()) || "";
+    if (cur) {
+      parts.push(`
       <div class="mb-0">
         <div class="small text-muted fw-semibold">Catatan terkini — ${escapeHtmlLaporan(
           item.statusTahapan || "-"
@@ -134,16 +156,56 @@ function buildHistoryCatatanSectionHtml(item) {
         )}</div>
       </div>
     `);
+    }
   }
+
   if (parts.length === 0) return "";
   return `
     <div class="mt-4 pt-3 border-top border-light">
       <p class="small fw-semibold text-muted mb-2">
-        <i class="bi bi-journal-text me-1"></i>Catatan produksi
+        <i class="bi bi-journal-text me-1"></i>Catatan per tahapan produksi
       </p>
       ${parts.join("")}
     </div>
   `;
+}
+
+/** PDF: daftar catatanPerTahapan (satu baris per tahap). */
+function pdfAppendCatatanPerTahapanList(doc, y, item) {
+  const rows = Array.isArray(item.catatanPerTahapan)
+    ? item.catatanPerTahapan
+    : [];
+  if (rows.length === 0) return y;
+  if (y > 230) {
+    doc.addPage();
+    y = 20;
+  }
+  doc.setFontSize(11);
+  doc.setFont(undefined, "bold");
+  doc.text("Catatan per tahapan produksi:", 20, y);
+  y += 8;
+  doc.setFontSize(10);
+  let no = 0;
+  rows.forEach((row) => {
+    const cat = (row.catatan && String(row.catatan).trim()) || "";
+    if (!cat) return;
+    no += 1;
+    const nama = row.namaTahapan || row.tahapan || "Tahapan";
+    const tgl = formatDate(row.tanggalSekarang);
+    if (y > 248) {
+      doc.addPage();
+      y = 20;
+    }
+    doc.setFont(undefined, "bold");
+    doc.text(`${no}. ${nama}`, 20, y);
+    y += 6;
+    doc.setFont(undefined, "normal");
+    doc.text(`   Tanggal: ${tgl}`, 25, y);
+    y += 6;
+    y = pdfAppendCatatanProduksi(doc, y, cat, 25);
+    y += 4;
+  });
+  return y;
 }
 
 // Wait for API to be ready (event-based + polling fallback)
@@ -895,6 +957,20 @@ const LAPORAN_REKAP_CONFIG = {
         label: "Catatan (tahap berjalan)",
         value: (item) =>
           (item.catatan && String(item.catatan).trim()) || "-",
+      },
+      {
+        label: "Riwayat catatan per tahapan",
+        value: (item) => {
+          const arr = item.catatanPerTahapan;
+          if (!Array.isArray(arr) || arr.length === 0) return "-";
+          const parts = arr
+            .filter((r) => r && String(r.catatan || "").trim())
+            .map(
+              (r) =>
+                `${r.namaTahapan || r.tahapan || "?"}: ${String(r.catatan).trim()}`
+            );
+          return parts.length ? parts.join(" | ") : "-";
+        },
       },
     ],
     filterKey: "produksi",
@@ -2442,6 +2518,9 @@ function generateProduksiPDF(id) {
   doc.text("Status Tahapan:", 20, y);
   doc.setFont(undefined, "normal");
   doc.text(item.statusTahapan || "-", 60, y);
+
+  y += 6;
+  y = pdfAppendCatatanPerTahapanList(doc, y, item);
 
   if (item.jenisProduk) {
     y += 10;
