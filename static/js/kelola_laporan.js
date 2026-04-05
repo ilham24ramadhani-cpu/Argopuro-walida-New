@@ -62,6 +62,90 @@ function getProsesPengolahanTampilanLaporan(prod, bahanById) {
   return prod?.prosesPengolahan || "-";
 }
 
+function escapeHtmlLaporan(s) {
+  if (s == null || s === "") return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Catatan multi-baris di PDF; mengembalikan posisi y baru. */
+function pdfAppendCatatanProduksi(doc, y, text, leftMargin = 25) {
+  const raw = (text && String(text).trim()) || "";
+  if (!raw) return y;
+  if (y > 245) {
+    doc.addPage();
+    y = 20;
+  }
+  doc.setFont(undefined, "bold");
+  doc.text("   Catatan:", leftMargin, y);
+  y += 6;
+  doc.setFont(undefined, "normal");
+  const lines = doc.splitTextToSize(raw, 165);
+  for (let i = 0; i < lines.length; i++) {
+    if (y > 250) {
+      doc.addPage();
+      y = 20;
+    }
+    doc.text(lines[i], leftMargin + 2, y);
+    y += 5;
+  }
+  y += 3;
+  return y;
+}
+
+/**
+ * Blok HTML: catatan dari history (jika ada) + catatan tahap berjalan.
+ */
+function buildHistoryCatatanSectionHtml(item) {
+  const hist = Array.isArray(item.historyTahapan) ? item.historyTahapan : [];
+  const parts = [];
+  hist.forEach((h, i) => {
+    const cat = (h.catatan && String(h.catatan).trim()) || "";
+    if (!cat) return;
+    const label =
+      h.statusTahapan ||
+      h.namaTahapan ||
+      h.statusTahapanSebelumnya ||
+      "Tahapan";
+    const tgl = formatDate(h.tanggal);
+    parts.push(`
+      <div class="mb-2 pb-2 border-bottom border-light-subtle">
+        <div class="small text-muted">${i + 1}. ${escapeHtmlLaporan(
+          label
+        )} · ${escapeHtmlLaporan(tgl)}</div>
+        <div class="small text-body mt-1" style="white-space: pre-wrap;">${escapeHtmlLaporan(
+          cat
+        )}</div>
+      </div>
+    `);
+  });
+  const cur = (item.catatan && String(item.catatan).trim()) || "";
+  if (cur) {
+    parts.push(`
+      <div class="mb-0">
+        <div class="small text-muted fw-semibold">Catatan terkini — ${escapeHtmlLaporan(
+          item.statusTahapan || "-"
+        )} · ${escapeHtmlLaporan(formatDate(item.tanggalSekarang))}</div>
+        <div class="small text-body mt-1" style="white-space: pre-wrap;">${escapeHtmlLaporan(
+          cur
+        )}</div>
+      </div>
+    `);
+  }
+  if (parts.length === 0) return "";
+  return `
+    <div class="mt-4 pt-3 border-top border-light">
+      <p class="small fw-semibold text-muted mb-2">
+        <i class="bi bi-journal-text me-1"></i>Catatan produksi
+      </p>
+      ${parts.join("")}
+    </div>
+  `;
+}
+
 // Wait for API to be ready (event-based + polling fallback)
 async function waitForAPI() {
   // Check if already available
@@ -807,6 +891,11 @@ const LAPORAN_REKAP_CONFIG = {
         value: (item) => formatDate(item.tanggalSekarang),
       },
       { label: "Status Tahapan", value: (item) => item.statusTahapan || "-" },
+      {
+        label: "Catatan (tahap berjalan)",
+        value: (item) =>
+          (item.catatan && String(item.catatan).trim()) || "-",
+      },
     ],
     filterKey: "produksi",
     dataset: () => produksi,
@@ -1809,6 +1898,7 @@ function buildTimelineItem(item, isFirst, index = 0, bahanById) {
           <ul class="timeline">
             ${steps}
           </ul>
+          ${buildHistoryCatatanSectionHtml(item)}
         </div>
       </div>
     </div>
@@ -1978,7 +2068,7 @@ function displayProduksi() {
   if (produksi.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="12" class="text-center text-muted py-4">
+        <td colspan="13" class="text-center text-muted py-4">
           <i class="bi bi-inbox fs-1 d-block mb-2"></i>
           Tidak ada data produksi
         </td>
@@ -1996,7 +2086,7 @@ function displayProduksi() {
   if (filteredProduksi.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="12" class="text-center text-muted py-4">
+        <td colspan="13" class="text-center text-muted py-4">
           <i class="bi bi-funnel d-block mb-2"></i>
           Tidak ada data sesuai filter.
         </td>
@@ -2033,6 +2123,17 @@ function displayProduksi() {
         <td><span class="badge ${(window.getStatusTahapanBadgeClass || (() => 'bg-secondary'))(item.statusTahapan)}">${
           item.statusTahapan || "-"
         }</span></td>
+      <td class="small" style="max-width: 14rem;" title="${escapeHtmlLaporan(
+        String(item.catatan || "").replace(/\n/g, " ")
+      )}">${
+        item.catatan && String(item.catatan).trim()
+          ? escapeHtmlLaporan(
+              String(item.catatan).trim().length > 80
+                ? `${String(item.catatan).trim().slice(0, 80)}…`
+                : String(item.catatan).trim()
+            )
+          : "—"
+      }</td>
       <td class="text-center">
           <button class="btn btn-sm btn-primary" onclick="generateProduksiPDF(${
             item.id
@@ -2413,6 +2514,7 @@ function generateProduksiPDF(id) {
         doc.text(`   Kadar Air: ${history.kadarAir}%`, 25, y);
         y += 7;
       }
+      y = pdfAppendCatatanProduksi(doc, y, history.catatan, 25);
       y += 5;
     });
 
@@ -2453,6 +2555,7 @@ function generateProduksiPDF(id) {
       doc.text(`   Kadar Air: ${item.kadarAir}%`, 25, y);
       y += 7;
     }
+    y = pdfAppendCatatanProduksi(doc, y, item.catatan, 25);
   } else {
     // Jika tidak ada history, tampilkan status saat ini saja
     y += 15;
@@ -2493,6 +2596,7 @@ function generateProduksiPDF(id) {
       doc.text(`   Kadar Air: ${item.kadarAir}%`, 25, y);
       y += 7;
     }
+    y = pdfAppendCatatanProduksi(doc, y, item.catatan, 25);
   }
 
   // Footer
@@ -2846,6 +2950,7 @@ function generateHasilProduksiPDF(id) {
           doc.text(`   Kadar Air: ${history.kadarAir}%`, 25, y);
           y += 7;
         }
+        y = pdfAppendCatatanProduksi(doc, y, history.catatan, 25);
         y += 5;
       });
 
@@ -2892,6 +2997,7 @@ function generateHasilProduksiPDF(id) {
         doc.text(`   Kadar Air: ${produksiData.kadarAir}%`, 25, y);
         y += 7;
       }
+      y = pdfAppendCatatanProduksi(doc, y, produksiData.catatan, 25);
     }
   }
 
@@ -3972,6 +4078,13 @@ async function generateDataKemasanPDF(id) {
       detailDoc.text("Status Tahapan Saat Ini:", 20, detailY);
       detailDoc.setFont(undefined, "normal");
       detailDoc.text(produksiData.statusTahapan || "-", 60, detailY);
+      detailY += 8;
+      detailY = pdfAppendCatatanProduksi(
+        detailDoc,
+        detailY,
+        produksiData.catatan,
+        25
+      );
     }
 
     // Footer

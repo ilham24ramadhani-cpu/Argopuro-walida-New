@@ -1078,6 +1078,7 @@ def update_produksi(produksi_id):
                 'beratTerkini': produksi.get('beratTerkini'),
                 'beratAkhir': produksi.get('beratAkhir'),
                 'kadarAir': kadar_air_history,  # Kadar air (bisa diinputkan untuk semua tahapan)
+                'catatan': _normalize_catatan_produksi(produksi.get('catatan')),
                 'pengguna': 'System',  # TODO: Ambil dari session jika ada
                 'userId': None  # TODO: Ambil dari session jika ada
             }
