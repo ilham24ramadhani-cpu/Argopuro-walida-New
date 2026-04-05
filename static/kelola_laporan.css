@@ -133,3 +133,23 @@
   box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.2);
 }
 
+/* Tabel detail alur produksi (Kelola Laporan — accordion) */
+.table-alur-produksi {
+  font-size: 0.8125rem;
+}
+
+.table-alur-produksi thead th {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.table-alur-produksi td {
+  vertical-align: top;
+}
+
+.table-alur-produksi td.text-break {
+  max-width: 12rem;
+  white-space: normal;
+  word-break: break-word;
+}
+

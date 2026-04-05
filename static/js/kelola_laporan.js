@@ -96,116 +96,227 @@ function pdfAppendCatatanProduksi(doc, y, text, leftMargin = 25) {
   return y;
 }
 
-/**
- * Blok HTML: catatan per tahapan (catatanPerTahapan dari API) atau fallback history + terkini.
- */
-function buildHistoryCatatanSectionHtml(item) {
-  const parts = [];
-  const perTahap = Array.isArray(item.catatanPerTahapan)
-    ? item.catatanPerTahapan
-    : [];
-
-  if (perTahap.length > 0) {
-    perTahap.forEach((row, i) => {
-      const cat = (row.catatan && String(row.catatan).trim()) || "";
-      if (!cat) return;
-      const label = row.namaTahapan || row.tahapan || "Tahapan";
-      const tgl = formatDate(row.tanggalSekarang);
-      parts.push(`
-      <div class="mb-2 pb-2 border-bottom border-light-subtle">
-        <div class="small text-muted">${i + 1}. ${escapeHtmlLaporan(
-        label
-      )} · ${escapeHtmlLaporan(tgl)}</div>
-        <div class="small text-body mt-1" style="white-space: pre-wrap;">${escapeHtmlLaporan(
-          cat
-        )}</div>
-      </div>
-    `);
-    });
-  } else {
-    const hist = Array.isArray(item.historyTahapan) ? item.historyTahapan : [];
-    hist.forEach((h, i) => {
-      const cat = (h.catatan && String(h.catatan).trim()) || "";
-      if (!cat) return;
-      const label =
-        h.statusTahapan ||
-        h.namaTahapan ||
-        h.statusTahapanSebelumnya ||
-        "Tahapan";
-      const tgl = formatDate(h.tanggal);
-      parts.push(`
-      <div class="mb-2 pb-2 border-bottom border-light-subtle">
-        <div class="small text-muted">${i + 1}. ${escapeHtmlLaporan(
-        label
-      )} · ${escapeHtmlLaporan(tgl)}</div>
-        <div class="small text-body mt-1" style="white-space: pre-wrap;">${escapeHtmlLaporan(
-          cat
-        )}</div>
-      </div>
-    `);
-    });
-    const cur = (item.catatan && String(item.catatan).trim()) || "";
-    if (cur) {
-      parts.push(`
-      <div class="mb-0">
-        <div class="small text-muted fw-semibold">Catatan terkini — ${escapeHtmlLaporan(
-          item.statusTahapan || "-"
-        )} · ${escapeHtmlLaporan(formatDate(item.tanggalSekarang))}</div>
-        <div class="small text-body mt-1" style="white-space: pre-wrap;">${escapeHtmlLaporan(
-          cur
-        )}</div>
-      </div>
-    `);
-    }
-  }
-
-  if (parts.length === 0) return "";
-  return `
-    <div class="mt-4 pt-3 border-top border-light">
-      <p class="small fw-semibold text-muted mb-2">
-        <i class="bi bi-journal-text me-1"></i>Catatan per tahapan produksi
-      </p>
-      ${parts.join("")}
-    </div>
-  `;
-}
-
-/** PDF: daftar catatanPerTahapan (satu baris per tahap). */
+/** PDF: catatanPerTahapan sebagai tabel (konsisten dengan laporan lain). */
 function pdfAppendCatatanPerTahapanList(doc, y, item) {
   const rows = Array.isArray(item.catatanPerTahapan)
     ? item.catatanPerTahapan
     : [];
-  if (rows.length === 0) return y;
-  if (y > 230) {
+  const dataRows = [];
+  rows.forEach((row) => {
+    const cat = (row.catatan && String(row.catatan).trim()) || "";
+    if (!cat) return;
+    const nama = row.namaTahapan || row.tahapan || "Tahapan";
+    const tgl = formatDate(row.tanggalSekarang);
+    dataRows.push(["", nama, tgl, cat]);
+  });
+  if (dataRows.length === 0) return y;
+  dataRows.forEach((r, i) => {
+    r[0] = String(i + 1);
+  });
+  if (y > 220) {
     doc.addPage();
     y = 20;
   }
   doc.setFontSize(11);
   doc.setFont(undefined, "bold");
-  doc.text("Catatan per tahapan produksi:", 20, y);
-  y += 8;
-  doc.setFontSize(10);
-  let no = 0;
-  rows.forEach((row) => {
-    const cat = (row.catatan && String(row.catatan).trim()) || "";
-    if (!cat) return;
-    no += 1;
-    const nama = row.namaTahapan || row.tahapan || "Tahapan";
-    const tgl = formatDate(row.tanggalSekarang);
-    if (y > 248) {
-      doc.addPage();
-      y = 20;
-    }
-    doc.setFont(undefined, "bold");
-    doc.text(`${no}. ${nama}`, 20, y);
-    y += 6;
-    doc.setFont(undefined, "normal");
-    doc.text(`   Tanggal: ${tgl}`, 25, y);
-    y += 6;
-    y = pdfAppendCatatanProduksi(doc, y, cat, 25);
-    y += 4;
+  doc.text("Catatan per tahapan produksi", 20, y);
+  y += 7;
+  const matrix = [
+    ["No", "Tahapan", "Tanggal", "Catatan"],
+    ...dataRows,
+  ];
+  return pdfRenderTableFromMatrix(doc, y, matrix, [8, 44, 28, 90]);
+}
+
+/** Baris tabel alur produksi untuk PDF & halaman laporan (dari history + baris status saat ini). */
+function buildAlurProduksiTableRows(item) {
+  const rows = [];
+  const hist = Array.isArray(item.historyTahapan) ? item.historyTahapan : [];
+  const fmtKg = (v) => {
+    if (v == null || v === "") return "—";
+    const n = typeof v === "number" ? v : parseFloat(v);
+    return Number.isFinite(n) ? `${n.toLocaleString("id-ID")} kg` : "—";
+  };
+  const fmtKadar = (v) => {
+    if (v == null || v === "") return "—";
+    return `${v}%`;
+  };
+
+  if (hist.length === 0) {
+    rows.push({
+      no: "1",
+      tahapan: `${item.statusTahapan || "—"} (status saat ini)`,
+      tanggal: formatDate(item.tanggalSekarang),
+      beratAwal: fmtKg(item.beratAwal),
+      beratAkhir: fmtKg(item.beratAkhir),
+      kadar: fmtKadar(item.kadarAir),
+      catatan: (item.catatan && String(item.catatan).trim()) || "—",
+    });
+    return rows;
+  }
+
+  hist.forEach((h, i) => {
+    const tahapan =
+      h.statusTahapan ||
+      h.namaTahapan ||
+      h.statusTahapanSebelumnya ||
+      "—";
+    rows.push({
+      no: String(i + 1),
+      tahapan,
+      tanggal: formatDate(h.tanggal),
+      beratAwal: fmtKg(h.beratAwal),
+      beratAkhir: fmtKg(h.beratAkhir),
+      kadar: fmtKadar(h.kadarAir),
+      catatan: (h.catatan && String(h.catatan).trim()) || "—",
+    });
   });
-  return y;
+  const n = hist.length + 1;
+  rows.push({
+    no: String(n),
+    tahapan: `${item.statusTahapan || "—"} (status saat ini)`,
+    tanggal: formatDate(item.tanggalSekarang),
+    beratAwal: fmtKg(item.beratAwal),
+    beratAkhir: fmtKg(item.beratAkhir),
+    kadar: fmtKadar(item.kadarAir),
+    catatan: (item.catatan && String(item.catatan).trim()) || "—",
+  });
+  return rows;
+}
+
+/**
+ * Tabel PDF generik: matrix[0] = header, matrix[1..] = data.
+ * hw = lebar tiap kolom (mm), jumlahnya harus sama dengan jumlah sel per baris; total 170 (margin 20–190).
+ */
+function pdfRenderTableFromMatrix(doc, y, matrix, hw) {
+  if (!matrix || matrix.length === 0 || !hw || hw.length === 0) return y;
+  const n = hw.length;
+  const x = [20];
+  for (let i = 0; i < n; i++) x.push(x[i] + hw[i]);
+  const lineH = 2.75;
+  const padT = 2.5;
+  let rowTop = y;
+
+  matrix.forEach((cells, ri) => {
+    if (!cells || cells.length !== n) return;
+    const isHeader = ri === 0;
+    doc.setFontSize(n > 5 ? 7 : 8);
+    doc.setFont(undefined, isHeader ? "bold" : "normal");
+    doc.setTextColor(0, 0, 0);
+    const cellLines = cells.map((text, i) =>
+      doc.splitTextToSize(String(text ?? "—"), hw[i] - 1.5)
+    );
+    const maxLines = Math.max(1, ...cellLines.map((l) => l.length));
+    const rowH = maxLines * lineH + padT * 2;
+
+    if (rowTop + rowH > 287) {
+      doc.addPage();
+      rowTop = 20;
+    }
+
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.12);
+    for (let i = 0; i < n; i++) {
+      if (isHeader) {
+        doc.setFillColor(243, 244, 246);
+        doc.rect(x[i], rowTop, hw[i], rowH, "FD");
+      } else {
+        doc.rect(x[i], rowTop, hw[i], rowH, "S");
+      }
+      cellLines[i].forEach((line, li) => {
+        doc.text(line, x[i] + 0.7, rowTop + padT + 2.8 + li * lineH);
+      });
+    }
+    rowTop += rowH;
+  });
+
+  doc.setFont(undefined, "normal");
+  doc.setTextColor(0, 0, 0);
+  return rowTop + 4;
+}
+
+/** Tabel 2 kolom Uraian | Nilai untuk ringkasan laporan PDF. */
+function pdfRenderKeyValueTable(doc, y, pairs, options = {}) {
+  if (!pairs || pairs.length === 0) return y;
+  const title = options.title || null;
+  let rowTop = y;
+  if (title) {
+    doc.setFontSize(11);
+    doc.setFont(undefined, "bold");
+    doc.text(title, 20, rowTop);
+    rowTop += 7;
+    doc.setDrawColor(210, 210, 210);
+    doc.line(20, rowTop, 190, rowTop);
+    rowTop += 5;
+  }
+  const matrix = [
+    ["Uraian", "Nilai"],
+    ...pairs.map((p) => {
+      const a = Array.isArray(p) ? p : [p.label, p.value];
+      return [String(a[0] ?? "—"), String(a[1] ?? "—")];
+    }),
+  ];
+  return pdfRenderTableFromMatrix(doc, rowTop, matrix, [52, 118]);
+}
+
+/** Menggambar tabel alur produksi di PDF. */
+function pdfRenderAlurProduksiTable(doc, y, rows) {
+  if (!rows || rows.length === 0) return y;
+  const matrix = [
+    ["No", "Tahapan", "Tanggal", "B. awal", "B. akhir", "Kadar", "Catatan"],
+    ...rows.map((r) => [
+      r.no,
+      r.tahapan,
+      r.tanggal,
+      r.beratAwal,
+      r.beratAkhir,
+      r.kadar,
+      r.catatan,
+    ]),
+  ];
+  return pdfRenderTableFromMatrix(doc, y, matrix, [6, 47, 28, 18, 16, 16, 39]);
+}
+
+/** Tabel HTML untuk accordion Detail Alur Produksi di halaman laporan. */
+function buildAlurProduksiTableHtml(item) {
+  const rows = buildAlurProduksiTableRows(item);
+  if (!rows.length) return "";
+  const thead = `<tr>
+    <th scope="col" class="text-nowrap">No</th>
+    <th scope="col">Tahapan</th>
+    <th scope="col" class="text-nowrap">Tanggal</th>
+    <th scope="col" class="text-nowrap">B. awal</th>
+    <th scope="col" class="text-nowrap">B. akhir</th>
+    <th scope="col" class="text-nowrap">Kadar</th>
+    <th scope="col">Catatan</th>
+  </tr>`;
+  const tbody = rows
+    .map(
+      (r) => `
+    <tr>
+      <td class="text-muted text-nowrap">${escapeHtmlLaporan(r.no)}</td>
+      <td>${escapeHtmlLaporan(r.tahapan)}</td>
+      <td class="text-nowrap">${escapeHtmlLaporan(r.tanggal)}</td>
+      <td class="text-nowrap">${escapeHtmlLaporan(r.beratAwal)}</td>
+      <td class="text-nowrap">${escapeHtmlLaporan(r.beratAkhir)}</td>
+      <td class="text-nowrap">${escapeHtmlLaporan(r.kadar)}</td>
+      <td class="small text-break">${escapeHtmlLaporan(r.catatan)}</td>
+    </tr>`
+    )
+    .join("");
+  return `
+    <div class="mt-3 pt-3 border-top border-light">
+      <p class="small fw-semibold text-muted mb-2">
+        <i class="bi bi-table me-1"></i>Detail alur produksi
+      </p>
+      <div class="table-responsive rounded border">
+        <table class="table table-sm table-bordered table-hover align-middle mb-0 table-alur-produksi">
+          <thead class="table-light">${thead}</thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 // Wait for API to be ready (event-based + polling fallback)
@@ -1974,7 +2085,7 @@ function buildTimelineItem(item, isFirst, index = 0, bahanById) {
           <ul class="timeline">
             ${steps}
           </ul>
-          ${buildHistoryCatatanSectionHtml(item)}
+          ${buildAlurProduksiTableHtml(item)}
         </div>
       </div>
     </div>
@@ -2342,89 +2453,34 @@ function generateBahanPDF(id) {
   doc.text("Argopuro Walida", 105, 30, { align: "center" });
   doc.line(20, 35, 190, 35);
 
-  // Content
-  let y = 50;
-  doc.setFontSize(11);
-  doc.setFont(undefined, "bold");
-  doc.text("ID Bahan:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.idBahan || "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Pemasok:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.pemasok || "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Jumlah:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(
-    `${item.jumlah ? item.jumlah.toLocaleString("id-ID") : "-"} kg`,
-    60,
-    y
-  );
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Varietas:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.varietas || "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Harga per Kg:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.hargaPerKg ? formatCurrency(item.hargaPerKg) : "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Total Pengeluaran:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(
-    item.totalPengeluaran ? formatCurrency(item.totalPengeluaran) : "-",
-    60,
-    y
-  );
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Jenis Kopi:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.jenisKopi || "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Tanggal Masuk:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(formatDate(item.tanggalMasuk), 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Proses pengolahan:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(ringkasanProsesBahanLaporan(item), 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Pembayaran:", 20, y);
-  doc.setFont(undefined, "normal");
-  if (item.lunas) {
-    doc.setTextColor(25, 135, 84);
-    doc.setFont(undefined, "bold");
-    doc.text("LUNAS", 60, y);
-    doc.setTextColor(0, 0, 0);
-    doc.setFont(undefined, "normal");
-  } else {
-    doc.text("Belum lunas", 60, y);
-  }
-
-  // Laporan bahan masuk hanya berisi data bahan masuk (tanpa detail alur produksi)
-  // Blok DETAIL ALUR PRODUKSI dihapus sesuai permintaan
+  let y = 48;
+  const pairsBahan = [
+    ["ID Bahan", item.idBahan || "—"],
+    ["Pemasok", item.pemasok || "—"],
+    [
+      "Jumlah",
+      `${item.jumlah ? item.jumlah.toLocaleString("id-ID") : "—"} kg`,
+    ],
+    ["Varietas", item.varietas || "—"],
+    ["Harga per Kg", item.hargaPerKg ? formatCurrency(item.hargaPerKg) : "—"],
+    [
+      "Total Pengeluaran",
+      item.totalPengeluaran ? formatCurrency(item.totalPengeluaran) : "—",
+    ],
+    ["Jenis Kopi", item.jenisKopi || "—"],
+    ["Tanggal Masuk", formatDate(item.tanggalMasuk)],
+    ["Proses pengolahan", ringkasanProsesBahanLaporan(item)],
+    ["Pembayaran", item.lunas ? "LUNAS" : "Belum lunas"],
+  ];
+  y = pdfRenderKeyValueTable(doc, y, pairsBahan, { title: "Ringkasan" });
 
   // Footer
-  y = 270;
+  if (y > 240) {
+    doc.addPage();
+    y = 20;
+  } else {
+    y += 10;
+  }
   doc.line(20, y, 190, y);
   doc.setFontSize(10);
   doc.text(`Dicetak pada: ${new Date().toLocaleString("id-ID")}`, 20, y + 10);
@@ -2455,231 +2511,63 @@ function generateProduksiPDF(id) {
   doc.text("Argopuro Walida", 105, 30, { align: "center" });
   doc.line(20, 35, 190, 35);
 
-  // Content
-  let y = 50;
-  doc.setFontSize(11);
-  doc.setFont(undefined, "bold");
-  doc.text("ID Produksi:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.idProduksi || "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Berat Awal:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(
-    `${item.beratAwal ? item.beratAwal.toLocaleString("id-ID") : "-"} kg`,
-    60,
-    y
-  );
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Berat Akhir:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(
-    `${item.beratAkhir ? item.beratAkhir.toLocaleString("id-ID") : "-"} kg`,
-    60,
-    y
-  );
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Proses Pengolahan:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(prosesTampilanPdf, 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Kadar Air:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(`${item.kadarAir ? item.kadarAir + "%" : "-"}`, 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Varietas:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.varietas || "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Tanggal Masuk:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(formatDate(item.tanggalMasuk), 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Tanggal Sekarang:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(formatDate(item.tanggalSekarang), 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Status Tahapan:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.statusTahapan || "-", 60, y);
-
-  y += 6;
+  let y = 48;
+  const pairsProd = [
+    ["ID Produksi", item.idProduksi || "—"],
+    [
+      "Berat Awal",
+      `${item.beratAwal ? item.beratAwal.toLocaleString("id-ID") : "—"} kg`,
+    ],
+    [
+      "Berat Akhir",
+      `${item.beratAkhir ? item.beratAkhir.toLocaleString("id-ID") : "—"} kg`,
+    ],
+    ["Proses Pengolahan", prosesTampilanPdf],
+    ["Kadar Air", item.kadarAir ? `${item.kadarAir}%` : "—"],
+    ["Varietas", item.varietas || "—"],
+    ["Tanggal Masuk", formatDate(item.tanggalMasuk)],
+    ["Tanggal Sekarang", formatDate(item.tanggalSekarang)],
+    ["Status Tahapan", item.statusTahapan || "—"],
+  ];
+  if (item.jenisProduk) pairsProd.push(["Jenis Produk", item.jenisProduk]);
+  if (item.ukuranKemasan)
+    pairsProd.push(["Ukuran Kemasan", item.ukuranKemasan]);
+  if (item.jumlahKemasan != null)
+    pairsProd.push(["Jumlah Kemasan", String(item.jumlahKemasan)]);
+  y = pdfRenderKeyValueTable(doc, y, pairsProd, { title: "Ringkasan" });
   y = pdfAppendCatatanPerTahapanList(doc, y, item);
 
-  if (item.jenisProduk) {
-    y += 10;
-    doc.setFont(undefined, "bold");
-    doc.text("Jenis Produk:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(item.jenisProduk, 60, y);
+  // === DETAIL ALUR PRODUKSI (tabel) ===
+  y += 12;
+  if (y > 200) {
+    doc.addPage();
+    y = 20;
   }
+  doc.setFontSize(12);
+  doc.setFont(undefined, "bold");
+  doc.text("DETAIL ALUR PRODUKSI", 20, y);
+  y += 6;
+  doc.setFontSize(8);
+  doc.setFont(undefined, "normal");
+  doc.setTextColor(80, 80, 80);
+  doc.text(
+    "Tiap baris: tahapan, tanggal catat, berat, kadar air, dan catatan (jika ada).",
+    20,
+    y
+  );
+  y += 6;
+  doc.setTextColor(0, 0, 0);
+  doc.line(20, y, 190, y);
+  y += 5;
+  const alurRowsPdf = buildAlurProduksiTableRows(item);
+  y = pdfRenderAlurProduksiTable(doc, y, alurRowsPdf);
 
-  if (item.ukuranKemasan) {
-    y += 10;
-    doc.setFont(undefined, "bold");
-    doc.text("Ukuran Kemasan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(item.ukuranKemasan, 60, y);
-  }
-
-  if (item.jumlahKemasan) {
-    y += 10;
-    doc.setFont(undefined, "bold");
-    doc.text("Jumlah Kemasan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(item.jumlahKemasan.toString(), 60, y);
-  }
-
-  // === DETAIL ALUR PRODUKSI ===
-  if (item.historyTahapan && item.historyTahapan.length > 0) {
-    y += 15;
-    if (y > 220) {
-      doc.addPage();
-      y = 20;
-    }
-    doc.setFontSize(12);
-    doc.setFont(undefined, "bold");
-    doc.text("DETAIL ALUR PRODUKSI", 20, y);
-    y += 8;
-    doc.line(20, y, 190, y);
-    y += 10;
-    doc.setFontSize(10);
-
-    item.historyTahapan.forEach((history, index) => {
-      if (y > 250) {
-        doc.addPage();
-        y = 20;
-      }
-      const statusTahapanText = history.statusTahapan || history.namaTahapan || history.statusTahapanSebelumnya || "-";
-      doc.setFont(undefined, "bold");
-      doc.text(`${index + 1}. ${statusTahapanText}`, 20, y);
-      y += 7;
-      doc.setFont(undefined, "normal");
-      doc.text(`   Tanggal: ${formatDate(history.tanggal)}`, 25, y);
-      y += 7;
-      if (history.beratAwal) {
-        doc.text(
-          `   Berat Awal: ${history.beratAwal.toLocaleString("id-ID")} kg`,
-          25,
-          y
-        );
-        y += 7;
-      }
-      if (history.beratAkhir) {
-        doc.text(
-          `   Berat Akhir: ${history.beratAkhir.toLocaleString("id-ID")} kg`,
-          25,
-          y
-        );
-        y += 7;
-      }
-      if (history.kadarAir) {
-        doc.text(`   Kadar Air: ${history.kadarAir}%`, 25, y);
-        y += 7;
-      }
-      y = pdfAppendCatatanProduksi(doc, y, history.catatan, 25);
-      y += 5;
-    });
-
-    // Tambahkan status saat ini ke history
-    if (y > 250) {
-      doc.addPage();
-      y = 20;
-    }
-    doc.setFont(undefined, "bold");
-    doc.text(
-      `${item.historyTahapan.length + 1}. ${
-        item.statusTahapan || "-"
-      } (Status Saat Ini)`,
-      20,
-      y
-    );
-    y += 7;
-    doc.setFont(undefined, "normal");
-    doc.text(`   Tanggal: ${formatDate(item.tanggalSekarang)}`, 25, y);
-    y += 7;
-    if (item.beratAwal) {
-      doc.text(
-        `   Berat Awal: ${item.beratAwal.toLocaleString("id-ID")} kg`,
-        25,
-        y
-      );
-      y += 7;
-    }
-    if (item.beratAkhir) {
-      doc.text(
-        `   Berat Akhir: ${item.beratAkhir.toLocaleString("id-ID")} kg`,
-        25,
-        y
-      );
-      y += 7;
-    }
-    if (item.kadarAir) {
-      doc.text(`   Kadar Air: ${item.kadarAir}%`, 25, y);
-      y += 7;
-    }
-    y = pdfAppendCatatanProduksi(doc, y, item.catatan, 25);
+  if (y > 240) {
+    doc.addPage();
+    y = 20;
   } else {
-    // Jika tidak ada history, tampilkan status saat ini saja
-    y += 15;
-    if (y > 220) {
-      doc.addPage();
-      y = 20;
-    }
-    doc.setFontSize(12);
-    doc.setFont(undefined, "bold");
-    doc.text("DETAIL ALUR PRODUKSI", 20, y);
-    y += 8;
-    doc.line(20, y, 190, y);
     y += 10;
-    doc.setFontSize(10);
-    doc.setFont(undefined, "bold");
-    doc.text(`1. ${item.statusTahapan || "-"} (Status Saat Ini)`, 20, y);
-    y += 7;
-    doc.setFont(undefined, "normal");
-    doc.text(`   Tanggal: ${formatDate(item.tanggalSekarang)}`, 25, y);
-    y += 7;
-    if (item.beratAwal) {
-      doc.text(
-        `   Berat Awal: ${item.beratAwal.toLocaleString("id-ID")} kg`,
-        25,
-        y
-      );
-      y += 7;
-    }
-    if (item.beratAkhir) {
-      doc.text(
-        `   Berat Akhir: ${item.beratAkhir.toLocaleString("id-ID")} kg`,
-        25,
-        y
-      );
-      y += 7;
-    }
-    if (item.kadarAir) {
-      doc.text(`   Kadar Air: ${item.kadarAir}%`, 25, y);
-      y += 7;
-    }
-    y = pdfAppendCatatanProduksi(doc, y, item.catatan, 25);
   }
-
-  // Footer
-  y = 270;
   doc.line(20, y, 190, y);
   doc.setFontSize(10);
   doc.text(`Dicetak pada: ${new Date().toLocaleString("id-ID")}`, 20, y + 10);
@@ -2982,102 +2870,20 @@ function generateHasilProduksiPDF(id) {
     doc.setFont(undefined, "normal");
     doc.text(produksiData.statusTahapan || "-", 60, y);
 
-    // === HISTORY TAHAPAN PRODUKSI ===
-    if (produksiData.historyTahapan && produksiData.historyTahapan.length > 0) {
-      y += 15;
-      if (y > 220) {
-        doc.addPage();
-        y = 20;
-      }
-      doc.setFontSize(12);
-      doc.setFont(undefined, "bold");
-      doc.text("ALUR PROSES TAHAPAN PRODUKSI", 20, y);
-      y += 8;
-      doc.line(20, y, 190, y);
-      y += 10;
-      doc.setFontSize(10);
-
-      produksiData.historyTahapan.forEach((history, index) => {
-        if (y > 250) {
-          doc.addPage();
-          y = 20;
-        }
-        const statusTahapanText = history.statusTahapan || history.namaTahapan || history.statusTahapanSebelumnya || "-";
-        doc.setFont(undefined, "bold");
-        doc.text(`${index + 1}. ${statusTahapanText}`, 20, y);
-        y += 7;
-        doc.setFont(undefined, "normal");
-        doc.text(`   Tanggal: ${formatDate(history.tanggal)}`, 25, y);
-        y += 7;
-        if (history.beratAwal) {
-          doc.text(
-            `   Berat Awal: ${history.beratAwal.toLocaleString("id-ID")} kg`,
-            25,
-            y
-          );
-          y += 7;
-        }
-        if (history.beratAkhir) {
-          doc.text(
-            `   Berat Akhir: ${history.beratAkhir.toLocaleString("id-ID")} kg`,
-            25,
-            y
-          );
-          y += 7;
-        }
-        if (history.kadarAir) {
-          doc.text(`   Kadar Air: ${history.kadarAir}%`, 25, y);
-          y += 7;
-        }
-        y = pdfAppendCatatanProduksi(doc, y, history.catatan, 25);
-        y += 5;
-      });
-
-      // Tambahkan status saat ini ke history
-      if (y > 250) {
-        doc.addPage();
-        y = 20;
-      }
-      doc.setFont(undefined, "bold");
-      doc.text(
-        `${produksiData.historyTahapan.length + 1}. ${
-          produksiData.statusTahapan || "-"
-        } (Status Saat Ini)`,
-        20,
-        y
-      );
-      y += 7;
-      doc.setFont(undefined, "normal");
-      doc.text(
-        `   Tanggal: ${formatDate(produksiData.tanggalSekarang)}`,
-        25,
-        y
-      );
-      y += 7;
-      if (produksiData.beratAwal) {
-        doc.text(
-          `   Berat Awal: ${produksiData.beratAwal.toLocaleString("id-ID")} kg`,
-          25,
-          y
-        );
-        y += 7;
-      }
-      if (produksiData.beratAkhir) {
-        doc.text(
-          `   Berat Akhir: ${produksiData.beratAkhir.toLocaleString(
-            "id-ID"
-          )} kg`,
-          25,
-          y
-        );
-        y += 7;
-      }
-      if (produksiData.kadarAir) {
-        doc.text(`   Kadar Air: ${produksiData.kadarAir}%`, 25, y);
-        y += 7;
-      }
-      y = pdfAppendCatatanProduksi(doc, y, produksiData.catatan, 25);
+    y += 12;
+    if (y > 200) {
+      doc.addPage();
+      y = 20;
     }
+    doc.setFontSize(12);
+    doc.setFont(undefined, "bold");
+    doc.text("DETAIL ALUR PRODUKSI", 20, y);
+    y += 8;
+    doc.line(20, y, 190, y);
+    y += 5;
+    doc.setFont(undefined, "normal");
+    const alurRowsHasilPdf = buildAlurProduksiTableRows(produksiData);
+    y = pdfRenderAlurProduksiTable(doc, y, alurRowsHasilPdf);
   }
 
   y += 10;
@@ -3113,63 +2919,53 @@ function generateSanitasiPDF(id) {
   doc.text("Argopuro Walida", 105, 30, { align: "center" });
   doc.line(20, 35, 190, 35);
 
-  // Content
-  let y = 50;
-  doc.setFontSize(11);
-  doc.setFont(undefined, "bold");
-  doc.text("Tanggal:", 20, y);
-  doc.setFont(undefined, "normal");
   const tanggalWaktu = item.waktu
     ? `${formatDate(item.tanggal)} ${item.waktu}`
     : formatDate(item.tanggal);
-  doc.text(tanggalWaktu, 60, y);
+  let y = 48;
+  const pairsSan = [
+    ["Tanggal / waktu", tanggalWaktu],
+    ["Tipe Sanitasi", tipeSanitasiNames[item.tipe] || item.tipe || "—"],
+    ["Nama Petugas", item.namaPetugas || "—"],
+    ["Status", item.status || "—"],
+  ];
+  y = pdfRenderKeyValueTable(doc, y, pairsSan, { title: "Ringkasan" });
 
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Tipe Sanitasi:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(tipeSanitasiNames[item.tipe] || item.tipe || "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Nama Petugas:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.namaPetugas || "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Status:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.status || "-", 60, y);
-
-  // Checklist
   if (item.checklist) {
-    y += 15;
-    doc.setFont(undefined, "bold");
-    doc.text("Checklist:", 20, y);
-    y += 10;
-    doc.setFont(undefined, "normal");
-
+    const chkRows = [["Item", "Status"]];
     if (typeof item.checklist === "object" && !Array.isArray(item.checklist)) {
-      // Checklist sebagai object (format dari kelola_sanitasi.js)
       Object.keys(item.checklist).forEach((key) => {
-        const checked = item.checklist[key];
-        const checkText = `${checked ? "✓" : "✗"} ${key}`;
-        doc.text(checkText, 25, y);
-        y += 7;
+        const ok = item.checklist[key];
+        chkRows.push([key, ok ? "Selesai" : "Belum"]);
       });
     } else if (Array.isArray(item.checklist)) {
-      // Checklist sebagai array
       item.checklist.forEach((check) => {
-        const checkText = `${check.checked ? "✓" : "✗"} ${check.item || check}`;
-        doc.text(checkText, 25, y);
-        y += 7;
+        const label = check.item || check || "—";
+        chkRows.push([
+          String(label),
+          check.checked ? "Selesai" : "Belum",
+        ]);
       });
+    }
+    if (chkRows.length > 1) {
+      if (y > 210) {
+        doc.addPage();
+        y = 20;
+      }
+      doc.setFontSize(11);
+      doc.setFont(undefined, "bold");
+      doc.text("Checklist", 20, y);
+      y += 7;
+      y = pdfRenderTableFromMatrix(doc, y, chkRows, [110, 60]);
     }
   }
 
-  // Footer
-  y = 270;
+  if (y > 240) {
+    doc.addPage();
+    y = 20;
+  } else {
+    y += 10;
+  }
   doc.line(20, y, 190, y);
   doc.setFontSize(10);
   doc.text(`Dicetak pada: ${new Date().toLocaleString("id-ID")}`, 20, y + 10);
@@ -3510,122 +3306,55 @@ function generateStokPDF(itemKey) {
     doc.text("Argopuro Walida", 105, 30, { align: "center" });
     doc.line(20, 35, 190, 35);
 
-    // Content - Detail Produk
-    let y = 50;
-    doc.setFontSize(11);
-    doc.setFont(undefined, "bold");
-    doc.text("Tipe Produk:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(item.tipeProduk || "-", 60, y);
+    let y = 48;
+    const pairsStok = [
+      ["Tipe Produk", item.tipeProduk || "—"],
+      ["Kemasan", item.kemasan || "—"],
+      ["Jenis Kopi", item.jenisKopi || "—"],
+      ["Proses Pengolahan", item.prosesPengolahan || "—"],
+      ["Level Roasting", item.levelRoasting || "—"],
+      [
+        "Total Berat Stok",
+        `${safeNumber(item.totalBerat).toLocaleString("id-ID", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })} kg`,
+      ],
+      [
+        "Total Jumlah Kemasan",
+        `${safeNumber(item.totalJumlah).toLocaleString("id-ID")} kemasan`,
+      ],
+    ];
+    y = pdfRenderKeyValueTable(doc, y, pairsStok, { title: "Ringkasan stok" });
 
-    y += 10;
-    doc.setFont(undefined, "bold");
-    doc.text("Kemasan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(item.kemasan || "-", 60, y);
-
-    y += 10;
-    doc.setFont(undefined, "bold");
-    doc.text("Jenis Kopi:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(item.jenisKopi || "-", 60, y);
-
-    y += 10;
-    doc.setFont(undefined, "bold");
-    doc.text("Proses Pengolahan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(item.prosesPengolahan || "-", 60, y);
-
-    y += 10;
-    doc.setFont(undefined, "bold");
-    doc.text("Level Roasting:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(item.levelRoasting || "-", 60, y);
-
-    y += 10;
-    doc.setFont(undefined, "bold");
-    doc.text("Total Berat Stok:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(
-      `${safeNumber(item.totalBerat).toLocaleString("id-ID", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })} kg`,
-      60,
-      y
-    );
-
-    y += 10;
-    doc.setFont(undefined, "bold");
-    doc.text("Total Jumlah Kemasan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(
-      `${safeNumber(item.totalJumlah).toLocaleString("id-ID")} kemasan`,
-      60,
-      y
-    );
-
-    // === DETAIL HASIL PRODUKSI ===
     if (hasilProduksiTerait.length > 0) {
-      y += 15;
-      if (y > 220) {
+      if (y > 200) {
         doc.addPage();
         y = 20;
       }
       doc.setFontSize(12);
       doc.setFont(undefined, "bold");
-      doc.text("DETAIL HASIL PRODUKSI", 20, y);
-      y += 8;
-      doc.line(20, y, 190, y);
-      y += 10;
-      doc.setFontSize(10);
-
-      // Table header
-      doc.setFont(undefined, "bold");
-      doc.text("ID Produksi", 20, y);
-      doc.text("Tanggal", 70, y);
-      doc.text("Berat (kg)", 110, y);
-      doc.text("Jumlah", 150, y);
-      y += 8;
-      doc.line(20, y, 190, y);
-      y += 5;
-      doc.setFont(undefined, "normal");
-
-      hasilProduksiTerait.forEach((hasil, index) => {
-        if (y > 250) {
-          doc.addPage();
-          y = 20;
-          // Re-print header
-          doc.setFont(undefined, "bold");
-          doc.text("ID Produksi", 20, y);
-          doc.text("Tanggal", 70, y);
-          doc.text("Berat (kg)", 110, y);
-          doc.text("Jumlah", 150, y);
-          y += 8;
-          doc.line(20, y, 190, y);
-          y += 5;
-          doc.setFont(undefined, "normal");
-        }
-
-        doc.text(hasil.idProduksi || "-", 20, y);
-        doc.text(formatDate(hasil.tanggal || "-"), 70, y);
-        doc.text(
+      doc.text("Detail hasil produksi", 20, y);
+      y += 7;
+      const hpMatrix = [
+        ["ID Produksi", "Tanggal", "Berat (kg)", "Jumlah"],
+        ...hasilProduksiTerait.map((hasil) => [
+          hasil.idProduksi || "—",
+          formatDate(hasil.tanggal || "-"),
           safeNumber(hasil.beratSaatIni).toLocaleString("id-ID", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           }),
-          110,
-          y
-        );
-        doc.text(safeNumber(hasil.jumlah).toLocaleString("id-ID"), 150, y);
-        y += 8;
-      });
+          safeNumber(hasil.jumlah).toLocaleString("id-ID"),
+        ]),
+      ];
+      y = pdfRenderTableFromMatrix(doc, y, hpMatrix, [42, 38, 38, 52]);
     } else {
-      y += 15;
       if (y > 220) {
         doc.addPage();
         y = 20;
       }
+      y += 6;
       doc.setFontSize(11);
       doc.setFont(undefined, "italic");
       doc.text(
@@ -3633,6 +3362,7 @@ function generateStokPDF(itemKey) {
         20,
         y
       );
+      y += 8;
     }
 
     // Footer
@@ -3886,288 +3616,148 @@ async function generateDataKemasanPDF(id) {
     detailDoc.text("Argopuro Walida", 105, 30, { align: "center" });
     detailDoc.line(20, 35, 190, 35);
 
-    // Content
-    let detailY = 50;
-    detailDoc.setFontSize(11);
-
-    // === DATA HASIL PRODUKSI ===
-    detailDoc.setFontSize(12);
-    detailDoc.setFont(undefined, "bold");
-    detailDoc.text("DATA HASIL PRODUKSI", 20, detailY);
-    detailY += 8;
-    detailDoc.line(20, detailY, 190, detailY);
-    detailY += 10;
-    detailDoc.setFontSize(11);
-
-    detailDoc.setFont(undefined, "bold");
-    detailDoc.text("ID Produksi:", 20, detailY);
-    detailDoc.setFont(undefined, "normal");
-    detailDoc.text(item.idProduksi || "-", 60, detailY);
-    detailY += 10;
-
-    detailDoc.setFont(undefined, "bold");
-    detailDoc.text("Tipe Produk:", 20, detailY);
-    detailDoc.setFont(undefined, "normal");
-    detailDoc.text(item.tipeProduk || "-", 60, detailY);
-    detailY += 10;
-
-    detailDoc.setFont(undefined, "bold");
-    detailDoc.text("Kemasan:", 20, detailY);
-    detailDoc.setFont(undefined, "normal");
-    detailDoc.text(item.kemasan || "-", 60, detailY);
-    detailY += 10;
-
-    detailDoc.setFont(undefined, "bold");
-    detailDoc.text("Jenis Kopi:", 20, detailY);
-    detailDoc.setFont(undefined, "normal");
-    detailDoc.text(item.jenisKopi || "-", 60, detailY);
-    detailY += 10;
-
-    detailDoc.setFont(undefined, "bold");
-    detailDoc.text("Proses Pengolahan:", 20, detailY);
-    detailDoc.setFont(undefined, "normal");
-    detailDoc.text(item.prosesPengolahan || "-", 60, detailY);
-    detailY += 10;
-
-    detailDoc.setFont(undefined, "bold");
-    detailDoc.text("Level Roasting:", 20, detailY);
-    detailDoc.setFont(undefined, "normal");
-    detailDoc.text(item.levelRoasting || "-", 60, detailY);
-    detailY += 10;
-
-    detailDoc.setFont(undefined, "bold");
-    detailDoc.text("Berat yang Diproses:", 20, detailY);
-    detailDoc.setFont(undefined, "normal");
-    detailDoc.text(
-      `${
-        item.beratSaatIni ? item.beratSaatIni.toLocaleString("id-ID") : "-"
-      } kg`,
-      60,
-      detailY
-    );
-    detailY += 10;
-
-    detailDoc.setFont(undefined, "bold");
-    detailDoc.text("Jumlah Kemasan:", 20, detailY);
-    detailDoc.setFont(undefined, "normal");
-    detailDoc.text(
-      item.jumlah ? item.jumlah.toLocaleString("id-ID") : "-",
-      60,
-      detailY
-    );
-    detailY += 10;
-
-    detailDoc.setFont(undefined, "bold");
-    detailDoc.text("Tanggal:", 20, detailY);
-    detailDoc.setFont(undefined, "normal");
-    detailDoc.text(formatDate(item.tanggal), 60, detailY);
+    let detailY = 48;
+    const pairsHasilKemasan = [
+      ["ID Produksi", item.idProduksi || "—"],
+      ["Tipe Produk", item.tipeProduk || "—"],
+      ["Kemasan", item.kemasan || "—"],
+      ["Jenis Kopi", item.jenisKopi || "—"],
+      ["Proses Pengolahan", item.prosesPengolahan || "—"],
+      ["Level Roasting", item.levelRoasting || "—"],
+      [
+        "Berat yang diproses",
+        `${
+          item.beratSaatIni ? item.beratSaatIni.toLocaleString("id-ID") : "—"
+        } kg`,
+      ],
+      [
+        "Jumlah kemasan",
+        item.jumlah ? item.jumlah.toLocaleString("id-ID") : "—",
+      ],
+      ["Tanggal", formatDate(item.tanggal)],
+    ];
+    detailY = pdfRenderKeyValueTable(detailDoc, detailY, pairsHasilKemasan, {
+      title: "Data hasil produksi",
+    });
 
     // === DATA BAHAN MASUK ===
     if (bahanData) {
-      detailY += 15;
-      if (detailY > 250) {
+      if (detailY > 220) {
         detailDoc.addPage();
         detailY = 20;
       }
-      detailDoc.setFontSize(12);
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("DATA BAHAN MASUK", 20, detailY);
-      detailY += 8;
-      detailDoc.line(20, detailY, 190, detailY);
-      detailY += 10;
-      detailDoc.setFontSize(11);
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("ID Bahan:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(bahanData.idBahan || "-", 60, detailY);
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Pemasok:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(bahanData.pemasok || "-", 60, detailY);
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Jumlah:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(
-        `${
-          bahanData.jumlah ? bahanData.jumlah.toLocaleString("id-ID") : "-"
-        } kg`,
-        60,
-        detailY
-      );
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Varietas:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(bahanData.varietas || "-", 60, detailY);
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Harga per Kg:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(
-        bahanData.hargaPerKg ? formatCurrency(bahanData.hargaPerKg) : "-",
-        60,
-        detailY
-      );
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Total Pengeluaran:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(
-        bahanData.totalPengeluaran
-          ? formatCurrency(bahanData.totalPengeluaran)
-          : "-",
-        60,
-        detailY
-      );
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Jenis Kopi:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(bahanData.jenisKopi || "-", 60, detailY);
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Tanggal Masuk:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(formatDate(bahanData.tanggalMasuk), 60, detailY);
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Proses pengolahan:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(ringkasanProsesBahanLaporan(bahanData), 60, detailY);
-      detailY += 10;
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Pembayaran:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      if (bahanData.lunas) {
-        detailDoc.setTextColor(25, 135, 84);
-        detailDoc.setFont(undefined, "bold");
-        detailDoc.text("LUNAS", 60, detailY);
-        detailDoc.setTextColor(0, 0, 0);
-        detailDoc.setFont(undefined, "normal");
-      } else {
-        detailDoc.text("Belum lunas", 60, detailY);
-      }
+      detailY += 6;
+      const pairsBahanKm = [
+        ["ID Bahan", bahanData.idBahan || "—"],
+        ["Pemasok", bahanData.pemasok || "—"],
+        [
+          "Jumlah",
+          `${
+            bahanData.jumlah ? bahanData.jumlah.toLocaleString("id-ID") : "—"
+          } kg`,
+        ],
+        ["Varietas", bahanData.varietas || "—"],
+        [
+          "Harga per Kg",
+          bahanData.hargaPerKg ? formatCurrency(bahanData.hargaPerKg) : "—",
+        ],
+        [
+          "Total Pengeluaran",
+          bahanData.totalPengeluaran
+            ? formatCurrency(bahanData.totalPengeluaran)
+            : "—",
+        ],
+        ["Jenis Kopi", bahanData.jenisKopi || "—"],
+        ["Tanggal Masuk", formatDate(bahanData.tanggalMasuk)],
+        ["Proses pengolahan", ringkasanProsesBahanLaporan(bahanData)],
+        ["Pembayaran", bahanData.lunas ? "LUNAS" : "Belum lunas"],
+      ];
+      detailY = pdfRenderKeyValueTable(detailDoc, detailY, pairsBahanKm, {
+        title: "Data bahan masuk",
+      });
     }
 
     // === DATA PRODUKSI ===
     if (produksiData) {
-      detailY += 15;
-      if (detailY > 250) {
+      if (detailY > 220) {
+        detailDoc.addPage();
+        detailY = 20;
+      }
+      detailY += 6;
+      const catUmum =
+        produksiData.catatan && String(produksiData.catatan).trim()
+          ? String(produksiData.catatan).trim()
+          : "—";
+      const pairsPrdKm = [
+        ["ID Produksi", produksiData.idProduksi || "—"],
+        ["ID Bahan", produksiData.idBahan || "—"],
+        [
+          "Berat Awal",
+          `${
+            produksiData.beratAwal
+              ? produksiData.beratAwal.toLocaleString("id-ID")
+              : "—"
+          } kg`,
+        ],
+        [
+          "Berat Akhir",
+          `${
+            produksiData.beratAkhir
+              ? produksiData.beratAkhir.toLocaleString("id-ID")
+              : "—"
+          } kg`,
+        ],
+        [
+          "Proses Pengolahan",
+          getProsesPengolahanTampilanLaporan(produksiData),
+        ],
+        [
+          "Kadar Air",
+          produksiData.kadarAir ? `${produksiData.kadarAir}%` : "—",
+        ],
+        ["Varietas", produksiData.varietas || "—"],
+        ["Tanggal Masuk", formatDate(produksiData.tanggalMasuk)],
+        ["Tanggal Sekarang", formatDate(produksiData.tanggalSekarang)],
+        ["Status tahapan", produksiData.statusTahapan || "—"],
+        ["Catatan", catUmum],
+      ];
+      detailY = pdfRenderKeyValueTable(detailDoc, detailY, pairsPrdKm, {
+        title: "Data produksi",
+      });
+      detailY = pdfAppendCatatanPerTahapanList(detailDoc, detailY, produksiData);
+      if (detailY > 200) {
         detailDoc.addPage();
         detailY = 20;
       }
       detailDoc.setFontSize(12);
       detailDoc.setFont(undefined, "bold");
-      detailDoc.text("DATA PRODUKSI", 20, detailY);
-      detailY += 8;
+      detailDoc.text("Detail alur produksi", 20, detailY);
+      detailY += 7;
+      detailDoc.setFontSize(8);
+      detailDoc.setFont(undefined, "normal");
+      detailDoc.setTextColor(80, 80, 80);
+      detailDoc.text(
+        "Tiap baris: tahapan, tanggal, berat, kadar, catatan.",
+        20,
+        detailY
+      );
+      detailY += 6;
+      detailDoc.setTextColor(0, 0, 0);
       detailDoc.line(20, detailY, 190, detailY);
-      detailY += 10;
-      detailDoc.setFontSize(11);
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("ID Produksi:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(produksiData.idProduksi || "-", 60, detailY);
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("ID Bahan:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(produksiData.idBahan || "-", 60, detailY);
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Berat Awal:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(
-        `${
-          produksiData.beratAwal
-            ? produksiData.beratAwal.toLocaleString("id-ID")
-            : "-"
-        } kg`,
-        60,
-        detailY
-      );
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Berat Akhir:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(
-        `${
-          produksiData.beratAkhir
-            ? produksiData.beratAkhir.toLocaleString("id-ID")
-            : "-"
-        } kg`,
-        60,
-        detailY
-      );
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Proses Pengolahan:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(
-        getProsesPengolahanTampilanLaporan(produksiData),
-        60,
-        detailY
-      );
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Kadar Air:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(
-        `${produksiData.kadarAir ? produksiData.kadarAir + "%" : "-"}`,
-        60,
-        detailY
-      );
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Varietas:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(produksiData.varietas || "-", 60, detailY);
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Tanggal Masuk:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(formatDate(produksiData.tanggalMasuk), 60, detailY);
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Tanggal Sekarang:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(formatDate(produksiData.tanggalSekarang), 60, detailY);
-      detailY += 10;
-
-      detailDoc.setFont(undefined, "bold");
-      detailDoc.text("Status Tahapan Saat Ini:", 20, detailY);
-      detailDoc.setFont(undefined, "normal");
-      detailDoc.text(produksiData.statusTahapan || "-", 60, detailY);
-      detailY += 8;
-      detailY = pdfAppendCatatanProduksi(
+      detailY += 5;
+      detailY = pdfRenderAlurProduksiTable(
         detailDoc,
         detailY,
-        produksiData.catatan,
-        25
+        buildAlurProduksiTableRows(produksiData)
       );
     }
 
-    // Footer
-    detailY = 270;
+    if (detailY > 240) {
+      detailDoc.addPage();
+      detailY = 20;
+    } else {
+      detailY += 10;
+    }
     detailDoc.line(20, detailY, 190, detailY);
     detailDoc.setFontSize(10);
     detailDoc.text(
@@ -4264,85 +3854,26 @@ async function generateDataKemasanPDF(id) {
   doc.text("Sistem Manajemen Produksi Kopi", 105, 35, { align: "center" });
   doc.line(20, 40, 190, 40);
 
-  // ===== CONTENT =====
-  let y = 50;
-  doc.setFontSize(11);
-
-  // Section: Informasi Produk
-  doc.setFontSize(13);
-  doc.setFont(undefined, "bold");
-  doc.text("INFORMASI PRODUK", 20, y);
-  y += 10;
-  doc.line(20, y, 190, y);
-  y += 12;
-  doc.setFontSize(11);
-
-  // 1. Jenis Kopi
-  doc.setFont(undefined, "bold");
-  doc.text("Jenis Kopi", 25, y);
-  doc.setFont(undefined, "normal");
-  doc.text(":", 75, y);
-  doc.text(item.jenisKopi || "-", 80, y);
-  y += 10;
-
-  // 2. Proses Pengolahan
-  doc.setFont(undefined, "bold");
-  doc.text("Proses Pengolahan", 25, y);
-  doc.setFont(undefined, "normal");
-  doc.text(":", 75, y);
-  doc.text(item.prosesPengolahan || "-", 80, y);
-  y += 10;
-
-  // 3. Varietas
-  doc.setFont(undefined, "bold");
-  doc.text("Varietas", 25, y);
-  doc.setFont(undefined, "normal");
-  doc.text(":", 75, y);
-  doc.text(bahanData && bahanData.varietas ? bahanData.varietas : "-", 80, y);
-  y += 10;
-
-  // 4. Tipe Produk
-  doc.setFont(undefined, "bold");
-  doc.text("Tipe Produk", 25, y);
-  doc.setFont(undefined, "normal");
-  doc.text(":", 75, y);
-  doc.text(item.tipeProduk || "-", 80, y);
-  y += 18;
-
-  // Section: Informasi Tanggal
-  if (y > 240) {
-    doc.addPage();
-    y = 20;
-  }
-  doc.setFontSize(13);
-  doc.setFont(undefined, "bold");
-  doc.text("INFORMASI TANGGAL", 20, y);
-  y += 10;
-  doc.line(20, y, 190, y);
-  y += 12;
-  doc.setFontSize(11);
-
-  // 5. Tanggal Bahan Masuk
-  doc.setFont(undefined, "bold");
-  doc.text("Tanggal Bahan Masuk", 25, y);
-  doc.setFont(undefined, "normal");
-  doc.text(":", 75, y);
-  doc.text(
-    bahanData && bahanData.tanggalMasuk
-      ? formatDate(bahanData.tanggalMasuk)
-      : "-",
-    80,
-    y
-  );
-  y += 10;
-
-  // 6. Tanggal Hasil Produksi
-  doc.setFont(undefined, "bold");
-  doc.text("Tanggal Hasil Produksi", 25, y);
-  doc.setFont(undefined, "normal");
-  doc.text(":", 75, y);
-  doc.text(formatDate(item.tanggal), 80, y);
-  y += 18;
+  let y = 48;
+  const pairsKmCover = [
+    ["Jenis Kopi", item.jenisKopi || "—"],
+    ["Proses Pengolahan", item.prosesPengolahan || "—"],
+    [
+      "Varietas",
+      bahanData && bahanData.varietas ? bahanData.varietas : "—",
+    ],
+    ["Tipe Produk", item.tipeProduk || "—"],
+    [
+      "Tanggal bahan masuk",
+      bahanData && bahanData.tanggalMasuk
+        ? formatDate(bahanData.tanggalMasuk)
+        : "—",
+    ],
+    ["Tanggal hasil produksi", formatDate(item.tanggal)],
+  ];
+  y = pdfRenderKeyValueTable(doc, y, pairsKmCover, {
+    title: "Informasi produk & tanggal",
+  });
 
   // ===== QRCODE & LINK SECTION =====
   if (y > 220) {
@@ -4773,47 +4304,23 @@ function generatePemasokPDF(id) {
   doc.text("Argopuro Walida", 105, 30, { align: "center" });
   doc.line(20, 35, 190, 35);
 
-  // Content
-  let y = 50;
-  doc.setFontSize(11);
-  doc.setFont(undefined, "bold");
-  doc.text("ID Pemasok:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.idPemasok || "-", 60, y);
+  let y = 48;
+  const pairsPem = [
+    ["ID Pemasok", item.idPemasok || "—"],
+    ["Nama", item.nama || "—"],
+    ["Alamat", item.alamat || "—"],
+    ["Kontak", item.kontak || "—"],
+    ["Nama Perkebunan", item.namaPerkebunan || "—"],
+    ["Status", item.status || "—"],
+  ];
+  y = pdfRenderKeyValueTable(doc, y, pairsPem, { title: "Ringkasan" });
 
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Nama:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.nama || "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Alamat:", 20, y);
-  doc.setFont(undefined, "normal");
-  const alamatLines = doc.splitTextToSize(item.alamat || "-", 130);
-  doc.text(alamatLines, 60, y);
-
-  y += alamatLines.length * 7;
-  doc.setFont(undefined, "bold");
-  doc.text("Kontak:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.kontak || "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Nama Perkebunan:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.namaPerkebunan || "-", 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Status:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.status || "-", 60, y);
-
-  // Footer
-  y = 270;
+  if (y > 240) {
+    doc.addPage();
+    y = 20;
+  } else {
+    y += 10;
+  }
   doc.line(20, y, 190, y);
   doc.setFontSize(10);
   doc.text(`Dicetak pada: ${new Date().toLocaleString("id-ID")}`, 20, y + 10);
@@ -4839,45 +4346,29 @@ function generateKeuanganPDF(id) {
   doc.text("Argopuro Walida", 105, 30, { align: "center" });
   doc.line(20, 35, 190, 35);
 
-  // Content
-  let y = 50;
-  doc.setFontSize(11);
-  doc.setFont(undefined, "bold");
-  doc.text("Tanggal:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(formatDate(item.tanggal), 60, y);
-
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Jenis Pengeluaran:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.jenisPengeluaran || "-", 60, y);
-
+  let y = 48;
+  const pairsKeu = [
+    ["Tanggal", formatDate(item.tanggal)],
+    ["Jenis Pengeluaran", item.jenisPengeluaran || "—"],
+  ];
   if (item.idBahanBaku) {
-    y += 10;
-    doc.setFont(undefined, "bold");
-    doc.text("ID Bahan Baku:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(item.idBahanBaku, 60, y);
+    pairsKeu.push(["ID Bahan Baku", item.idBahanBaku]);
   }
+  pairsKeu.push(
+    ["Nilai", item.nilai ? formatCurrency(item.nilai) : "—"],
+    [
+      "Catatan / notes",
+      item.notes && String(item.notes).trim() ? item.notes : "—",
+    ]
+  );
+  y = pdfRenderKeyValueTable(doc, y, pairsKeu, { title: "Ringkasan" });
 
-  y += 10;
-  doc.setFont(undefined, "bold");
-  doc.text("Nilai:", 20, y);
-  doc.setFont(undefined, "normal");
-  doc.text(item.nilai ? formatCurrency(item.nilai) : "-", 60, y);
-
-  if (item.notes) {
+  if (y > 240) {
+    doc.addPage();
+    y = 20;
+  } else {
     y += 10;
-    doc.setFont(undefined, "bold");
-    doc.text("Notes:", 20, y);
-    doc.setFont(undefined, "normal");
-    const notesLines = doc.splitTextToSize(item.notes, 130);
-    doc.text(notesLines, 60, y);
   }
-
-  // Footer
-  y = 270;
   doc.line(20, y, 190, y);
   doc.setFontSize(10);
   doc.text(`Dicetak pada: ${new Date().toLocaleString("id-ID")}`, 20, y + 10);
@@ -5158,9 +4649,6 @@ async function exportRekapPemesanan() {
     doc.text("Sistem Manajemen Produksi Kopi", 105, 37, { align: "center" });
     doc.line(20, 42, 190, 42);
 
-    // Filter info
-    let y = 55;
-    doc.setFontSize(11);
     const filterTanggal = document.getElementById("pemesananFilterTanggal")
       ? document.getElementById("pemesananFilterTanggal").value
       : "";
@@ -5171,51 +4659,16 @@ async function exportRekapPemesanan() {
       ? document.getElementById("pemesananFilterTipe").value
       : "";
 
-    if (filterTanggal || filterStatus || filterTipe) {
-      doc.setFont(undefined, "bold");
-      doc.text("Filter:", 20, y);
-      doc.setFont(undefined, "normal");
-      y += 8;
-      if (filterTanggal) {
-        doc.text(`Tanggal: ${filterTanggal}`, 20, y);
-        y += 8;
-      }
-      if (filterStatus) {
-        doc.text(`Status: ${filterStatus}`, 20, y);
-        y += 8;
-      }
-      if (filterTipe) {
-        doc.text(`Tipe: ${filterTipe}`, 20, y);
-        y += 8;
-      }
-      y += 5;
+    let y = 48;
+    const filterPairs = [];
+    if (filterTanggal) filterPairs.push(["Tanggal", filterTanggal]);
+    if (filterStatus) filterPairs.push(["Status", filterStatus]);
+    if (filterTipe) filterPairs.push(["Tipe pemesanan", filterTipe]);
+    if (filterPairs.length > 0) {
+      y = pdfRenderKeyValueTable(doc, y, filterPairs, { title: "Filter" });
     }
 
-    // Table header
-    doc.setFontSize(10);
-    doc.setFont(undefined, "bold");
-    const headers = [
-      "No",
-      "ID Pembelian",
-      "Nama Pembeli",
-      "Tipe",
-      "Jumlah (kg)",
-      "Total Harga",
-      "Status",
-    ];
-    const colWidths = [10, 35, 40, 25, 25, 30, 25];
-    let x = 20;
-
-    headers.forEach((header, i) => {
-      doc.text(header, x, y);
-      x += colWidths[i];
-    });
-    y += 8;
-    doc.line(20, y, 190, y);
-    y += 5;
-
-    // Filter data
-    let filteredPemesanan = pemesanan.filter((p) => {
+    const filteredPemesanan = pemesanan.filter((p) => {
       const matchTanggal =
         !filterTanggal || p.tanggalPemesanan === filterTanggal;
       const matchStatus = !filterStatus || p.statusPemesanan === filterStatus;
@@ -5223,42 +4676,27 @@ async function exportRekapPemesanan() {
       return matchTanggal && matchStatus && matchTipe;
     });
 
-    // Table data
-    doc.setFontSize(9);
-    doc.setFont(undefined, "normal");
-    filteredPemesanan.forEach((p, index) => {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
-
-      x = 20;
-      const rowData = [
+    const pemMatrix = [
+      [
+        "No",
+        "ID Pembelian",
+        "Nama Pembeli",
+        "Tipe",
+        "Jumlah (kg)",
+        "Total Harga",
+        "Status",
+      ],
+      ...filteredPemesanan.map((p, index) => [
         String(index + 1),
-        p.idPembelian || "-",
-        p.namaPembeli || "-",
-        p.tipePemesanan || "-",
+        p.idPembelian || "—",
+        p.namaPembeli || "—",
+        p.tipePemesanan || "—",
         `${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg`,
         `Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}`,
-        p.statusPemesanan || "-",
-      ];
-
-      rowData.forEach((data, i) => {
-        doc.text(data.substring(0, colWidths[i] / 2), x, y);
-        x += colWidths[i];
-      });
-
-      y += 8;
-    });
-
-    // Summary
-    y += 10;
-    if (y > 270) {
-      doc.addPage();
-      y = 20;
-    }
-    doc.line(20, y, 190, y);
-    y += 10;
+        p.statusPemesanan || "—",
+      ]),
+    ];
+    y = pdfRenderTableFromMatrix(doc, y, pemMatrix, [8, 32, 36, 22, 22, 28, 22]);
 
     const totalJumlah = filteredPemesanan.reduce(
       (sum, p) => sum + (parseFloat(p.jumlahPesananKg) || 0),
@@ -5268,14 +4706,20 @@ async function exportRekapPemesanan() {
       (sum, p) => sum + (parseFloat(p.totalHarga) || 0),
       0
     );
-
-    doc.setFontSize(11);
-    doc.setFont(undefined, "bold");
-    doc.text("TOTAL:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(`Total Jumlah: ${totalJumlah.toLocaleString("id-ID")} kg`, 60, y);
-    y += 8;
-    doc.text(`Total Harga: Rp ${totalHarga.toLocaleString("id-ID")}`, 60, y);
+    if (y > 220) {
+      doc.addPage();
+      y = 20;
+    }
+    y += 4;
+    y = pdfRenderKeyValueTable(
+      doc,
+      y,
+      [
+        ["Total jumlah pesanan", `${totalJumlah.toLocaleString("id-ID")} kg`],
+        ["Total harga", `Rp ${totalHarga.toLocaleString("id-ID")}`],
+      ],
+      { title: "Ringkasan" }
+    );
 
     // Save PDF
     const filename = `laporan_pemesanan_${
@@ -5344,119 +4788,49 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     doc.text("Sistem Manajemen Produksi Kopi", 105, 37, { align: "center" });
     doc.line(20, 42, 190, 42);
 
-    // Invoice Info
-    let y = 55;
-    doc.setFontSize(11);
-    doc.setFont(undefined, "bold");
-    doc.text("ID Pembelian:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.idPembelian || "-", 60, y);
-    y += 8;
+    let y = 50;
+    const invPairs1 = [
+      ["ID Pembelian", p.idPembelian || "—"],
+      [
+        "Tanggal",
+        formatDate(p.tanggalPemesanan || new Date().toISOString()),
+      ],
+      ["Status", p.statusPemesanan || "—"],
+    ];
+    y = pdfRenderKeyValueTable(doc, y, invPairs1, { title: "Invoice" });
 
-    doc.setFont(undefined, "bold");
-    doc.text("Tanggal:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(formatDate(p.tanggalPemesanan || new Date().toISOString()), 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Status:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.statusPemesanan || "-", 60, y);
-    y += 15;
-
-    // Pembeli Info
-    doc.setFontSize(12);
-    doc.setFont(undefined, "bold");
-    doc.text("DATA PEMBELI", 20, y);
-    y += 8;
-    doc.line(20, y, 190, y);
-    y += 10;
-    doc.setFontSize(11);
-
-    doc.setFont(undefined, "bold");
-    doc.text("Nama Pembeli:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.namaPembeli || "-", 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Tipe Pemesanan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.tipePemesanan || "-", 60, y);
-    y += 8;
-
+    const pembeliPairs = [
+      ["Nama Pembeli", p.namaPembeli || "—"],
+      ["Tipe Pemesanan", p.tipePemesanan || "—"],
+    ];
     if (p.tipePemesanan === "International" && p.negara) {
-      doc.setFont(undefined, "bold");
-      doc.text("Negara:", 20, y);
-      doc.setFont(undefined, "normal");
-      doc.text(p.negara || "-", 60, y);
-      y += 8;
+      pembeliPairs.push(["Negara", p.negara || "—"]);
     }
+    y = pdfRenderKeyValueTable(doc, y, pembeliPairs, { title: "Data pembeli" });
 
-    y += 10;
+    const prodPairs = [
+      ["Tipe Produk", p.tipeProduk || "—"],
+      ["Jenis Kopi", p.jenisKopi || "—"],
+      ["Proses Pengolahan", p.prosesPengolahan || "—"],
+      ["Kemasan", p.kemasan || "—"],
+    ];
+    y = pdfRenderKeyValueTable(doc, y, prodPairs, { title: "Data produk" });
 
-    // Produk Info
-    doc.setFontSize(12);
-    doc.setFont(undefined, "bold");
-    doc.text("DATA PRODUK", 20, y);
-    y += 8;
-    doc.line(20, y, 190, y);
-    y += 10;
-    doc.setFontSize(11);
-
-    doc.setFont(undefined, "bold");
-    doc.text("Tipe Produk:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.tipeProduk || "-", 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Jenis Kopi:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.jenisKopi || "-", 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Proses Pengolahan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.prosesPengolahan || "-", 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Kemasan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.kemasan || "-", 60, y);
-    y += 15;
-
-    // Harga Info
-    doc.setFontSize(12);
-    doc.setFont(undefined, "bold");
-    doc.text("RINCIAN HARGA", 20, y);
-    y += 8;
-    doc.line(20, y, 190, y);
-    y += 10;
-    doc.setFontSize(11);
-
-    doc.setFont(undefined, "bold");
-    doc.text("Jumlah Pesanan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(`${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg`, 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Harga per Kg:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(`Rp ${(p.hargaPerKg || 0).toLocaleString("id-ID")}`, 60, y);
-    y += 8;
-
-    doc.line(20, y, 190, y);
-    y += 10;
-
-    doc.setFontSize(14);
-    doc.setFont(undefined, "bold");
-    doc.text("TOTAL HARGA:", 20, y);
-    doc.text(`Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}`, 60, y);
+    const hargaPairs = [
+      [
+        "Jumlah Pesanan",
+        `${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg`,
+      ],
+      [
+        "Harga per Kg",
+        `Rp ${(p.hargaPerKg || 0).toLocaleString("id-ID")}`,
+      ],
+      [
+        "Total Harga",
+        `Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}`,
+      ],
+    ];
+    y = pdfRenderKeyValueTable(doc, y, hargaPairs, { title: "Rincian harga" });
 
     // Generate PDF as base64 first (without QR Code)
     let pdfBase64 = doc.output("datauristring");
@@ -5536,135 +4910,57 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     });
     docWithQR.line(20, 42, 190, 42);
 
-    // Re-add all content (same as before)
-    let yQR = 55;
-    docWithQR.setFontSize(11);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("ID Pembelian:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.idPembelian || "-", 60, yQR);
-    yQR += 8;
+    let yQR = 50;
+    const invPairsQr1 = [
+      ["ID Pembelian", p.idPembelian || "—"],
+      [
+        "Tanggal",
+        formatDate(p.tanggalPemesanan || new Date().toISOString()),
+      ],
+      ["Status", p.statusPemesanan || "—"],
+    ];
+    yQR = pdfRenderKeyValueTable(docWithQR, yQR, invPairsQr1, {
+      title: "Invoice",
+    });
 
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Tanggal:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(
-      formatDate(p.tanggalPemesanan || new Date().toISOString()),
-      60,
-      yQR
-    );
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Status:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.statusPemesanan || "-", 60, yQR);
-    yQR += 15;
-
-    // Pembeli Info
-    docWithQR.setFontSize(12);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("DATA PEMBELI", 20, yQR);
-    yQR += 8;
-    docWithQR.line(20, yQR, 190, yQR);
-    yQR += 10;
-    docWithQR.setFontSize(11);
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Nama Pembeli:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.namaPembeli || "-", 60, yQR);
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Tipe Pemesanan:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.tipePemesanan || "-", 60, yQR);
-    yQR += 8;
-
+    const pembeliPairsQr = [
+      ["Nama Pembeli", p.namaPembeli || "—"],
+      ["Tipe Pemesanan", p.tipePemesanan || "—"],
+    ];
     if (p.tipePemesanan === "International" && p.negara) {
-      docWithQR.setFont(undefined, "bold");
-      docWithQR.text("Negara:", 20, yQR);
-      docWithQR.setFont(undefined, "normal");
-      docWithQR.text(p.negara || "-", 60, yQR);
-      yQR += 8;
+      pembeliPairsQr.push(["Negara", p.negara || "—"]);
     }
+    yQR = pdfRenderKeyValueTable(docWithQR, yQR, pembeliPairsQr, {
+      title: "Data pembeli",
+    });
 
-    yQR += 10;
+    const prodPairsQr = [
+      ["Tipe Produk", p.tipeProduk || "—"],
+      ["Jenis Kopi", p.jenisKopi || "—"],
+      ["Proses Pengolahan", p.prosesPengolahan || "—"],
+      ["Kemasan", p.kemasan || "—"],
+    ];
+    yQR = pdfRenderKeyValueTable(docWithQR, yQR, prodPairsQr, {
+      title: "Data produk",
+    });
 
-    // Produk Info
-    docWithQR.setFontSize(12);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("DATA PRODUK", 20, yQR);
-    yQR += 8;
-    docWithQR.line(20, yQR, 190, yQR);
-    yQR += 10;
-    docWithQR.setFontSize(11);
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Tipe Produk:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.tipeProduk || "-", 60, yQR);
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Jenis Kopi:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.jenisKopi || "-", 60, yQR);
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Proses Pengolahan:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.prosesPengolahan || "-", 60, yQR);
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Kemasan:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.kemasan || "-", 60, yQR);
-    yQR += 15;
-
-    // Harga Info
-    docWithQR.setFontSize(12);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("RINCIAN HARGA", 20, yQR);
-    yQR += 8;
-    docWithQR.line(20, yQR, 190, yQR);
-    yQR += 10;
-    docWithQR.setFontSize(11);
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Jumlah Pesanan:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(
-      `${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg`,
-      60,
-      yQR
-    );
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Harga per Kg:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(
-      `Rp ${(p.hargaPerKg || 0).toLocaleString("id-ID")}`,
-      60,
-      yQR
-    );
-    yQR += 8;
-
-    docWithQR.line(20, yQR, 190, yQR);
-    yQR += 10;
-
-    docWithQR.setFontSize(14);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("TOTAL HARGA:", 20, yQR);
-    docWithQR.text(
-      `Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}`,
-      60,
-      yQR
-    );
+    const hargaPairsQr = [
+      [
+        "Jumlah Pesanan",
+        `${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg`,
+      ],
+      [
+        "Harga per Kg",
+        `Rp ${(p.hargaPerKg || 0).toLocaleString("id-ID")}`,
+      ],
+      [
+        "Total Harga",
+        `Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}`,
+      ],
+    ];
+    yQR = pdfRenderKeyValueTable(docWithQR, yQR, hargaPairsQr, {
+      title: "Rincian harga",
+    });
 
     // QR Code dengan URL yang benar
     yQR += 25;
