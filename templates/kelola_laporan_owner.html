@@ -36,6 +36,7 @@
     <!-- JS - api-service.js HARUS di-load SEBELUM kelola_laporan.js -->
     <!-- IMPORTANT: api-service.js WITHOUT defer untuk memastikan dieksekusi lebih dulu -->
     <script src="{{ url_for('static', filename='js/api-service.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/produksi-randomen.js') }}"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <script
@@ -688,6 +689,12 @@
                           <th scope="col">ID Bahan</th>
                           <th scope="col">Berat Awal (kg)</th>
                           <th scope="col">Berat Saat Ini (kg)</th>
+                          <th
+                            scope="col"
+                            title="kg bahan per kg green beans (setelah pengemasan)"
+                          >
+                            Randomen
+                          </th>
                           <th scope="col">Proses Pengolahan</th>
                           <th scope="col">Kadar Air (%)</th>
                           <th scope="col">Varietas</th>

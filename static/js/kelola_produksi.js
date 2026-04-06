@@ -1490,7 +1490,7 @@ async function displayProduksi() {
     console.log("⚠️ No produksi data to display (filtered or total)");
     tableBody.innerHTML = `
       <tr>
-        <td colspan="13" class="text-center py-4 text-muted">
+        <td colspan="14" class="text-center py-4 text-muted">
           <i class="bi bi-inbox fs-1 d-block mb-2"></i>
           Tidak ada data produksi
         </td>
@@ -1513,6 +1513,16 @@ async function displayProduksi() {
         const catCell = catRaw
           ? `<span class="small text-muted d-inline-block text-truncate" style="max-width: 10rem" title="${attrEscapeProduksi(catRaw)}">${escapeHtmlProduksi(catShort)}</span>`
           : '<span class="text-muted">—</span>';
+        const PR = window.ProduksiRandomen;
+        const cellRandomen = PR ? PR.formatRandomenPerIdCell(p) : "—";
+        const titleRand = PR
+          ? attrEscapeProduksi(
+              String(PR.buildRingkasanPerTahapanText(p) || "").replace(
+                /\n/g,
+                " ",
+              ),
+            )
+          : "";
         return `
     <tr>
       <td>${index + 1}</td>
@@ -1521,6 +1531,7 @@ async function displayProduksi() {
       <td>${(p.beratAwal || 0).toLocaleString("id-ID")} kg</td>
       <td>${p.beratTerkini ? p.beratTerkini.toLocaleString("id-ID") : "-"} kg</td>
       <td>${p.beratAkhir ? p.beratAkhir.toLocaleString("id-ID") : "-"} kg</td>
+      <td class="text-nowrap small" title="${titleRand}">${escapeHtmlProduksi(cellRandomen)}</td>
       <td><span class="badge ${(window.getProsesPengolahanBadgeClass || (() => 'bg-secondary'))(prosesLabel)}">${prosesLabel}</span></td>
       <td>${p.kadarAir || "-"}%</td>
       <td>${p.varietas || "-"}</td>
@@ -1556,7 +1567,7 @@ async function displayProduksi() {
     console.error("❌ Error rendering produksi table:", error);
     tableBody.innerHTML = `
       <tr>
-        <td colspan="13" class="text-center py-4 text-danger">
+        <td colspan="14" class="text-center py-4 text-danger">
           <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
           Error menampilkan data: ${error.message}
         </td>

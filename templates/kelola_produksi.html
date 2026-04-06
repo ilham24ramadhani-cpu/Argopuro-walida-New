@@ -24,6 +24,7 @@
     <!-- JS - api-service.js HARUS di-load SEBELUM kelola_produksi.js -->
     <!-- IMPORTANT: api-service.js WITHOUT defer untuk memastikan dieksekusi lebih dulu -->
     <script src="{{ url_for('static', filename='js/api-service.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/produksi-randomen.js') }}"></script>
     <script
       src="{{ url_for('static', filename='js/kelola_produksi.js') }}"
       defer
@@ -361,6 +362,12 @@
                       <th scope="col">Berat Awal (kg)</th>
                       <th scope="col">Berat Terkini (kg)</th>
                       <th scope="col">Berat Akhir (kg)</th>
+                      <th
+                        scope="col"
+                        title="kg bahan per kg green beans (setelah pengemasan)"
+                      >
+                        Randomen
+                      </th>
                       <th scope="col">Proses Pengolahan</th>
                       <th scope="col">Kadar Air (%)</th>
                       <th scope="col">Varietas</th>
