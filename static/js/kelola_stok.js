@@ -260,13 +260,20 @@ async function displayStok() {
         const sel = ringkasanStok.selisihBeratAkhirVsGbPx;
         const gbStok = ringkasanStok.totalStokGreenBeansSetelahOrdering;
         footerEl.classList.remove("d-none");
+        const pakaiPixel = Number(pxBruto) > 0.0001;
+        const stokLabel = pakaiPixel
+          ? "stok green beans / pixel (setelah kurangi pemesanan)"
+          : "stok <strong>green beans</strong> (setelah kurangi pemesanan)";
+        const selisihTeks = pakaiPixel
+          ? `Selisih berat akhir − (green beans + pixel) = <strong>${fmt(sel)} kg</strong> (belum dialokasi ke salah satu field di form pengemasan).`
+          : `Selisih berat akhir − green beans = <strong>${fmt(sel)} kg</strong> (bagian berat akhir yang belum diinput sebagai green beans di form pengemasan).`;
         footerEl.innerHTML =
-          `<i class="bi bi-calculator me-1"></i><strong>Penjelasan angka:</strong> Kolom total adalah <strong>stok green beans / pixel</strong> (setelah kurangi pemesanan), ` +
-          `bukan jumlah berat akhir. Untuk <strong>${ringkasanStok.jumlahBatchPengemasan}</strong> batch pengemasan pada filter ini: ` +
+          `<i class="bi bi-calculator me-1"></i><strong>Penjelasan angka:</strong> Kolom total baris Green Beans = ${stokLabel}, ` +
+          `bukan jumlah berat akhir. Untuk <strong>${ringkasanStok.jumlahBatchPengemasan}</strong> batch pada filter ini: ` +
           `Σ berat akhir = <strong>${fmt(ba)} kg</strong>, Σ green beans (bruto) = <strong>${fmt(gbBruto)} kg</strong>` +
-          (pxBruto > 0 ? `, Σ pixel (bruto) = <strong>${fmt(pxBruto)} kg</strong>` : "") +
-          `. Selisih berat akhir − (GB + pixel) = <strong>${fmt(sel)} kg</strong> (belum dialokasi ke GB/pixel di form). ` +
-          `Stok GB tersedia sekarang = <strong>${fmt(gbStok)} kg</strong>.`;
+          (pakaiPixel ? `, Σ pixel (bruto) = <strong>${fmt(pxBruto)} kg</strong>` : "") +
+          `. ${selisihTeks} ` +
+          `Stok green beans tersedia sekarang = <strong>${fmt(gbStok)} kg</strong>.`;
       } else {
         footerEl.classList.add("d-none");
         footerEl.textContent = "";
