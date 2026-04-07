@@ -305,6 +305,14 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
       return await apiCall(path);
     },
 
+    /** Bahan yang boleh dipilih untuk produksi: sesuai proses, belum dipakai produksi lain, sisa > 0 */
+    async getUntukProduksi(prosesPengolahan, idProduksi) {
+      const q = new URLSearchParams();
+      q.set("proses", String(prosesPengolahan || "").trim());
+      if (idProduksi) q.set("idProduksi", String(idProduksi).trim());
+      return await apiCall(`/bahan/untuk-produksi?${q.toString()}`);
+    },
+
     async getNextId() {
       // Get next auto-generated idBahan (BHN001, BHN002, ...)
       const res = await apiCall("/bahan/next-id");

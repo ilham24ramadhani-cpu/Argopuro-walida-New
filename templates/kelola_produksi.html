@@ -428,20 +428,40 @@
                   >
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label for="idBahan" class="form-label"
-                    >ID Bahan &amp; proses pengolahan <span class="text-danger">*</span></label
+                  <label for="prosesPengolahan" class="form-label"
+                    >Proses pengolahan <span class="text-danger">*</span></label
                   >
                   <select
                     class="form-select"
-                    id="idBahan"
+                    id="prosesPengolahan"
                     required
-                    onchange="loadBahanDataProduksi()"
+                    onchange="if (window.onProsesPengolahanProduksiChange) onProsesPengolahanProduksiChange()"
                   >
-                    <option value="">Pilih kombinasi ID Bahan + proses</option>
+                    <option value="">Pilih proses terlebih dahulu</option>
                   </select>
                   <small class="text-muted"
-                    >Kombinasi unik dari pencatatan bahan masuk. Tahapan produksi mengikuti proses ini.</small
+                    >Tentukan proses dulu (satu jenis, misalnya HSN). Daftar ID Bahan mengikuti proses ini.</small
                   >
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-12 mb-3">
+                  <label class="form-label"
+                    >ID Bahan <span class="text-danger">*</span></label
+                  >
+                  <div
+                    id="idBahanCheckboxContainer"
+                    class="border rounded p-2 bg-light"
+                    style="max-height: 240px; overflow-y: auto"
+                  >
+                    <p class="text-muted small mb-0" id="idBahanCheckboxPlaceholder">
+                      Pilih proses pengolahan terlebih dahulu.
+                    </p>
+                  </div>
+                  <small class="text-muted"
+                    >Centang satu atau lebih bahan. Hanya bahan yang sesuai proses dan belum dipakai di produksi manapun. Berat awal dijumlahkan dari sisa tiap bahan terpilih.</small
+                  >
+                  <input type="hidden" id="idBahan" value="" />
                 </div>
               </div>
               <div class="row">
@@ -605,16 +625,6 @@
                 </div>
               </div>
               <div class="row">
-                <div class="col-md-6 mb-3 d-none" aria-hidden="true">
-                  <label for="prosesPengolahan" class="form-label">Proses (sinkron dari bahan)</label>
-                  <select
-                    class="form-select"
-                    id="prosesPengolahan"
-                    onchange="loadTahapanFromMasterProduksi()"
-                  >
-                    <option value="">—</option>
-                  </select>
-                </div>
                 <!-- Field Kadar Air (selalu terlihat, bisa diisi untuk semua tahapan) -->
                 <div class="col-md-12 mb-3" id="kadarAirField">
                   <label for="kadarAir" class="form-label"

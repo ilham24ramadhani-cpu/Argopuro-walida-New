@@ -386,11 +386,21 @@
                   <small class="text-muted"><i class="bi bi-info-circle"></i> ID Produksi dihasilkan otomatis (format PRD-YYYYMM-XXXX)</small>
                 </div>
                 <div class="col-md-6 mb-3">
-                  <label for="idBahan" class="form-label">ID Bahan &amp; proses <span class="text-danger">*</span></label>
-                  <select class="form-select" id="idBahan" required onchange="loadBahanDataProduksi()">
-                    <option value="">Pilih kombinasi ID Bahan + proses</option>
+                  <label for="prosesPengolahan" class="form-label">Proses pengolahan <span class="text-danger">*</span></label>
+                  <select class="form-select" id="prosesPengolahan" required onchange="if (window.onProsesPengolahanProduksiChange) onProsesPengolahanProduksiChange()">
+                    <option value="">Pilih proses terlebih dahulu</option>
                   </select>
-                  <small class="text-muted">Dari bahan masuk. Tahapan mengikuti proses ini.</small>
+                  <small class="text-muted">Tentukan proses dulu; daftar ID Bahan mengikuti proses ini.</small>
+                </div>
+              </div>
+              <div class="row">
+                <div class="col-12 mb-3">
+                  <label class="form-label">ID Bahan <span class="text-danger">*</span></label>
+                  <div id="idBahanCheckboxContainer" class="border rounded p-2 bg-light" style="max-height: 240px; overflow-y: auto">
+                    <p class="text-muted small mb-0" id="idBahanCheckboxPlaceholder">Pilih proses pengolahan terlebih dahulu.</p>
+                  </div>
+                  <small class="text-muted">Centang satu atau lebih bahan (sesuai proses, belum dipakai produksi lain).</small>
+                  <input type="hidden" id="idBahan" value="" />
                 </div>
               </div>
               <div class="row">
@@ -461,12 +471,6 @@
                 </div>
               </div>
               <div class="row">
-                <div class="col-md-6 mb-3 d-none" aria-hidden="true">
-                  <label for="prosesPengolahan" class="form-label">Proses (sinkron)</label>
-                  <select class="form-select" id="prosesPengolahan" onchange="loadTahapanFromMasterProduksi()">
-                    <option value="">—</option>
-                  </select>
-                </div>
                 <div class="col-md-12 mb-3" id="kadarAirField">
                   <label for="kadarAir" class="form-label">Kadar Air (%) <span class="text-danger" id="kadarAirAsterisk" style="display: none;">*</span></label>
                   <input type="number" class="form-control" id="kadarAir" placeholder="Masukkan kadar air" min="0" max="100" step="0.1" />

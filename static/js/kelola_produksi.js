@@ -72,6 +72,326 @@ function decodeBahanProduksiOption(encoded) {
   }
 }
 
+/** Daftar id bahan dari rekaman produksi (API baru atau legacy). */
+function getIdBahanListFromProduksi(p) {
+  if (!p) return [];
+  if (Array.isArray(p.idBahanList) && p.idBahanList.length > 0) {
+    return p.idBahanList.map((x) => String(x).trim()).filter(Boolean);
+  }
+  if (p.idBahan) return [String(p.idBahan).trim()];
+  return [];
+}
+
+/**
+ * Setelah tahap Pengeringan Akhir (dan berikutnya), tambah ID bahan tidak diizinkan saat edit.
+ */
+function isTambahBahanTerlarangSetelahPengeringanAkhir(statusTahapan) {
+  const s = (statusTahapan || "").trim();
+  if (!s) return false;
+  if (s.includes("Pengeringan Akhir")) return true;
+  const later = [
+    "Hulling",
+    "Hand Sortasi",
+    "Grinding",
+    "Pengemasan",
+    "Pengupasan Kulit Tanduk",
+    "Roasting",
+  ];
+  return later.some((m) => s.includes(m));
+}
+
+let _produksiBahanRowsCache = [];
+
+function clearIdBahanCheckboxUI() {
+  const container = document.getElementById("idBahanCheckboxContainer");
+  const ph = document.getElementById("idBahanCheckboxPlaceholder");
+  if (!container) return;
+  container
+    .querySelectorAll(".form-check, .readonly-bahan-blok")
+    .forEach((el) => el.remove());
+  if (ph) {
+    ph.classList.remove("d-none");
+    ph.textContent = "Pilih proses pengolahan terlebih dahulu.";
+  }
+  const hid = document.getElementById("idBahan");
+  if (hid) hid.value = "";
+}
+
+/** Setelah user memilih proses: muat bahan yang boleh dipilih (satu proses, belum terikat produksi). */
+window.onProsesPengolahanProduksiChange = async function onProsesPengolahanProduksiChange() {
+  const proses = document.getElementById("prosesPengolahan")?.value?.trim();
+  const container = document.getElementById("idBahanCheckboxContainer");
+  const ph = document.getElementById("idBahanCheckboxPlaceholder");
+  if (!container) return;
+
+  if (currentEditId) return;
+
+  container
+    .querySelectorAll(".form-check, .readonly-bahan-blok")
+    .forEach((el) => el.remove());
+  const hid = document.getElementById("idBahan");
+  if (hid) hid.value = "";
+  const beratAwalInput = document.getElementById("beratAwal");
+  if (beratAwalInput && !currentEditId) {
+    beratAwalInput.value = "";
+  }
+
+  if (!proses) {
+    if (ph) {
+      ph.classList.remove("d-none");
+      ph.textContent = "Pilih proses pengolahan terlebih dahulu.";
+    }
+    return;
+  }
+
+  if (ph) ph.classList.add("d-none");
+
+  if (!window.API?.Bahan?.getUntukProduksi) {
+    if (ph) {
+      ph.classList.remove("d-none");
+      ph.textContent = "API tidak mendukung pemuatan bahan (getUntukProduksi).";
+    }
+    return;
+  }
+
+  try {
+    const rows = await window.API.Bahan.getUntukProduksi(proses);
+    _produksiBahanRowsCache = Array.isArray(rows) ? rows : [];
+    if (_produksiBahanRowsCache.length === 0) {
+      if (ph) {
+        ph.classList.remove("d-none");
+        ph.textContent =
+          "Tidak ada ID Bahan tersedia untuk proses ini (sudah dipakai produksi lain atau sisa 0 kg).";
+      }
+      return;
+    }
+    _produksiBahanRowsCache.forEach((row, idx) => {
+      const id = row.idBahan;
+      if (!id) return;
+      const sisa = Number(row.sisaTersedia) || 0;
+      const cap = Number(row.alokasi) || 0;
+      const wrap = document.createElement("div");
+      wrap.className = "form-check mb-1";
+      wrap.innerHTML = `
+        <input class="form-check-input" type="checkbox" name="idBahanProduksi" id="cbBahan_${idx}"
+          value="${escapeHtmlProduksi(id)}"
+          data-sisa="${sisa}"
+          data-id-bahan="${escapeHtmlProduksi(id)}" />
+        <label class="form-check-label" for="cbBahan_${idx}">
+          <strong>${escapeHtmlProduksi(id)}</strong>
+          <span class="text-muted small"> — sisa ${sisa.toLocaleString("id-ID")} kg (alokasi ${cap.toLocaleString("id-ID")} kg)</span>
+        </label>`;
+      container.appendChild(wrap);
+      const cb = wrap.querySelector('input[type="checkbox"]');
+      cb.addEventListener("change", () => syncProduksiBahanDariCheckbox());
+    });
+  } catch (e) {
+    console.error("getUntukProduksi:", e);
+    if (ph) {
+      ph.classList.remove("d-none");
+      ph.textContent = "Gagal memuat daftar bahan: " + (e.message || "error");
+    }
+  }
+};
+
+async function syncProduksiBahanDariCheckbox() {
+  const proses = document.getElementById("prosesPengolahan")?.value?.trim();
+  const container = document.getElementById("idBahanCheckboxContainer");
+  const hid = document.getElementById("idBahan");
+  if (!container || currentEditId) return;
+
+  const checked = container.querySelectorAll(
+    'input[type="checkbox"][name="idBahanProduksi"]:checked',
+  );
+  const ids = [];
+  let sum = 0;
+  checked.forEach((cb) => {
+    const id = (cb.dataset.idBahan || cb.value || "").trim();
+    const sisa = parseFloat(cb.dataset.sisa || "0") || 0;
+    if (!id) return;
+    ids.push(id);
+    sum += sisa;
+  });
+
+  if (hid) hid.value = ids[0] || "";
+
+  const beratAwalInput = document.getElementById("beratAwal");
+  if (beratAwalInput && !currentEditId) {
+    beratAwalInput.value = sum > 0 ? String(Math.round(sum * 10000) / 10000) : "";
+    beratAwalInput.readOnly = true;
+    beratAwalInput.classList.add("bg-light");
+    beratAwalInput.title =
+      ids.length > 1
+        ? `Total sisa gabungan ${ids.length} bahan pada jalur "${proses}"`
+        : `Berat awal mengikuti sisa jalur proses "${proses}"`;
+  }
+
+  if (ids.length > 0 && window.API?.Bahan?.getById) {
+    try {
+      const bahanData = await window.API.Bahan.getById(ids[0]);
+      if (bahanData) {
+        const vEl = document.getElementById("varietas");
+        const tEl = document.getElementById("tanggalMasuk");
+        if (vEl) vEl.value = bahanData.varietas || "";
+        if (tEl) tEl.value = bahanData.tanggalMasuk || "";
+      }
+    } catch (err) {
+      console.warn("getById varietas:", err);
+    }
+  } else {
+    const vEl = document.getElementById("varietas");
+    const tEl = document.getElementById("tanggalMasuk");
+    if (vEl) vEl.value = "";
+    if (tEl) tEl.value = "";
+  }
+
+  if (proses) {
+    await loadTahapanFromMasterProduksi(proses);
+    loadVarietasOptionsProduksi();
+  }
+}
+
+/** Bangun daftar centang saat edit: bahan lama terkunci + opsi tambah dari API. */
+async function renderIdBahanEditMode(p) {
+  const container = document.getElementById("idBahanCheckboxContainer");
+  const ph = document.getElementById("idBahanCheckboxPlaceholder");
+  if (!container) return;
+  container
+    .querySelectorAll(".form-check, .readonly-bahan-blok")
+    .forEach((el) => el.remove());
+  if (ph) ph.classList.add("d-none");
+
+  const statusEff =
+    (document.getElementById("statusTahapan")?.value &&
+      String(document.getElementById("statusTahapan").value).trim()) ||
+    p.statusTahapan ||
+    "";
+  const kunciTambahBahan =
+    isTambahBahanTerlarangSetelahPengeringanAkhir(statusEff);
+
+  const oldIds = getIdBahanListFromProduksi(p);
+  let rows = [];
+  if (Array.isArray(p.alokasiBeratBahan) && p.alokasiBeratBahan.length > 0) {
+    rows = p.alokasiBeratBahan;
+  } else if (oldIds.length === 1) {
+    rows = [{ idBahan: oldIds[0], berat: p.beratAwal }];
+  } else {
+    const per = oldIds.length
+      ? (parseFloat(p.beratAwal) || 0) / oldIds.length
+      : 0;
+    rows = oldIds.map((id) => ({ idBahan: id, berat: per }));
+  }
+
+  let idx = 0;
+  rows.forEach((r) => {
+    const id = String(r.idBahan || "").trim();
+    const br = parseFloat(r.berat) || 0;
+    if (!id) return;
+    const wrap = document.createElement("div");
+    wrap.className = "form-check mb-1";
+    const cid = `cbBahanEditLocked_${idx++}`;
+    wrap.innerHTML = `
+      <input class="form-check-input" type="checkbox" name="idBahanProduksi" id="${cid}"
+        checked disabled data-bahan-locked="1"
+        data-id-bahan="${escapeHtmlProduksi(id)}"
+        data-berat-alokasi="${br}" />
+      <label class="form-check-label text-muted" for="${cid}">
+        <strong>${escapeHtmlProduksi(id)}</strong>
+        <span class="small"> — alokasi tercatat ${br.toLocaleString("id-ID")} kg (tidak dapat dihapus)</span>
+      </label>`;
+    container.appendChild(wrap);
+  });
+
+  if (kunciTambahBahan) {
+    const info = document.createElement("div");
+    info.className =
+      "alert alert-secondary border py-2 small mb-0 mt-2 readonly-bahan-blok";
+    info.setAttribute("role", "status");
+    info.innerHTML =
+      '<i class="bi bi-lock-fill me-1"></i> Penambahan ID bahan <strong>dikunci</strong> mulai tahap <strong>Pengeringan Akhir</strong> (dan tahap setelahnya).';
+    container.appendChild(info);
+  }
+
+  if (
+    !kunciTambahBahan &&
+    window.API?.Bahan?.getUntukProduksi &&
+    p.prosesPengolahan &&
+    p.idProduksi
+  ) {
+    try {
+      const extra = await window.API.Bahan.getUntukProduksi(
+        p.prosesPengolahan,
+        p.idProduksi,
+      );
+      const list = Array.isArray(extra) ? extra : [];
+      list.forEach((row) => {
+        const id = row.idBahan;
+        if (!id || oldIds.includes(id)) return;
+        const sisa = Number(row.sisaTersedia) || 0;
+        const cap = Number(row.alokasi) || 0;
+        if (sisa <= 0) return;
+        const wrap = document.createElement("div");
+        wrap.className = "form-check mb-1";
+        const cid = `cbBahanEditNew_${idx++}`;
+        wrap.innerHTML = `
+          <input class="form-check-input" type="checkbox" name="idBahanProduksi" id="${cid}"
+            value="${escapeHtmlProduksi(id)}"
+            data-sisa="${sisa}"
+            data-id-bahan="${escapeHtmlProduksi(id)}" />
+          <label class="form-check-label" for="${cid}">
+            <strong>${escapeHtmlProduksi(id)}</strong>
+            <span class="text-muted small"> — sisa ${sisa.toLocaleString("id-ID")} kg (alokasi ${cap.toLocaleString("id-ID")} kg) · tambahan</span>
+          </label>`;
+        container.appendChild(wrap);
+        wrap.querySelector('input[type="checkbox"]')?.addEventListener("change", () =>
+          syncProduksiBahanEditCheckbox(),
+        );
+      });
+    } catch (e) {
+      console.error("getUntukProduksi (edit):", e);
+    }
+  }
+
+  const hid = document.getElementById("idBahan");
+  if (hid) hid.value = oldIds[0] || "";
+  syncProduksiBahanEditCheckbox();
+}
+
+/** Total berat awal = jumlah alokasi bahan terkunci + sisa bahan tambahan yang dicentang. */
+function syncProduksiBahanEditCheckbox() {
+  const container = document.getElementById("idBahanCheckboxContainer");
+  const beratAwalInput = document.getElementById("beratAwal");
+  if (!container || !beratAwalInput || !currentEditId) return;
+
+  let sum = 0;
+  container.querySelectorAll('input[data-bahan-locked="1"]').forEach((cb) => {
+    sum += parseFloat(cb.dataset.beratAlokasi || "0") || 0;
+  });
+  container
+    .querySelectorAll(
+      'input[name="idBahanProduksi"]:not([data-bahan-locked]):checked',
+    )
+    .forEach((cb) => {
+      sum += parseFloat(cb.dataset.sisa || "0") || 0;
+    });
+
+  const rounded = Math.round(sum * 10000) / 10000;
+  beratAwalInput.value = sum > 0 ? String(rounded) : "";
+  beratAwalInput.readOnly = true;
+  beratAwalInput.classList.add("bg-light");
+  const st =
+    document.getElementById("statusTahapan")?.value ||
+    window._produksiEditSnapshot?.statusTahapan ||
+    "";
+  if (isTambahBahanTerlarangSetelahPengeringanAkhir(st)) {
+    beratAwalInput.title =
+      "Total alokasi bahan tercatat. Penambahan bahan dikunci mulai tahap Pengeringan Akhir.";
+  } else {
+    beratAwalInput.title =
+      "Jumlah total alokasi semua ID bahan (bertambah otomatis jika menambah centang).";
+  }
+}
+
 // ========== Berat terkini: total vs per kloter (maks. 100) ==========
 const MAX_KLOTER_BERAT_TERKINI = 100;
 
@@ -292,198 +612,28 @@ function getBeratTerkiniDetailKloterPayload() {
   return out.length ? out : null;
 }
 
-// Load data bahan untuk dropdown (MONGODB ONLY)
+// Reset / siapkan area pilih bahan (checkbox — pilih proses dulu)
 async function loadBahanOptionsProduksi() {
   try {
-    console.log("🔄 Loading bahan options for produksi dropdown...");
-
-    // Wait for API to be available
-    let apiRetries = 0;
-    while ((!window.API || !window.API.Bahan) && apiRetries < 20) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      apiRetries++;
-    }
-
-    if (!window.API || !window.API.Bahan) {
-      console.error(
-        "❌ API.Bahan not available after waiting, skipping bahan options",
-      );
-      const select = document.getElementById("idBahan");
-      if (select) {
-        select.innerHTML =
-          '<option value="">⚠️ Error loading bahan (API tidak tersedia)</option>';
-      }
+    if (!document.getElementById("idBahanCheckboxContainer")) {
       return;
     }
-
-    let bahan = [];
-    try {
-      bahan = await window.API.Bahan.getAll();
-      console.log(`✅ Loaded ${bahan.length} bahan from MongoDB`);
-    } catch (apiError) {
-      console.error("❌ Error fetching bahan from API:", apiError);
-      const select = document.getElementById("idBahan");
-      if (select) {
-        select.innerHTML = '<option value="">⚠️ Error loading bahan</option>';
-      }
+    if (currentEditId) {
       return;
     }
-
-    if (!bahan || bahan.length === 0) {
-      console.warn("⚠️ No bahan data found in MongoDB");
-      const select = document.getElementById("idBahan");
-      if (select) {
-        select.innerHTML = '<option value="">Tidak ada data bahan</option>';
-      }
-      return;
-    }
-
-    // Retry mechanism untuk menunggu element tersedia (modal mungkin masih rendering)
-    let select = document.getElementById("idBahan");
-    let elementRetries = 0;
-    while (!select && elementRetries < 10) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      select = document.getElementById("idBahan");
-      elementRetries++;
-    }
-
-    if (!select) {
-      // Element mungkin tidak ada di template tertentu (misalnya karyawan view)
-      console.warn(
-        "⚠️ Select element 'idBahan' not found - mungkin tidak ada di template ini",
-      );
-      console.warn("Available form elements:", {
-        modal: !!document.getElementById("modalProduksi"),
-        form: !!document.getElementById("formProduksi"),
-        idProduksi: !!document.getElementById("idProduksi"),
-      });
-      // Return tanpa error - mungkin template tidak memerlukan dropdown ini
-      return;
-    }
-
-    const selectedValue = select.value;
-    select.innerHTML =
-      '<option value="">Pilih ID Bahan dan proses pengolahan</option>';
-
-    /** Saat tambah produksi: sembunyikan jalur bahan yang sisa stoknya 0 (atau tidak ada). Mode edit: tampilkan semua (penyesuaian di editProduksi jika perlu). */
-    const isEditMode = !!currentEditId;
-
-    let optionsAdded = 0;
-    for (const b of bahan) {
-      if (!b?.idBahan) continue;
-      const lines =
-        b.prosesBahan && Array.isArray(b.prosesBahan) && b.prosesBahan.length > 0
-          ? b.prosesBahan
-          : null;
-      if (!lines) {
-        continue;
-      }
-      for (const line of lines) {
-        const proses = line.prosesPengolahan;
-        if (!proses) continue;
-        const cap = parseFloat(line.jumlahBeratProses) || 0;
-        let sisa = 0;
-        try {
-          sisa = await calculateSisaBahan(b.idBahan, proses);
-        } catch (e) {
-          console.warn(`sisa ${b.idBahan}/${proses}:`, e);
-        }
-        const sisaNum = Number(sisa);
-        if (!isEditMode && !(sisaNum > 0)) {
-          continue;
-        }
-        const stableKey = { idBahan: b.idBahan, prosesPengolahan: proses };
-        const option = document.createElement("option");
-        option.value = encodeBahanProduksiOption(stableKey);
-        option.textContent = `${b.idBahan} — ${proses} · Sisa ${sisaNum.toLocaleString("id-ID")} kg (alokasi ${cap.toLocaleString("id-ID")} kg)`;
-        option.dataset.bahan = JSON.stringify(b);
-        option.dataset.prosesPengolahan = proses;
-        option.dataset.beratLini = String(cap);
-        select.appendChild(option);
-        optionsAdded++;
-      }
-    }
-
-    if (!isEditMode && optionsAdded === 0) {
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.disabled = true;
-      opt.textContent =
-        "Tidak ada bahan dengan sisa tersedia (sisa harus lebih dari 0 kg)";
-      select.appendChild(opt);
-    }
-
-    console.log(`✅ Added ${optionsAdded} baris bahan×proses ke dropdown`);
-
-    if (selectedValue) {
-      const has = Array.from(select.options).some((o) => o.value === selectedValue);
-      if (has) select.value = selectedValue;
+    clearIdBahanCheckboxUI();
+    const ps = document.getElementById("prosesPengolahan");
+    if (ps && ps.value) {
+      await onProsesPengolahanProduksiChange();
     }
   } catch (error) {
-    console.error("❌ Error loading bahan options:", error);
-    const select = document.getElementById("idBahan");
-    if (select) {
-      select.innerHTML =
-        '<option value="">⚠️ Error: ' +
-        (error.message || "Unknown error") +
-        "</option>";
-    }
+    console.error("❌ Error loadBahanOptionsProduksi:", error);
   }
 }
 
-// Auto-fill dari pilihan kombinasi idBahan + proses pengolahan
+// Alias kompatibilitas — pemilihan bahan kini lewat checkbox + proses
 async function loadBahanDataProduksi() {
-  const idBahanSelect = document.getElementById("idBahan");
-  const selectedOption = idBahanSelect?.options[idBahanSelect.selectedIndex];
-  if (!selectedOption || !selectedOption.value) return;
-
-  const meta = decodeBahanProduksiOption(selectedOption.value);
-  if (!meta?.idBahan || !meta.prosesPengolahan) return;
-
-  let bahanData = null;
-  try {
-    bahanData = JSON.parse(selectedOption.dataset.bahan || "null");
-  } catch (e) {
-    bahanData = null;
-  }
-  if (!bahanData && window.API?.Bahan) {
-    try {
-      bahanData = await window.API.Bahan.getById(meta.idBahan);
-    } catch (error) {
-      console.error("Error loading bahan data:", error);
-      return;
-    }
-  }
-  if (!bahanData) return;
-
-  document.getElementById("varietas").value = bahanData.varietas || "";
-  document.getElementById("tanggalMasuk").value = bahanData.tanggalMasuk || "";
-
-  const prosesSel = document.getElementById("prosesPengolahan");
-  if (prosesSel && meta.prosesPengolahan) {
-    prosesSel.value = meta.prosesPengolahan;
-  }
-
-  const sisaBahan = await calculateSisaBahan(
-    meta.idBahan,
-    meta.prosesPengolahan,
-  );
-
-  const beratAwalInput = document.getElementById("beratAwal");
-  if (beratAwalInput) {
-    if (!currentEditId) {
-      beratAwalInput.value =
-        sisaBahan > 0 ? String(sisaBahan) : "";
-      beratAwalInput.readOnly = true;
-      beratAwalInput.classList.add("bg-light");
-      beratAwalInput.title = `Berat awal mengikuti sisa jalur proses "${meta.prosesPengolahan}"`;
-    }
-    beratAwalInput.placeholder = `Sisa jalur: ${sisaBahan.toLocaleString("id-ID")} kg`;
-    beratAwalInput.max = sisaBahan;
-  }
-
-  await loadTahapanFromMasterProduksi(meta.prosesPengolahan);
-  loadVarietasOptionsProduksi();
+  await syncProduksiBahanDariCheckbox();
 }
 
 // Konstanta tahapan produksi yang tersedia
@@ -1419,10 +1569,9 @@ function attrEscapeProduksi(s) {
 
 /** Tampilan proses: jika master bahan hanya punya satu baris proses, tampilkan nama itu (selaras dengan kelola bahan). */
 function getProsesPengolahanTampilan(prod, bahanById) {
+  const firstId = getIdBahanListFromProduksi(prod)[0] || prod?.idBahan;
   const b =
-    prod?.idBahan && bahanById instanceof Map
-      ? bahanById.get(prod.idBahan)
-      : null;
+    firstId && bahanById instanceof Map ? bahanById.get(firstId) : null;
   const lines = b?.prosesBahan;
   if (Array.isArray(lines) && lines.length === 1 && lines[0]?.prosesPengolahan) {
     return String(lines[0].prosesPengolahan);
@@ -1478,6 +1627,10 @@ async function displayProduksi() {
       (p) =>
         (p.idProduksi && p.idProduksi.toLowerCase().includes(searchTerm)) ||
         (p.idBahan && p.idBahan.toLowerCase().includes(searchTerm)) ||
+        (Array.isArray(p.idBahanList) &&
+          p.idBahanList.some((x) =>
+            String(x).toLowerCase().includes(searchTerm),
+          )) ||
         (p.prosesPengolahan &&
           p.prosesPengolahan.toLowerCase().includes(searchTerm)) ||
         (p.varietas && p.varietas.toLowerCase().includes(searchTerm)) ||
@@ -1523,11 +1676,20 @@ async function displayProduksi() {
               ),
             )
           : "";
+        const idBahanTampil = (() => {
+          const lst = getIdBahanListFromProduksi(p);
+          if (lst.length > 1) {
+            return lst
+              .map((id) => `<span class="badge bg-info me-1">${escapeHtmlProduksi(id)}</span>`)
+              .join("");
+          }
+          return `<span class="badge bg-info">${escapeHtmlProduksi(lst[0] || p.idBahan || "-")}</span>`;
+        })();
         return `
     <tr>
       <td>${index + 1}</td>
       <td>${p.idProduksi || "-"}</td>
-      <td><span class="badge bg-info">${p.idBahan || "-"}</span></td>
+      <td>${idBahanTampil}</td>
       <td>${(p.beratAwal || 0).toLocaleString("id-ID")} kg</td>
       <td>${p.beratTerkini ? p.beratTerkini.toLocaleString("id-ID") : "-"} kg</td>
       <td>${p.beratAkhir ? p.beratAkhir.toLocaleString("id-ID") : "-"} kg</td>
@@ -1824,6 +1986,7 @@ window.toggleBeratAkhirField = function toggleBeratAkhirField() {
 // Fungsi untuk membuka modal (mendaftarkan ke window untuk akses dari HTML)
 window.openModal = async function openModal(mode = "add") {
   currentEditId = null;
+  window._produksiEditSnapshot = null;
   const modalElement = document.getElementById("modalProduksi");
   const modalLabel = document.getElementById("modalProduksiLabel");
   const form = document.getElementById("formProduksi");
@@ -1892,7 +2055,7 @@ window.openModal = async function openModal(mode = "add") {
     const statusInfo = document.getElementById("statusTahapanInfo");
     if (statusInfo) {
       statusInfo.innerHTML =
-        '<i class="bi bi-info-circle"></i> Pilih <strong>ID Bahan dan proses pengolahan</strong>; tahapan mengikuti proses yang dipilih saat bahan masuk.';
+        '<i class="bi bi-info-circle"></i> Pilih <strong>proses pengolahan</strong> lalu centang <strong>ID Bahan</strong>; tahapan mengikuti proses tersebut.';
     }
     const statusError = document.getElementById("statusTahapanError");
     if (statusError) {
@@ -1903,12 +2066,17 @@ window.openModal = async function openModal(mode = "add") {
     const beratAwalInput = document.getElementById("beratAwal");
     const beratAwalInfo = document.getElementById("beratAwalInfo");
     const beratAwalWarning = document.getElementById("beratAwalWarning");
-    const idBahanSelect = document.getElementById("idBahan");
+    const prosesPengolahanEl = document.getElementById("prosesPengolahan");
+    if (prosesPengolahanEl) {
+      prosesPengolahanEl.disabled = false;
+      prosesPengolahanEl.style.backgroundColor = "";
+    }
+    clearIdBahanCheckboxUI();
 
     if (beratAwalInput) {
       beratAwalInput.value = "";
       beratAwalInput.placeholder =
-        "Otomatis setelah pilih bahan + proses (sisa jalur)";
+        "Otomatis setelah pilih proses dan centang bahan (jumlah sisa)";
       beratAwalInput.title = "";
       beratAwalInput.max = "";
       beratAwalInput.readOnly = true;
@@ -1923,12 +2091,6 @@ window.openModal = async function openModal(mode = "add") {
       beratAwalWarning.classList.add("d-none");
     }
 
-    // ID Bahan juga enabled saat add mode
-    if (idBahanSelect) {
-      idBahanSelect.disabled = false;
-      idBahanSelect.style.backgroundColor = "";
-      idBahanSelect.title = "";
-    }
 
     // Reset berat terkini untuk add mode - wajib diisi
     const beratTerkiniInput = document.getElementById("beratTerkini");
@@ -1987,6 +2149,7 @@ window.editProduksi = async function editProduksi(id) {
     }
 
     currentEditId = id;
+    window._produksiEditSnapshot = p;
 
     // Pastikan modal element ada sebelum set value
     const modalElement = document.getElementById("modalProduksi");
@@ -2031,14 +2194,16 @@ window.editProduksi = async function editProduksi(id) {
     const beratAwalInput = document.getElementById("beratAwal");
     const beratAwalInfo = document.getElementById("beratAwalInfo");
     const beratAwalWarning = document.getElementById("beratAwalWarning");
-    const idBahanSelect = document.getElementById("idBahan");
 
     if (beratAwalInput) {
       beratAwalInput.value = p.beratAwal || "";
-      beratAwalInput.readOnly = true; // Readonly saat edit
-      beratAwalInput.style.backgroundColor = "#e9ecef"; // Warna abu-abu untuk menunjukkan readonly
-      beratAwalInput.title =
-        "Berat awal tidak dapat diubah. Ini adalah nilai referensi dari pencatatan awal.";
+      beratAwalInput.readOnly = true;
+      beratAwalInput.style.backgroundColor = "#e9ecef";
+      beratAwalInput.title = isTambahBahanTerlarangSetelahPengeringanAkhir(
+        p.statusTahapan,
+      )
+        ? "Total alokasi bahan tercatat. Penambahan bahan dikunci mulai tahap Pengeringan Akhir."
+        : "Total alokasi semua ID bahan. Bertambah otomatis jika Anda menambah centang bahan baru.";
     }
     if (beratAwalInfo) {
       beratAwalInfo.classList.add("d-none");
@@ -2047,12 +2212,12 @@ window.editProduksi = async function editProduksi(id) {
       beratAwalWarning.classList.remove("d-none");
     }
 
-    // ID Bahan juga readonly saat edit mode
-    if (idBahanSelect) {
-      idBahanSelect.disabled = true; // Disabled saat edit mode
-      idBahanSelect.style.backgroundColor = "#e9ecef";
-      idBahanSelect.title =
-        "ID Bahan tidak dapat diubah setelah produksi dibuat.";
+    const prosesPengolahanEdit = document.getElementById("prosesPengolahan");
+    if (prosesPengolahanEdit) {
+      prosesPengolahanEdit.disabled = true;
+      prosesPengolahanEdit.style.backgroundColor = "#e9ecef";
+      prosesPengolahanEdit.title =
+        "Proses tidak dapat diubah setelah produksi dibuat.";
     }
 
     // Set berat terkini berdasarkan status tahapan
@@ -2217,28 +2382,31 @@ window.editProduksi = async function editProduksi(id) {
         // Load dropdown options after modal is shown
         await Promise.all([
           loadVarietasOptionsProduksi(),
-          loadBahanOptionsProduksi(),
           loadTipeProdukOptionsProduksi(),
         ]);
 
-        const idBahanSelectAfterLoad = document.getElementById("idBahan");
-        if (idBahanSelectAfterLoad && p.idBahan && p.prosesPengolahan) {
-          const v = encodeBahanProduksiOption({
-            idBahan: p.idBahan,
-            prosesPengolahan: p.prosesPengolahan,
-          });
-          if (!Array.from(idBahanSelectAfterLoad.options).some((o) => o.value === v)) {
-            const opt = document.createElement("option");
-            opt.value = v;
-            opt.textContent = `${p.idBahan} — ${p.prosesPengolahan} (produksi ini)`;
-            idBahanSelectAfterLoad.appendChild(opt);
-          }
-          idBahanSelectAfterLoad.value = v;
-        }
         setElementValue("prosesPengolahan", p.prosesPengolahan);
         currentProduksiTahapanAktif = p.statusTahapan;
         await loadTahapanFromMasterProduksi(p.prosesPengolahan);
         setElementValue("statusTahapan", p.statusTahapan);
+        await renderIdBahanEditMode(p);
+
+        const stSel = document.getElementById("statusTahapan");
+        if (stSel) {
+          if (stSel._bahanStatusListener) {
+            stSel.removeEventListener("change", stSel._bahanStatusListener);
+          }
+          stSel._bahanStatusListener = async function onStatusTahapanRefreshBahan() {
+            if (!currentEditId || !window._produksiEditSnapshot) return;
+            const snap = window._produksiEditSnapshot;
+            const merged = {
+              ...snap,
+              statusTahapan: stSel.value || snap.statusTahapan,
+            };
+            await renderIdBahanEditMode(merged);
+          };
+          stSel.addEventListener("change", stSel._bahanStatusListener);
+        }
 
         // Toggle berat akhir field setelah status tahapan sudah di-set
         toggleBeratAkhirField();
@@ -2402,57 +2570,79 @@ window.saveProduksi = async function saveProduksi() {
     }
 
     let idBahan;
+    let idBahanList = [];
+    let alokasiBeratBahan = [];
     let decodedBahanMeta = null;
-    const idBahanElement = document.getElementById("idBahan");
-    if (idBahanElement && idBahanElement.value) {
-      decodedBahanMeta = decodeBahanProduksiOption(idBahanElement.value);
-      if (decodedBahanMeta?.idBahan) {
-        idBahan = decodedBahanMeta.idBahan;
-        console.log("✅ idBahan from encoded option:", idBahan);
-      } else {
-        idBahan = idBahanElement.value.trim();
-        console.log("✅ idBahan raw (legacy):", idBahan);
-      }
-    } else if (isEditMode) {
-      if (produksiLama && produksiLama.idBahan) {
-        idBahan = produksiLama.idBahan;
-      } else {
+
+    if (isEditMode && produksiLama) {
+      const container = document.getElementById("idBahanCheckboxContainer");
+      const locked = container?.querySelectorAll('input[data-bahan-locked="1"]') || [];
+      const newChecked = container?.querySelectorAll(
+        'input[name="idBahanProduksi"]:not([data-bahan-locked]):checked',
+      ) || [];
+      idBahanList = [];
+      alokasiBeratBahan = [];
+      locked.forEach((cb) => {
+        const bid = (cb.dataset.idBahan || "").trim();
+        const br = parseFloat(cb.dataset.beratAlokasi || "0") || 0;
+        if (bid) {
+          idBahanList.push(bid);
+          alokasiBeratBahan.push({ idBahan: bid, berat: br });
+        }
+      });
+      newChecked.forEach((cb) => {
+        const bid = (cb.dataset.idBahan || cb.value || "").trim();
+        const sisa = parseFloat(cb.dataset.sisa || "0") || 0;
+        if (bid) {
+          idBahanList.push(bid);
+          alokasiBeratBahan.push({ idBahan: bid, berat: sisa });
+        }
+      });
+      idBahan = idBahanList[0] || produksiLama.idBahan;
+    } else {
+      const container = document.getElementById("idBahanCheckboxContainer");
+      const checked = container?.querySelectorAll(
+        'input[type="checkbox"][name="idBahanProduksi"]:checked',
+      );
+      if (!checked || checked.length === 0) {
         alert(
-          "Error: ID Bahan tidak ditemukan. Tidak dapat melanjutkan update.",
+          "Pilih minimal satu ID Bahan (centang) setelah memilih proses pengolahan.",
         );
         return;
       }
-    } else {
-      alert("Error: Field ID Bahan tidak ditemukan. Pastikan form lengkap.");
-      return;
+      checked.forEach((cb) => {
+        const bid = (cb.dataset.idBahan || cb.value || "").trim();
+        const sisa = parseFloat(cb.dataset.sisa || "0") || 0;
+        if (bid) {
+          idBahanList.push(bid);
+          alokasiBeratBahan.push({ idBahan: bid, berat: sisa });
+        }
+      });
+      idBahan = idBahanList[0];
+      decodedBahanMeta = {
+        idBahan,
+        prosesPengolahan: getElementValue("prosesPengolahan", ""),
+      };
     }
 
-    if (!idBahan || idBahan.trim() === "") {
+    if (!idBahan || String(idBahan).trim() === "") {
       alert("Error: ID Bahan tidak valid. Tidak dapat melanjutkan.");
       return;
     }
 
-    console.log("✅ idBahan validated:", idBahan);
+    console.log("✅ idBahan validated:", idBahan, idBahanList, alokasiBeratBahan);
 
     // ==================== GET BERAT AWAL ====================
     console.log("🔍 Getting beratAwal...");
     let beratAwal;
     if (isEditMode) {
-      // Edit mode: ambil dari data produksi yang sudah ada (readonly, nilai referensi)
-      console.log(
-        "📝 Edit mode - getting beratAwal from produksiLama:",
-        produksiLama?.beratAwal,
-      );
-      beratAwal = parseFloat(produksiLama.beratAwal) || 0;
-      console.log("📝 Parsed beratAwal:", beratAwal);
-      if (beratAwal <= 0) {
-        console.error("❌ Berat awal tidak valid:", beratAwal);
-        alert(
-          "Berat awal tidak valid. Pastikan berat awal sudah diinput saat menambah produksi.",
-        );
+      const beratAwalEl = document.getElementById("beratAwal");
+      beratAwal = parseFloat(beratAwalEl?.value) || 0;
+      console.log("📝 Edit mode beratAwal (total alokasi):", beratAwal);
+      if (beratAwal <= 0 || isNaN(beratAwal)) {
+        alert("Berat awal tidak valid (total alokasi semua bahan).");
         return;
       }
-      console.log("✅ beratAwal validated:", beratAwal);
     } else {
       // Add mode: ambil dari input (harus diisi user)
       const beratAwalElement = document.getElementById("beratAwal");
@@ -2485,7 +2675,7 @@ window.saveProduksi = async function saveProduksi() {
       if (ps) ps.value = prosesPengolahan;
     }
     if (!prosesPengolahan || String(prosesPengolahan).trim() === "") {
-      alert("Proses pengolahan wajib. Pilih baris bahan yang sudah mencantumkan proses.");
+      alert("Proses pengolahan wajib. Pilih proses di atas terlebih dahulu.");
       return;
     }
     console.log("📝 prosesPengolahan:", prosesPengolahan);
@@ -2978,47 +3168,42 @@ window.saveProduksi = async function saveProduksi() {
     // Untuk edit mode: idProduksi tidak berubah, jadi tidak ada duplikat.
     // (Block dihapus - backend menjamin idProduksi unik untuk create)
 
-    // Validasi sisa bahan HANYA untuk ADD mode
+    // Validasi sisa bahan HANYA untuk ADD mode (per id dalam alokasi)
     if (!isEditMode) {
-      const sisaBahan = await calculateSisaBahan(idBahan, prosesPengolahan);
-
-      // Validasi apakah sisa bahan mencukupi
-      if (beratAwal > sisaBahan) {
-        let bahanData = null;
-        try {
-          if (!window.API || !window.API.Bahan) {
-            console.warn("⚠️ API.Bahan not available, cannot validate bahan");
-          } else {
-            bahanData = await window.API.Bahan.getById(idBahan);
-          }
-        } catch (error) {
-          console.error("Error loading bahan data:", error);
-        }
-
-        const totalBahan = bahanData ? bahanData.jumlah : 0;
-        const sudahDigunakan = totalBahan - sisaBahan;
-
-        alert(
-          `Sisa bahan tidak mencukupi!\n\n` +
-            `ID Bahan: ${idBahan}\n` +
-            `Total Bahan: ${totalBahan.toLocaleString("id-ID")} kg\n` +
-            `Sudah Digunakan: ${sudahDigunakan.toLocaleString("id-ID")} kg\n` +
-            `Sisa Tersedia: ${sisaBahan.toLocaleString("id-ID")} kg\n` +
-            `Berat Awal yang Diminta: ${beratAwal.toLocaleString(
-              "id-ID",
-            )} kg\n\n` +
-            `Pencatatan produksi dibatalkan. Silakan kurangi berat awal atau pilih ID Bahan lain.`,
+      for (const row of alokasiBeratBahan) {
+        const sisaBahan = await calculateSisaBahan(
+          row.idBahan,
+          prosesPengolahan,
         );
-        return;
+        if (row.berat > sisaBahan + 1e-4) {
+          alert(
+            `Sisa bahan tidak mencukupi untuk ${row.idBahan}.\n` +
+              `Sisa tersedia: ${sisaBahan.toLocaleString("id-ID")} kg\n` +
+              `Alokasi: ${row.berat.toLocaleString("id-ID")} kg`,
+          );
+          return;
+        }
       }
     } else {
-      // Edit mode: validasi bahwa ID Bahan tidak berubah
-      if (produksiLama && produksiLama.idBahan !== idBahan) {
+      const oldSet = new Set(
+        getIdBahanListFromProduksi(produksiLama).map(String),
+      );
+      const newSet = new Set(idBahanList.map(String));
+      for (const oid of oldSet) {
+        if (!newSet.has(oid)) {
+          alert(
+            "Tidak boleh menghapus ID Bahan yang sudah tercatat. Hanya penambahan bahan yang diizinkan.",
+          );
+          return;
+        }
+      }
+      let sumAlok = 0;
+      alokasiBeratBahan.forEach((r) => {
+        sumAlok += parseFloat(r.berat) || 0;
+      });
+      if (Math.abs(sumAlok - beratAwal) > 1e-3) {
         alert(
-          `ID Bahan tidak dapat diubah setelah produksi dibuat!\n\n` +
-            `ID Bahan Sebelumnya: ${produksiLama.idBahan}\n` +
-            `ID Bahan Baru: ${idBahan}\n\n` +
-            `Silakan batalkan dan buat produksi baru jika ingin menggunakan ID Bahan yang berbeda.`,
+          "Berat awal harus sama dengan jumlah alokasi semua ID bahan (total otomatis).",
         );
         return;
       }
@@ -3094,23 +3279,13 @@ window.saveProduksi = async function saveProduksi() {
     }
     console.log("✅ API.Produksi available");
     console.log("🔄 Preparing produksi data for save...");
-    // Pastikan tipe data sesuai dengan yang diharapkan backend
-    // Khusus untuk UPDATE: Pastikan beratAwal sesuai dengan data lama (backend akan validasi)
-    let finalBeratAwal = parseFloat(beratAwal) || 0;
-
-    // Untuk UPDATE mode, gunakan nilai yang persis sama dengan produksiLama (untuk menghindari float comparison issues)
-    if (isEditMode && produksiLama) {
-      // Gunakan beratAwal dari data lama (bukan dari input) untuk memastikan tidak ada perbedaan float precision
-      finalBeratAwal = parseFloat(produksiLama.beratAwal) || finalBeratAwal;
-      console.log(
-        "📝 Using beratAwal from produksiLama for update:",
-        finalBeratAwal,
-      );
-    }
+    const finalBeratAwal = parseFloat(beratAwal) || 0;
 
     const produksiData = {
       idProduksi: String(idProduksiForPayload),
       idBahan: String(idBahan),
+      idBahanList: idBahanList.map(String),
+      alokasiBeratBahan,
       beratAwal: finalBeratAwal,
       beratTerkini: parseFloat(beratTerkini),
       beratAkhir: beratAkhir !== null ? parseFloat(beratAkhir) : null,
@@ -3260,6 +3435,7 @@ window.saveProduksi = async function saveProduksi() {
 
     form.reset();
     currentEditId = null;
+    window._produksiEditSnapshot = null;
 
     // Show success message via notification (not alert)
     // Alert sudah ditangani di bagian create/update di atas

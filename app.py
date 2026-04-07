@@ -269,6 +269,100 @@ def _normalize_proses_bahan_payload(proses_bahan_raw):
     return proses_bahan_clean, total, None
 
 
+def _id_bahan_list_from_produksi(doc):
+    """Daftar id bahan pada dokumen produksi (idBahanList atau legacy idBahan)."""
+    if not doc:
+        return []
+    lst = doc.get('idBahanList')
+    if isinstance(lst, list) and len(lst) > 0:
+        out = []
+        for x in lst:
+            s = str(x or '').strip()
+            if s:
+                out.append(s)
+        return out
+    ib = doc.get('idBahan')
+    if ib:
+        return [str(ib).strip()]
+    return []
+
+
+def _alokasi_map_from_produksi(doc):
+    """Map idBahan -> berat terpakai dari alokasiBeratBahan atau legacy beratAwal tunggal."""
+    if not doc:
+        return {}
+    rows = doc.get('alokasiBeratBahan')
+    if isinstance(rows, list) and len(rows) > 0:
+        m = {}
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            bid = str(r.get('idBahan') or '').strip()
+            if not bid:
+                continue
+            m[bid] = m.get(bid, 0) + float(r.get('berat', 0) or 0)
+        return m
+    ib = doc.get('idBahan')
+    if ib:
+        return {str(ib).strip(): float(doc.get('beratAwal', 0) or 0)}
+    return {}
+
+
+def _total_digunakan_bahan_proses(id_bahan, proses_q=None):
+    """
+    Total berat terpakai untuk satu id_bahan.
+    Jika proses_q diisi: hanya produksi dengan prosesPengolahan sama (bahan multi-proses).
+    Jika None: semua produksi yang mengalokasikan berat ke id_bahan (pool legacy).
+    """
+    total = 0.0
+    id_bahan = str(id_bahan or '').strip()
+    if not id_bahan:
+        return 0.0
+    pq = (proses_q or '').strip() if proses_q is not None else None
+    for p in db.produksi.find({}):
+        if pq is not None:
+            if (p.get('prosesPengolahan') or '').strip() != pq:
+                continue
+        m = _alokasi_map_from_produksi(p)
+        total += float(m.get(id_bahan, 0) or 0)
+    return total
+
+
+def _all_id_bahan_terpakai_produksi(exclude_id_produksi_str=None):
+    """Kumpulan id bahan yang sudah terikat ke dokumen produksi (satu id hanya satu produksi)."""
+    used = set()
+    ex = (exclude_id_produksi_str or '').strip() or None
+    for p in db.produksi.find({}, {'idBahan': 1, 'idBahanList': 1, 'idProduksi': 1}):
+        if ex and (p.get('idProduksi') or '') == ex:
+            continue
+        used.update(_id_bahan_list_from_produksi(p))
+    return used
+
+
+def _produksi_filter_by_bahan_id(id_bahan):
+    """Query MongoDB untuk produksi yang memakai id_bahan (tunggal atau dalam daftar)."""
+    id_bahan = str(id_bahan or '').strip()
+    return {'$or': [{'idBahan': id_bahan}, {'idBahanList': id_bahan}]}
+
+
+def _status_tambah_bahan_dikunci(status_tahapan):
+    """
+    Setelah tahap Pengeringan Akhir (dan selanjutnya), penambahan ID bahan tidak diizinkan.
+    """
+    s = (status_tahapan or '').strip()
+    if not s:
+        return False
+    if 'Pengeringan Akhir' in s:
+        return True
+    for m in (
+        'Hulling', 'Hand Sortasi', 'Grinding', 'Pengemasan',
+        'Pengupasan Kulit Tanduk', 'Roasting',
+    ):
+        if m in s:
+            return True
+    return False
+
+
 def _sisa_bahan_line(bahan_doc, id_bahan, proses_pengolahan):
     """
     Sisa berat untuk kombinasi idBahan + proses (atau legacy: satu pool per idBahan).
@@ -282,14 +376,11 @@ def _sisa_bahan_line(bahan_doc, id_bahan, proses_pengolahan):
         if not line:
             return None, f'Proses "{proses_pengolahan}" tidak terdaftar pada bahan ini'
         cap = float(line.get('jumlahBeratProses', 0) or 0)
-        used = sum(
-            float(p.get('beratAwal', 0) or 0)
-            for p in db.produksi.find({'idBahan': id_bahan, 'prosesPengolahan': proses_pengolahan})
-        )
+        used = _total_digunakan_bahan_proses(id_bahan, proses_pengolahan)
         return max(0.0, cap - used), None
     # Legacy: satu pool stok per idBahan
     cap = float(bahan_doc.get('jumlah', 0) or 0)
-    used = sum(float(p.get('beratAwal', 0) or 0) for p in db.produksi.find({'idBahan': id_bahan}))
+    used = _total_digunakan_bahan_proses(id_bahan, None)
     return max(0.0, cap - used), None
 
 
@@ -308,7 +399,7 @@ def _sync_produksi_proses_pengolahan_after_bahan_update(id_bahan, old_proses_row
         only = (new_list[0].get('prosesPengolahan') or '').strip()
         if only:
             r = db.produksi.update_many(
-                {'idBahan': id_bahan},
+                _produksi_filter_by_bahan_id(id_bahan),
                 {'$set': {'prosesPengolahan': only}}
             )
             if r.matched_count and not r.modified_count:
@@ -341,13 +432,13 @@ def _sync_produksi_proses_pengolahan_after_bahan_update(id_bahan, old_proses_row
     for idx, (o, _) in enumerate(changes):
         mid = f'{TEMP}{idx}'
         db.produksi.update_many(
-            {'idBahan': id_bahan, 'prosesPengolahan': o},
+            {**_produksi_filter_by_bahan_id(id_bahan), 'prosesPengolahan': o},
             {'$set': {'prosesPengolahan': mid}}
         )
     for idx, (_, nn) in enumerate(changes):
         mid = f'{TEMP}{idx}'
         r = db.produksi.update_many(
-            {'idBahan': id_bahan, 'prosesPengolahan': mid},
+            {**_produksi_filter_by_bahan_id(id_bahan), 'prosesPengolahan': mid},
             {'$set': {'prosesPengolahan': nn}}
         )
         if r.modified_count:
@@ -792,48 +883,98 @@ def create_produksi():
         data = request.json
         
         # Validate required fields (idProduksi NOT required - backend generates it)
+        # idBahan / idBahanList: minimal satu ID bahan (multi-bahan satu proses)
         # kadarAir hanya wajib untuk tahapan Pengeringan Awal & Akhir
-        required_fields = ['idBahan', 'beratAwal', 'prosesPengolahan', 
-                          'varietas', 'tanggalMasuk', 'tanggalSekarang', 
+        required_fields = ['beratAwal', 'prosesPengolahan',
+                          'varietas', 'tanggalMasuk', 'tanggalSekarang',
                           'statusTahapan', 'haccp']
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
         
+        raw_list = data.get('idBahanList')
+        if isinstance(raw_list, list) and len(raw_list) > 0:
+            id_bahan_list = [str(x).strip() for x in raw_list if str(x).strip()]
+        elif data.get('idBahan'):
+            id_bahan_list = [str(data['idBahan']).strip()]
+        else:
+            return jsonify({'error': 'Wajib menyediakan idBahanList atau idBahan'}), 400
+        
+        if len(id_bahan_list) < 1:
+            return jsonify({'error': 'Minimal satu ID Bahan'}), 400
+        if len(id_bahan_list) != len(set(id_bahan_list)):
+            return jsonify({'error': 'ID Bahan tidak boleh duplikat dalam satu produksi'}), 400
+        
+        proses_pp = str(data.get('prosesPengolahan') or '').strip()
+        used_globally = _all_id_bahan_terpakai_produksi(None)
+        overlap = used_globally.intersection(set(id_bahan_list))
+        if overlap:
+            return jsonify({
+                'error': 'ID bahan berikut sudah terpakai di produksi lain',
+                'idBahanTerpakai': sorted(overlap),
+            }), 400
+        
+        berat_awal_req = float(data['beratAwal'])
+        alokasi_rows = data.get('alokasiBeratBahan')
+        alokasi_clean = []
+        if isinstance(alokasi_rows, list) and len(alokasi_rows) > 0:
+            for r in alokasi_rows:
+                if not isinstance(r, dict):
+                    continue
+                bid = str(r.get('idBahan') or '').strip()
+                bw = float(r.get('berat', 0) or 0)
+                if bid and bw > 0:
+                    alokasi_clean.append({'idBahan': bid, 'berat': bw})
+        elif len(id_bahan_list) == 1:
+            alokasi_clean = [{'idBahan': id_bahan_list[0], 'berat': berat_awal_req}]
+        else:
+            return jsonify({'error': 'alokasiBeratBahan wajib jika lebih dari satu ID Bahan'}), 400
+        
+        ids_in_alok = {a['idBahan'] for a in alokasi_clean}
+        if ids_in_alok != set(id_bahan_list):
+            return jsonify({'error': 'alokasiBeratBahan harus memuat setiap ID Bahan yang dipilih tepat sekali'}), 400
+        
+        sum_alok = sum(a['berat'] for a in alokasi_clean)
+        if abs(sum_alok - berat_awal_req) > 1e-4:
+            return jsonify({'error': 'Jumlah alokasiBeratBahan harus sama dengan beratAwal'}), 400
+        
         # Auto-generate idProduksi (ignore any value from frontend)
         id_produksi = generate_id_produksi()
         
-        # Validate sisa bahan (per jalur proses jika ada prosesBahan)
-        bahan = db.bahan.find_one({'idBahan': data['idBahan']})
-        if not bahan:
-            return jsonify({'error': 'Bahan not found'}), 400
+        # Validasi per bahan: proses terdaftar + sisa cukup
+        for bid in id_bahan_list:
+            bahan_one = db.bahan.find_one({'idBahan': bid})
+            if not bahan_one:
+                return jsonify({'error': f'Bahan tidak ditemukan: {bid}'}), 400
+            lines = bahan_one.get('prosesBahan') or []
+            need = next((a['berat'] for a in alokasi_clean if a['idBahan'] == bid), 0)
+            if lines:
+                line = next((l for l in lines if l.get('prosesPengolahan') == proses_pp), None)
+                if not line:
+                    return jsonify({'error': f'Proses "{proses_pp}" tidak terdaftar pada bahan {bid}'}), 400
+                sisa, err = _sisa_bahan_line(bahan_one, bid, proses_pp)
+                if err:
+                    return jsonify({'error': f'{bid}: {err}'}), 400
+                if need > (sisa or 0) + 1e-4:
+                    return jsonify({
+                        'error': 'Sisa bahan tidak mencukupi',
+                        'idBahan': bid,
+                        'sisaTersedia': sisa,
+                        'beratDiminta': need,
+                    }), 400
+            else:
+                sisa, err = _sisa_bahan_line(bahan_one, bid, None)
+                if err:
+                    return jsonify({'error': f'{bid}: {err}'}), 400
+                if need > (sisa or 0) + 1e-4:
+                    return jsonify({
+                        'error': 'Sisa bahan tidak mencukupi',
+                        'idBahan': bid,
+                        'sisaTersedia': sisa,
+                        'beratDiminta': need,
+                    }), 400
         
-        lines = bahan.get('prosesBahan') or []
-        if lines:
-            if not data.get('prosesPengolahan'):
-                return jsonify({'error': 'prosesPengolahan wajib untuk bahan dengan pemisahan proses'}), 400
-            line = next((l for l in lines if l.get('prosesPengolahan') == data['prosesPengolahan']), None)
-            if not line:
-                return jsonify({'error': 'Proses pengolahan tidak terdaftar pada bahan ini'}), 400
-            cap = float(line.get('jumlahBeratProses', 0) or 0)
-            produksi_list = list(db.produksi.find({'idBahan': data['idBahan'], 'prosesPengolahan': data['prosesPengolahan']}))
-            total_digunakan = sum(float(p.get('beratAwal', 0) or 0) for p in produksi_list)
-            sisa_bahan = max(0.0, cap - total_digunakan)
-            total_bahan_ref = cap
-        else:
-            produksi_list = list(db.produksi.find({'idBahan': data['idBahan']}))
-            total_digunakan = sum(float(p.get('beratAwal', 0) or 0) for p in produksi_list)
-            total_bahan_ref = float(bahan.get('jumlah', 0) or 0)
-            sisa_bahan = max(0.0, total_bahan_ref - total_digunakan)
-        
-        if float(data['beratAwal']) > sisa_bahan:
-            return jsonify({
-                'error': 'Sisa bahan tidak mencukupi',
-                'totalBahan': total_bahan_ref,
-                'sudahDigunakan': total_digunakan,
-                'sisaTersedia': sisa_bahan,
-                'beratDiminta': data['beratAwal']
-            }), 400
+        id_bahan_primary = id_bahan_list[0]
         
         # Validasi sequential tahapan berdasarkan konfigurasi master
         is_valid, error_msg = validate_sequential_tahapan(
@@ -927,7 +1068,9 @@ def create_produksi():
         produksi_data = {
             'id': new_id,
             'idProduksi': id_produksi,
-            'idBahan': data['idBahan'],
+            'idBahan': id_bahan_primary,
+            'idBahanList': id_bahan_list,
+            'alokasiBeratBahan': alokasi_clean,
             'beratAwal': float(data['beratAwal']),
             'beratTerkini': float(beratTerkini),
             'beratAkhir': float(beratAkhir) if beratAkhir else None,
@@ -996,17 +1139,98 @@ def update_produksi(produksi_id):
         if existing:
             return jsonify({'error': 'ID Produksi already exists'}), 400
         
-        # Validate ID Bahan tidak berubah (edit mode)
-        if produksi.get('idBahan') != data['idBahan']:
-            return jsonify({'error': 'ID Bahan tidak dapat diubah setelah produksi dibuat'}), 400
-        
+        # Edit: hanya boleh MENAMBAH id bahan (tidak boleh menghapus); alokasi lama tidak boleh diubah
+        old_ids = _id_bahan_list_from_produksi(produksi)
+        old_set = set(old_ids)
+        old_map = _alokasi_map_from_produksi(produksi)
+        new_raw = data.get('idBahanList')
+        if isinstance(new_raw, list) and len(new_raw) > 0:
+            new_list = [str(x).strip() for x in new_raw if str(x).strip()]
+        else:
+            new_list = [str(data.get('idBahan') or '').strip()] if data.get('idBahan') else []
+        new_set = set(new_list)
+        if not old_set <= new_set:
+            return jsonify({
+                'error': 'Hanya boleh menambah ID Bahan pada produksi ini; tidak boleh menghapus bahan yang sudah tercatat',
+            }), 400
+        if len(new_list) != len(new_set):
+            return jsonify({'error': 'idBahanList tidak boleh mengandung duplikat'}), 400
+
+        added_ids = new_set - old_set
+        st_lama = produksi.get('statusTahapan')
+        st_baru = data.get('statusTahapan')
+        if added_ids and (
+            _status_tambah_bahan_dikunci(st_lama) or _status_tambah_bahan_dikunci(st_baru)
+        ):
+            return jsonify({
+                'error': 'Menambah ID Bahan tidak diizinkan setelah tahap Pengeringan Akhir.',
+            }), 400
+
+        alokasi_req = data.get('alokasiBeratBahan')
+        new_alok_rows = []
+        if isinstance(alokasi_req, list):
+            for r in alokasi_req:
+                if not isinstance(r, dict):
+                    continue
+                bid = str(r.get('idBahan') or '').strip()
+                bw = float(r.get('berat', 0) or 0)
+                if bid and bw >= 0:
+                    new_alok_rows.append({'idBahan': bid, 'berat': bw})
+        new_map = {r['idBahan']: r['berat'] for r in new_alok_rows}
+        if set(new_map.keys()) != new_set:
+            return jsonify({'error': 'alokasiBeratBahan harus memuat tepat satu entri per id di idBahanList'}), 400
+
+        for bid in old_set:
+            o = float(old_map.get(bid, 0) or 0)
+            n = float(new_map.get(bid, 0) or 0)
+            if abs(o - n) > 1e-3:
+                return jsonify({
+                    'error': f'Alokasi bahan {bid} tidak boleh diubah; hanya boleh menambah bahan baru',
+                }), 400
+
+        proses_pp = str(data['prosesPengolahan'] or '').strip()
+        for bid in new_set - old_set:
+            need = float(new_map.get(bid, 0) or 0)
+            if need <= 0:
+                return jsonify({'error': f'Berat alokasi untuk bahan baru {bid} harus lebih dari 0'}), 400
+            bahan_one = db.bahan.find_one({'idBahan': bid})
+            if not bahan_one:
+                return jsonify({'error': f'Bahan tidak ditemukan: {bid}'}), 400
+            lines = bahan_one.get('prosesBahan') or []
+            if lines:
+                line = next((l for l in lines if l.get('prosesPengolahan') == proses_pp), None)
+                if not line:
+                    return jsonify({'error': f'Proses "{proses_pp}" tidak terdaftar pada bahan {bid}'}), 400
+                sisa, err = _sisa_bahan_line(bahan_one, bid, proses_pp)
+                if err:
+                    return jsonify({'error': f'{bid}: {err}'}), 400
+                if need > (sisa or 0) + 1e-3:
+                    return jsonify({
+                        'error': 'Sisa bahan tidak mencukupi untuk bahan tambahan',
+                        'idBahan': bid,
+                        'sisaTersedia': sisa,
+                        'beratDiminta': need,
+                    }), 400
+            else:
+                sisa, err = _sisa_bahan_line(bahan_one, bid, None)
+                if err:
+                    return jsonify({'error': f'{bid}: {err}'}), 400
+                if need > (sisa or 0) + 1e-3:
+                    return jsonify({
+                        'error': 'Sisa bahan tidak mencukupi untuk bahan tambahan',
+                        'idBahan': bid,
+                        'sisaTersedia': sisa,
+                        'beratDiminta': need,
+                    }), 400
+
+        berat_baru = float(data['beratAwal'])
+        sum_alok = sum(float(new_map[b]) for b in new_list)
+        if abs(berat_baru - sum_alok) > 1e-3:
+            return jsonify({'error': 'beratAwal harus sama dengan jumlah alokasi semua ID bahan'}), 400
+
         # Proses pengolahan ditetapkan saat bahan masuk — tidak boleh diubah
         if produksi.get('prosesPengolahan') != data['prosesPengolahan']:
             return jsonify({'error': 'Proses pengolahan tidak dapat diubah setelah produksi dibuat'}), 400
-        
-        # Validate berat awal tidak berubah (edit mode)
-        if produksi.get('beratAwal') != float(data['beratAwal']):
-            return jsonify({'error': 'Berat awal tidak dapat diubah setelah produksi dibuat'}), 400
         
         # Validasi sequential tahapan berdasarkan konfigurasi master
         status_tahapan_lama = produksi.get('statusTahapan')
@@ -1157,9 +1381,12 @@ def update_produksi(produksi_id):
             cp, new_status, catatan_baru, data.get('tanggalSekarang')
         )
 
+        primary_id_bahan = old_ids[0] if old_ids else (new_list[0] if new_list else data.get('idBahan'))
         update_data = {
             'idProduksi': data['idProduksi'],
-            'idBahan': data['idBahan'],
+            'idBahan': primary_id_bahan,
+            'idBahanList': new_list,
+            'alokasiBeratBahan': new_alok_rows,
             'beratAwal': float(data['beratAwal']),
             'beratTerkini': float(beratTerkini),
             'beratAkhir': float(beratAkhir) if beratAkhir else None,
@@ -1626,8 +1853,11 @@ def delete_bahan(bahan_id):
         if not bahan:
             return jsonify({'error': 'Bahan not found'}), 404
         
-        # Check if there are produksi using this bahan
-        produksi_count = db.produksi.count_documents({'idBahan': bahan.get('idBahan')})
+        # Check if there are produksi using this bahan (tunggal atau dalam idBahanList)
+        bid = bahan.get('idBahan')
+        produksi_count = db.produksi.count_documents({
+            '$or': [{'idBahan': bid}, {'idBahanList': bid}]
+        })
         if produksi_count > 0:
             return jsonify({
                 'error': f'Cannot delete bahan. There are {produksi_count} produksi using this bahan'
@@ -1655,8 +1885,11 @@ def get_sisa_bahan(id_bahan):
             if not line:
                 return jsonify({'error': f'Proses "{proses_q}" tidak ada pada bahan ini'}), 404
             cap = float(line.get('jumlahBeratProses', 0) or 0)
-            produksi_list = list(db.produksi.find({'idBahan': id_bahan, 'prosesPengolahan': proses_q}))
-            total_digunakan = sum(float(p.get('beratAwal', 0) or 0) for p in produksi_list)
+            produksi_list = list(db.produksi.find({'prosesPengolahan': proses_q}))
+            total_digunakan = sum(
+                _alokasi_map_from_produksi(p).get(id_bahan, 0) or 0
+                for p in produksi_list
+            )
             sisa = max(0.0, cap - total_digunakan)
             return jsonify({
                 'idBahan': id_bahan,
@@ -1666,8 +1899,7 @@ def get_sisa_bahan(id_bahan):
                 'sisaTersedia': sisa
             }), 200
         
-        produksi_list = list(db.produksi.find({'idBahan': id_bahan}))
-        total_digunakan = sum(float(p.get('beratAwal', 0) or 0) for p in produksi_list)
+        total_digunakan = _total_digunakan_bahan_proses(id_bahan, None)
         cap = float(bahan.get('jumlah', 0) or 0)
         sisa = max(0.0, cap - total_digunakan)
         return jsonify({
@@ -1676,6 +1908,47 @@ def get_sisa_bahan(id_bahan):
             'totalDigunakan': total_digunakan,
             'sisaTersedia': sisa
         }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/bahan/untuk-produksi', methods=['GET'])
+def get_bahan_untuk_produksi():
+    """
+    Bahan yang boleh dipilih untuk produksi baru: punya proses yang diminta,
+    belum terikat produksi manapun (kecuali idProduksi= untuk edit dokumen ini),
+    dan sisa > 0 untuk jalur proses tersebut.
+    """
+    try:
+        proses = request.args.get('proses', '').strip()
+        exclude_id_produksi = request.args.get('idProduksi', '').strip() or None
+        if not proses:
+            return jsonify({'error': 'Parameter query proses wajib'}), 400
+        
+        terpakai = _all_id_bahan_terpakai_produksi(exclude_id_produksi)
+        out = []
+        for bahan in db.bahan.find().sort('id', 1):
+            bid = bahan.get('idBahan')
+            if not bid or bid in terpakai:
+                continue
+            lines = bahan.get('prosesBahan') or []
+            line = next((l for l in lines if l.get('prosesPengolahan') == proses), None) if lines else None
+            if not line:
+                continue
+            cap = float(line.get('jumlahBeratProses', 0) or 0)
+            td = _total_digunakan_bahan_proses(bid, proses)
+            sisa = max(0.0, cap - td)
+            if sisa <= 0:
+                continue
+            out.append({
+                'idBahan': bid,
+                'prosesPengolahan': proses,
+                'sisaTersedia': sisa,
+                'alokasi': cap,
+                'varietas': bahan.get('varietas'),
+                'tanggalMasuk': bahan.get('tanggalMasuk'),
+            })
+        return jsonify(json_serialize(out)), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1843,7 +2116,8 @@ def get_stok():
         bahan_cache = {}
         
         for p in produksi_list:
-            id_bahan = p.get('idBahan')
+            ids_p = _id_bahan_list_from_produksi(p)
+            id_bahan = ids_p[0] if ids_p else p.get('idBahan')
             if id_bahan not in bahan_cache:
                 bahan_cache[id_bahan] = db.bahan.find_one({'idBahan': id_bahan}) or {}
             bahan = bahan_cache[id_bahan]
@@ -1932,14 +2206,12 @@ def get_stok_bahan():
         bahan_list = list(db.bahan.find().sort('id', 1))
         produksi_list = list(db.produksi.find())
         
-        # Hitung total yang digunakan per idBahan
+        # Hitung total yang digunakan per idBahan (dukung alokasi multi-bahan)
         total_digunakan_map = {}
         for p in produksi_list:
-            id_bahan = p.get('idBahan')
-            berat_awal = float(p.get('beratAwal', 0))
-            if id_bahan not in total_digunakan_map:
-                total_digunakan_map[id_bahan] = 0
-            total_digunakan_map[id_bahan] += berat_awal
+            m = _alokasi_map_from_produksi(p)
+            for bid, w in m.items():
+                total_digunakan_map[bid] = total_digunakan_map.get(bid, 0) + float(w or 0)
         
         # Buat array stok bahan dengan sisa tersedia
         stok_bahan_array = []
@@ -3521,10 +3793,20 @@ def proses_ordering():
                 'prosesPemesanan': pemesanan.get('prosesPengolahan')
             }), 400
         
-        # 4. VALIDASI: jenis_kopi harus sama
-        bahan = db.bahan.find_one({'idBahan': produksi.get('idBahan')})
+        # 4. VALIDASI: jenis_kopi harus sama (semua bahan pada produksi harus satu jenis)
+        ids_prod = _id_bahan_list_from_produksi(produksi)
+        jenis_set = set()
+        bahan = None
+        for bid in ids_prod:
+            bh = db.bahan.find_one({'idBahan': bid})
+            if bh:
+                jenis_set.add((bh.get('jenisKopi') or '').strip())
+                if bahan is None:
+                    bahan = bh
         if not bahan:
             return jsonify({'error': 'Bahan tidak ditemukan untuk produksi ini'}), 404
+        if len(jenis_set) > 1:
+            return jsonify({'error': 'Produksi menggabungkan bahan dengan jenis kopi berbeda'}), 400
         
         if bahan.get('jenisKopi') != pemesanan.get('jenisKopi'):
             return jsonify({
@@ -3807,8 +4089,9 @@ def get_stok_for_pemesanan():
                 
                 id_produksi_str = str(id_produksi).strip()
                 
-                # Get jenis kopi from bahan
-                id_bahan = produksi.get('idBahan')
+                # Get jenis kopi dari bahan pertama (multi-bahan = satu jenis)
+                ids_b = _id_bahan_list_from_produksi(produksi)
+                id_bahan = ids_b[0] if ids_b else produksi.get('idBahan')
                 if id_bahan not in bahan_cache:
                     bahan_cache[id_bahan] = db.bahan.find_one({'idBahan': id_bahan}) or {}
                 bahan = bahan_cache[id_bahan]
