@@ -2094,10 +2094,37 @@ def _stok_key(tipe, jenis_kopi, proses):
     return f"{s(tipe)}|{s(jenis_kopi)}|{s(proses)}"
 
 
+def _produksi_masuk_stok_hasil_pengemasan(p):
+    """
+    Stok hasil hanya dari batch yang menyelesaikan alur pengemasan dengan benar:
+    status memuat Pengemasan, berat akhir > 0, dan tanggal pengemasan tercatat
+    (field di-set saat create/update saat status pengemasan).
+    """
+    st = (p.get('statusTahapan') or '')
+    if not st or 'pengemasan' not in st.lower():
+        return False
+    if float(p.get('beratAkhir', 0) or 0) <= 0:
+        return False
+    if not str(p.get('tanggalPengemasan') or '').strip():
+        return False
+    return True
+
+
+def _stok_gb_pixel_tidak_lebih_dari_berat_akhir(p, tol=0.02):
+    """GB + Pixel tidak boleh melebihi berat akhir (data tidak konsisten → tidak dihitung stok)."""
+    ba = float(p.get('beratAkhir', 0) or 0)
+    if ba <= 0:
+        return False
+    gb = float(p.get('beratGreenBeans', 0) or 0)
+    px = float(p.get('beratPixel', 0) or 0)
+    return gb + px <= ba + tol
+
+
 @app.route('/api/stok', methods=['GET'])
 def get_stok():
     """
-    Stok dari produksi tahap Pengemasan (beratGreenBeans dan beratPixel). Kurangi pemesanan by berat.
+    Stok dari produksi tahap Pengemasan: beratGreenBeans / beratPixel (tidak melebihi berat akhir),
+    hanya batch dengan tanggal pengemasan tercatat. Kurangi pemesanan by berat.
     Query: tipeProduk (Green Beans/Pixel), tanggalPengemasan (YYYY-MM-DD) untuk filter.
     """
     try:
@@ -2107,7 +2134,11 @@ def get_stok():
         produksi_list = list(db.produksi.find({
             'statusTahapan': {'$regex': 'Pengemasan', '$options': 'i'},
         }))
-        produksi_list = [p for p in produksi_list if float(p.get('beratAkhir', 0) or 0) > 0]
+        produksi_list = [
+            p for p in produksi_list
+            if _produksi_masuk_stok_hasil_pengemasan(p)
+            and _stok_gb_pixel_tidak_lebih_dari_berat_akhir(p)
+        ]
         
         if tanggal_filter:
             produksi_list = [p for p in produksi_list if (p.get('tanggalPengemasan') or '')[:10] == tanggal_filter[:10]]
@@ -2182,13 +2213,16 @@ def get_stok_filter_options():
     try:
         # Tipe produk tetap: Green Beans dan Pixel
         tipe_produk_list = ['Green Beans', 'Pixel']
-        # Tanggal pengemasan dari produksi yang sudah Pengemasan
+        # Tanggal pengemasan dari produksi yang memenuhi syarat stok hasil
         produksi_list = list(db.produksi.find({
             'statusTahapan': {'$regex': 'Pengemasan', '$options': 'i'},
-            'beratAkhir': {'$exists': True, '$gt': 0}
         }))
         tanggal_set = set()
         for p in produksi_list:
+            if not _produksi_masuk_stok_hasil_pengemasan(p):
+                continue
+            if not _stok_gb_pixel_tidak_lebih_dari_berat_akhir(p):
+                continue
             d = (p.get('tanggalPengemasan') or '')[:10]
             if d:
                 tanggal_set.add(d)
@@ -4059,10 +4093,14 @@ def get_stok_for_pemesanan():
             print(f"❌ [STOK PEMESANAN] Error querying produksi: {str(db_error)}")
             return jsonify({'error': f'Error querying produksi: {str(db_error)}', 'success': False}), 500
         
-        # Filter manual untuk memastikan beratAkhir > 0
-        produksi_list = [p for p in produksi_list if float(p.get('beratAkhir', 0)) > 0]
+        # Sama seperti /api/stok: hanya batch pengemasan lengkap & konsisten
+        produksi_list = [
+            p for p in produksi_list
+            if _produksi_masuk_stok_hasil_pengemasan(p)
+            and _stok_gb_pixel_tidak_lebih_dari_berat_akhir(p)
+        ]
         
-        print(f"📊 [STOK PEMESANAN] Found {len(produksi_list)} produksi with berat akhir > 0")
+        print(f"📊 [STOK PEMESANAN] Found {len(produksi_list)} produksi eligible (pengemasan + tanggal + GB/Pixel vs akhir)")
         
         # Get all hasilProduksi for calculating used stock
         hasil_produksi_all = list(db.hasilProduksi.find({'isFromOrdering': True}))
