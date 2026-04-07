@@ -2120,6 +2120,33 @@ def _stok_gb_pixel_tidak_lebih_dari_berat_akhir(p, tol=0.02):
     return gb + px <= ba + tol
 
 
+def _proses_pengolahan_tampilan_untuk_agregasi(produksi_doc, bahan_doc):
+    """
+    Selaras dengan getProsesPengolahanTampilan di kelola_produksi.js / laporan:
+    jika master bahan hanya punya satu baris prosesBahan, pakai nama itu untuk agregasi.
+    Sehingga stok mengikuti yang tampil di UI meskipun field produksi.prosesPengolahan belum diperbarui.
+    """
+    if not produksi_doc:
+        return ''
+    lines = (bahan_doc or {}).get('prosesBahan')
+    if isinstance(lines, list) and len(lines) == 1:
+        only = (lines[0].get('prosesPengolahan') or '').strip()
+        if only:
+            return only
+    return (produksi_doc.get('prosesPengolahan') or '').strip()
+
+
+def _bahan_cache_get_for_produksi(produksi_doc, bahan_cache):
+    """Ambil dokumen bahan (pertama) untuk produksi; isi bahan_cache."""
+    ids_p = _id_bahan_list_from_produksi(produksi_doc)
+    id_bahan = ids_p[0] if ids_p else produksi_doc.get('idBahan')
+    if not id_bahan:
+        return {}
+    if id_bahan not in bahan_cache:
+        bahan_cache[id_bahan] = db.bahan.find_one({'idBahan': id_bahan}) or {}
+    return bahan_cache[id_bahan]
+
+
 @app.route('/api/stok', methods=['GET'])
 def get_stok():
     """
@@ -2147,13 +2174,9 @@ def get_stok():
         bahan_cache = {}
         
         for p in produksi_list:
-            ids_p = _id_bahan_list_from_produksi(p)
-            id_bahan = ids_p[0] if ids_p else p.get('idBahan')
-            if id_bahan not in bahan_cache:
-                bahan_cache[id_bahan] = db.bahan.find_one({'idBahan': id_bahan}) or {}
-            bahan = bahan_cache[id_bahan]
+            bahan = _bahan_cache_get_for_produksi(p, bahan_cache)
             jenis_kopi = (bahan.get('jenisKopi') or '').strip()
-            proses_pengolahan = (p.get('prosesPengolahan') or '').strip()
+            proses_pengolahan = _proses_pengolahan_tampilan_untuk_agregasi(p, bahan)
             
             # Aggregate Green Beans
             berat_green_beans = float(p.get('beratGreenBeans', 0) or 0)
@@ -2184,12 +2207,33 @@ def get_stok():
                     stok_map[key_px]['totalBerat'] += berat_pixel
         
         hasil_ordering = list(db.hasilProduksi.find({'isFromOrdering': True}))
+        id_untuk_resolve = set()
+        for p in produksi_list:
+            ip = str(p.get('idProduksi') or '').strip()
+            if ip:
+                id_untuk_resolve.add(ip)
         for h in hasil_ordering:
-            key = _stok_key(
-                h.get('tipeProduk'),
-                h.get('jenisKopi'), h.get('prosesPengolahan')
-            )
+            ip = str(h.get('idProduksi') or '').strip()
+            if ip:
+                id_untuk_resolve.add(ip)
+        produksi_by_id = {}
+        if id_untuk_resolve:
+            for doc in db.produksi.find({'idProduksi': {'$in': list(id_untuk_resolve)}}):
+                produksi_by_id[str(doc.get('idProduksi') or '').strip()] = doc
+
+        for h in hasil_ordering:
+            idp = str(h.get('idProduksi') or '').strip()
+            pdoc = produksi_by_id.get(idp)
+            tipe_p = (h.get('tipeProduk') or '').strip()
             berat_kurangi = float(h.get('beratSaatIni', 0) or 0)
+            if pdoc:
+                bh = _bahan_cache_get_for_produksi(pdoc, bahan_cache)
+                jk = (bh.get('jenisKopi') or '').strip() or (h.get('jenisKopi') or '').strip()
+                proses_eff = _proses_pengolahan_tampilan_untuk_agregasi(pdoc, bh)
+            else:
+                jk = (h.get('jenisKopi') or '').strip()
+                proses_eff = (h.get('prosesPengolahan') or '').strip()
+            key = _stok_key(tipe_p, jk, proses_eff)
             if key in stok_map:
                 stok_map[key]['totalBerat'] = max(0, stok_map[key]['totalBerat'] - berat_kurangi)
             else:
@@ -3819,15 +3863,7 @@ def proses_ordering():
         if berat_produk <= 0:
             return jsonify({'error': f'Produksi belum memiliki berat {tipe_produk_selected}'}), 400
         
-        # 3. VALIDASI: proses_pengolahan harus sama
-        if produksi.get('prosesPengolahan') != pemesanan.get('prosesPengolahan'):
-            return jsonify({
-                'error': 'Proses pengolahan tidak sesuai',
-                'prosesProduksi': produksi.get('prosesPengolahan'),
-                'prosesPemesanan': pemesanan.get('prosesPengolahan')
-            }), 400
-        
-        # 4. VALIDASI: jenis_kopi harus sama (semua bahan pada produksi harus satu jenis)
+        # 3–4. Bahan pertama + jenis kopi + proses (raw vs tampilan master bahan, selaras /api/stok)
         ids_prod = _id_bahan_list_from_produksi(produksi)
         jenis_set = set()
         bahan = None
@@ -3841,6 +3877,17 @@ def proses_ordering():
             return jsonify({'error': 'Bahan tidak ditemukan untuk produksi ini'}), 404
         if len(jenis_set) > 1:
             return jsonify({'error': 'Produksi menggabungkan bahan dengan jenis kopi berbeda'}), 400
+        
+        proses_tampilan = _proses_pengolahan_tampilan_untuk_agregasi(produksi, bahan)
+        ps_pem = (pemesanan.get('prosesPengolahan') or '').strip()
+        ps_raw = (produksi.get('prosesPengolahan') or '').strip()
+        if ps_pem not in (ps_raw, proses_tampilan):
+            return jsonify({
+                'error': 'Proses pengolahan tidak sesuai',
+                'prosesProduksi': ps_raw,
+                'prosesTampilan': proses_tampilan,
+                'prosesPemesanan': ps_pem
+            }), 400
         
         if bahan.get('jenisKopi') != pemesanan.get('jenisKopi'):
             return jsonify({
@@ -4127,15 +4174,10 @@ def get_stok_for_pemesanan():
                 
                 id_produksi_str = str(id_produksi).strip()
                 
-                # Get jenis kopi dari bahan pertama (multi-bahan = satu jenis)
-                ids_b = _id_bahan_list_from_produksi(produksi)
-                id_bahan = ids_b[0] if ids_b else produksi.get('idBahan')
-                if id_bahan not in bahan_cache:
-                    bahan_cache[id_bahan] = db.bahan.find_one({'idBahan': id_bahan}) or {}
-                bahan = bahan_cache[id_bahan]
+                bahan = _bahan_cache_get_for_produksi(produksi, bahan_cache)
                 jenis_kopi = bahan.get('jenisKopi', '')
                 varietas = bahan.get('varietas', '')
-                proses_pengolahan = produksi.get('prosesPengolahan', '')
+                proses_pengolahan = _proses_pengolahan_tampilan_untuk_agregasi(produksi, bahan)
                 
                 # Process Green Beans stock
                 berat_green_beans = float(produksi.get('beratGreenBeans', 0) or 0)
