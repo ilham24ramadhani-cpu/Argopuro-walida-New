@@ -255,25 +255,32 @@ async function displayStok() {
             maximumFractionDigits: 4,
           });
         const ba = ringkasanStok.sumBeratAkhir;
-        const gbBruto = ringkasanStok.sumBeratGreenBeansBruto;
+        const stokGbBruto =
+          ringkasanStok.sumStokGreenBeansBruto != null
+            ? ringkasanStok.sumStokGreenBeansBruto
+            : ringkasanStok.sumBeratGreenBeansBruto;
         const pxBruto = ringkasanStok.sumBeratPixelBruto;
-        const sel = ringkasanStok.selisihBeratAkhirVsGbPx;
+        const gbForm = ringkasanStok.sumBeratGreenBeansDiForm;
         const gbStok = ringkasanStok.totalStokGreenBeansSetelahOrdering;
+        const pxStok = ringkasanStok.totalStokPixelSetelahOrdering;
         footerEl.classList.remove("d-none");
         const pakaiPixel = Number(pxBruto) > 0.0001;
-        const stokLabel = pakaiPixel
-          ? "stok green beans / pixel (setelah kurangi pemesanan)"
-          : "stok <strong>green beans</strong> (setelah kurangi pemesanan)";
-        const selisihTeks = pakaiPixel
-          ? `Selisih berat akhir − (green beans + pixel) = <strong>${fmt(sel)} kg</strong> (belum dialokasi ke salah satu field di form pengemasan).`
-          : `Selisih berat akhir − green beans = <strong>${fmt(sel)} kg</strong> (bagian berat akhir yang belum diinput sebagai green beans di form pengemasan).`;
+        let extraForm = "";
+        if (
+          gbForm != null &&
+          Math.abs(Number(gbForm) - Number(stokGbBruto)) > 0.02
+        ) {
+          extraForm = ` (Catatan: total isian <strong>berat green beans</strong> di form = ${fmt(gbForm)} kg — stok dihitung dari berat akhir − pixel, bukan dari field itu.)`;
+        }
         footerEl.innerHTML =
-          `<i class="bi bi-calculator me-1"></i><strong>Penjelasan angka:</strong> Kolom total baris Green Beans = ${stokLabel}, ` +
-          `bukan jumlah berat akhir. Untuk <strong>${ringkasanStok.jumlahBatchPengemasan}</strong> batch pada filter ini: ` +
-          `Σ berat akhir = <strong>${fmt(ba)} kg</strong>, Σ green beans (bruto) = <strong>${fmt(gbBruto)} kg</strong>` +
+          `<i class="bi bi-calculator me-1"></i><strong>Penjelasan:</strong> Stok <strong>green beans</strong> = Σ (berat akhir − pixel) per batch` +
+          (pakaiPixel ? `; stok <strong>pixel</strong> = Σ berat pixel.` : ".") +
+          ` Untuk <strong>${ringkasanStok.jumlahBatchPengemasan}</strong> batch: Σ berat akhir = <strong>${fmt(ba)} kg</strong>, ` +
+          `Σ stok GB (bruto, sebelum pemesanan) = <strong>${fmt(stokGbBruto)} kg</strong>` +
           (pakaiPixel ? `, Σ pixel (bruto) = <strong>${fmt(pxBruto)} kg</strong>` : "") +
-          `. ${selisihTeks} ` +
-          `Stok green beans tersedia sekarang = <strong>${fmt(gbStok)} kg</strong>.`;
+          `. Setelah pemesanan: GB tersedia = <strong>${fmt(gbStok)} kg</strong>` +
+          (pakaiPixel ? `, pixel tersedia = <strong>${fmt(pxStok)} kg</strong>` : "") +
+          `.${extraForm}`;
       } else {
         footerEl.classList.add("d-none");
         footerEl.textContent = "";

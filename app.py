@@ -1461,7 +1461,7 @@ def get_produksi_pengemasan():
 
 @app.route('/api/produksi/<produksi_id>/sisa', methods=['GET'])
 def get_produksi_sisa(produksi_id):
-    """Hitung sisa stok produksi: berat akhir - total yang sudah dipakai untuk ordering (isFromOrdering)"""
+    """Sisa pool green beans = (berat akhir − pixel) − pemesanan GB; sisa pixel terpisah."""
     try:
         produksi = db.produksi.find_one({'idProduksi': produksi_id})
         if not produksi:
@@ -1485,18 +1485,34 @@ def get_produksi_sisa(produksi_id):
         
         id_p = produksi.get('idProduksi')
         hasil_list = list(db.hasilProduksi.find({'idProduksi': id_p}))
-        total_dari_ordering = sum(
+        px = float(produksi.get('beratPixel') or 0)
+        pool_gb = max(0.0, berat_akhir - px)
+        total_ordering_gb = sum(
             float(h.get('beratSaatIni', 0))
             for h in hasil_list
             if h.get('isFromOrdering') in (True, 'true', 1)
+            and (h.get('tipeProduk') or '').strip() == 'Green Beans'
         )
-        sisa_tersedia = max(0, berat_akhir - total_dari_ordering)
+        total_ordering_px = sum(
+            float(h.get('beratSaatIni', 0))
+            for h in hasil_list
+            if h.get('isFromOrdering') in (True, 'true', 1)
+            and (h.get('tipeProduk') or '').strip() == 'Pixel'
+        )
+        sisa_gb = max(0, pool_gb - total_ordering_gb)
+        sisa_px = max(0, px - total_ordering_px)
+        # sisaTersedia = sisa pool green beans (selaras stok & pemesanan GB)
+        sisa_tersedia = sisa_gb
         
         return jsonify({
             'idProduksi': produksi.get('idProduksi'),
             'beratAkhir': berat_akhir,
-            'totalDariOrdering': total_dari_ordering,
-            'sisaTersedia': sisa_tersedia
+            'beratPixel': px,
+            'poolGreenBeans': pool_gb,
+            'totalDariOrderingGreenBeans': total_ordering_gb,
+            'totalDariOrderingPixel': total_ordering_px,
+            'sisaTersedia': sisa_tersedia,
+            'sisaTersediaPixel': sisa_px,
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -2147,12 +2163,22 @@ def _bahan_cache_get_for_produksi(produksi_doc, bahan_cache):
     return bahan_cache[id_bahan]
 
 
+def _stok_berat_green_effective_dari_produksi(p):
+    """
+    Stok green beans = berat akhir − berat pixel (sisanya setelah bagian pixel).
+    Selaras Σ berat akhir saat pixel=0; field beratGreenBeans di form hanya referensi/validasi.
+    """
+    ba = float(p.get('beratAkhir', 0) or 0)
+    px = float(p.get('beratPixel', 0) or 0)
+    return max(0.0, ba - px)
+
+
 @app.route('/api/stok', methods=['GET'])
 def get_stok():
     """
-    Stok dari produksi tahap Pengemasan: beratGreenBeans / beratPixel (tidak melebihi berat akhir),
-    hanya batch dengan tanggal pengemasan tercatat. Kurangi pemesanan by berat.
-    Query: tipeProduk (Green Beans/Pixel), tanggalPengemasan (YYYY-MM-DD) untuk filter.
+    Stok Pengemasan: Green Beans = (berat akhir − pixel) per batch; Pixel = beratPixel.
+    Hanya batch dengan tanggal pengemasan tercatat; GB+pixel di form tidak melebihi berat akhir.
+    Kurangi pemesanan per tipe. Query: tipeProduk, tanggalPengemasan.
     """
     try:
         tipe_filter = request.args.get('tipeProduk', '').strip()
@@ -2178,9 +2204,9 @@ def get_stok():
             jenis_kopi = (bahan.get('jenisKopi') or '').strip()
             proses_pengolahan = _proses_pengolahan_tampilan_untuk_agregasi(p, bahan)
             
-            # Aggregate Green Beans
-            berat_green_beans = float(p.get('beratGreenBeans', 0) or 0)
-            if berat_green_beans > 0:
+            # Aggregate Green Beans: berat akhir − pixel (stok riil)
+            stok_gb_batch = _stok_berat_green_effective_dari_produksi(p)
+            if stok_gb_batch > 0:
                 if not tipe_filter or tipe_filter == 'Green Beans':
                     key_gb = _stok_key('Green Beans', jenis_kopi, proses_pengolahan)
                     if key_gb not in stok_map:
@@ -2190,7 +2216,7 @@ def get_stok():
                             'prosesPengolahan': proses_pengolahan,
                             'totalBerat': 0,
                         }
-                    stok_map[key_gb]['totalBerat'] += berat_green_beans
+                    stok_map[key_gb]['totalBerat'] += stok_gb_batch
             
             # Aggregate Pixel (jika ada)
             berat_pixel = float(p.get('beratPixel', 0) or 0)
@@ -2243,8 +2269,9 @@ def get_stok():
         stok_array.sort(key=lambda x: (x['tipeProduk'], x['jenisKopi']))
 
         s_ba = sum(float(p.get('beratAkhir') or 0) for p in produksi_list)
-        s_gb = sum(float(p.get('beratGreenBeans') or 0) for p in produksi_list)
         s_px = sum(float(p.get('beratPixel') or 0) for p in produksi_list)
+        s_stok_gb_bruto = sum(_stok_berat_green_effective_dari_produksi(p) for p in produksi_list)
+        s_gb_form = sum(float(p.get('beratGreenBeans') or 0) for p in produksi_list)
         tot_gb_stok = sum(
             float(v.get('totalBerat') or 0)
             for v in stok_array
@@ -2258,9 +2285,9 @@ def get_stok():
         ringkasan = {
             'jumlahBatchPengemasan': len(produksi_list),
             'sumBeratAkhir': round(s_ba, 4),
-            'sumBeratGreenBeansBruto': round(s_gb, 4),
             'sumBeratPixelBruto': round(s_px, 4),
-            'selisihBeratAkhirVsGbPx': round(s_ba - s_gb - s_px, 4),
+            'sumStokGreenBeansBruto': round(s_stok_gb_bruto, 4),
+            'sumBeratGreenBeansDiForm': round(s_gb_form, 4),
             'totalStokGreenBeansSetelahOrdering': round(tot_gb_stok, 4),
             'totalStokPixelSetelahOrdering': round(tot_px_stok, 4),
         }
@@ -3877,9 +3904,9 @@ def proses_ordering():
         if not produksi:
             return jsonify({'error': 'Produksi not found'}), 404
         
-        # Validasi produksi memiliki berat untuk tipe produk yang dipilih
+        # Pool stok: GB = berat akhir − pixel (sama seperti GET /api/stok); Pixel = beratPixel
         if tipe_produk_selected == 'Green Beans':
-            berat_produk = float(produksi.get('beratGreenBeans', 0) or 0)
+            berat_produk = _stok_berat_green_effective_dari_produksi(produksi)
         else:
             berat_produk = float(produksi.get('beratPixel', 0) or 0)
         
@@ -4202,12 +4229,12 @@ def get_stok_for_pemesanan():
                 varietas = bahan.get('varietas', '')
                 proses_pengolahan = _proses_pengolahan_tampilan_untuk_agregasi(produksi, bahan)
                 
-                # Process Green Beans stock
-                berat_green_beans = float(produksi.get('beratGreenBeans', 0) or 0)
-                if berat_green_beans > 0:
+                # Green Beans: stok = berat akhir − pixel (sama GET /api/stok)
+                stok_gb_pool = _stok_berat_green_effective_dari_produksi(produksi)
+                if stok_gb_pool > 0:
                     key_gb = f"{id_produksi_str}|Green Beans"
                     total_ordering_gb = hasil_map.get(key_gb, 0)
-                    stok_tersedia_gb = max(0.0, berat_green_beans - total_ordering_gb)
+                    stok_tersedia_gb = max(0.0, stok_gb_pool - total_ordering_gb)
                     
                     stok_list.append({
                         'idProduksi': id_produksi_str,
@@ -4217,10 +4244,10 @@ def get_stok_for_pemesanan():
                         'prosesPengolahan': proses_pengolahan,
                         'stokTersedia': float(stok_tersedia_gb),
                         'status': produksi.get('statusTahapan', ''),
-                        'beratAwal': float(berat_green_beans),
+                        'beratAwal': float(stok_gb_pool),
                         'totalDariOrdering': float(total_ordering_gb),
                     })
-                    print(f"✅ [STOK PEMESANAN] {id_produksi} Green Beans: berat={berat_green_beans}, ordering={total_ordering_gb}, tersedia={stok_tersedia_gb}")
+                    print(f"✅ [STOK PEMESANAN] {id_produksi} Green Beans: pool(akhir−px)={stok_gb_pool}, ordering={total_ordering_gb}, tersedia={stok_tersedia_gb}")
                 
                 # Process Pixel stock (if any)
                 berat_pixel = float(produksi.get('beratPixel', 0) or 0)
