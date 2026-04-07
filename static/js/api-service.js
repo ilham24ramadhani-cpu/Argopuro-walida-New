@@ -371,7 +371,14 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
       if (params.tanggalPengemasan) q.set("tanggalPengemasan", params.tanggalPengemasan);
       const query = q.toString();
       const endpoint = query ? `/stok?${query}` : "/stok";
-      return await apiCall(endpoint);
+      const data = await apiCall(endpoint);
+      if (Array.isArray(data)) {
+        return { rows: data, ringkasan: null };
+      }
+      if (data && Array.isArray(data.rows)) {
+        return { rows: data.rows, ringkasan: data.ringkasan || null };
+      }
+      return { rows: [], ringkasan: null };
     },
     async getFilterOptions() {
       return await apiCall("/stok/filter-options");

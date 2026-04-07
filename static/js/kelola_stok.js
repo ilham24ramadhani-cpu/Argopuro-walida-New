@@ -236,12 +236,42 @@ async function displayStok() {
     const tipeProduk = document.getElementById("filterTipeProduk")?.value?.trim() || "";
     const tanggalPengemasan = document.getElementById("filterTanggalPengemasan")?.value?.trim() || "";
 
+    let ringkasanStok = null;
     if (window.API && window.API.Stok && window.API.Stok.getAll) {
-      stokArray = await window.API.Stok.getAll({ tipeProduk, tanggalPengemasan });
+      const res = await window.API.Stok.getAll({ tipeProduk, tanggalPengemasan });
+      stokArray = res.rows || [];
+      ringkasanStok = res.ringkasan || null;
       console.log(`✅ Loaded ${stokArray.length} stok (filter: tipe=${tipeProduk || "semua"}, tanggal=${tanggalPengemasan || "semua"})`);
     }
 
     if (!Array.isArray(stokArray)) stokArray = [];
+
+    const footerEl = document.getElementById("stokRingkasanFooter");
+    if (footerEl) {
+      if (ringkasanStok && ringkasanStok.jumlahBatchPengemasan > 0) {
+        const fmt = (n) =>
+          Number(n || 0).toLocaleString("id-ID", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 4,
+          });
+        const ba = ringkasanStok.sumBeratAkhir;
+        const gbBruto = ringkasanStok.sumBeratGreenBeansBruto;
+        const pxBruto = ringkasanStok.sumBeratPixelBruto;
+        const sel = ringkasanStok.selisihBeratAkhirVsGbPx;
+        const gbStok = ringkasanStok.totalStokGreenBeansSetelahOrdering;
+        footerEl.classList.remove("d-none");
+        footerEl.innerHTML =
+          `<i class="bi bi-calculator me-1"></i><strong>Penjelasan angka:</strong> Kolom total adalah <strong>stok green beans / pixel</strong> (setelah kurangi pemesanan), ` +
+          `bukan jumlah berat akhir. Untuk <strong>${ringkasanStok.jumlahBatchPengemasan}</strong> batch pengemasan pada filter ini: ` +
+          `Σ berat akhir = <strong>${fmt(ba)} kg</strong>, Σ green beans (bruto) = <strong>${fmt(gbBruto)} kg</strong>` +
+          (pxBruto > 0 ? `, Σ pixel (bruto) = <strong>${fmt(pxBruto)} kg</strong>` : "") +
+          `. Selisih berat akhir − (GB + pixel) = <strong>${fmt(sel)} kg</strong> (belum dialokasi ke GB/pixel di form). ` +
+          `Stok GB tersedia sekarang = <strong>${fmt(gbStok)} kg</strong>.`;
+      } else {
+        footerEl.classList.add("d-none");
+        footerEl.textContent = "";
+      }
+    }
 
     let filteredStok = stokArray;
     if (searchTerm) {

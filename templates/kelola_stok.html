@@ -404,10 +404,8 @@
                     >Informasi Stok Hasil Produksi</strong
                   >
                   <p class="mb-0 small">
-                    Stok dihitung per batch (ID produksi) yang statusnya Pengemasan, sudah punya
-                    <strong>berat akhir</strong> dan <strong>tanggal pengemasan</strong> tercatat, serta berat green beans / pixel tidak melebihi berat akhir.
-                    Kolom proses mengikuti <strong>tampilan yang sama seperti Kelola Produksi</strong> (jika master bahan hanya punya satu proses, itulah yang dipakai untuk agregasi). Stok
-                    <strong>otomatis berkurang</strong> saat pemesanan diproses. Filter: tipe produk dan tanggal pengemasan.
+                    Hanya batch (ID produksi) Pengemasan dengan <strong>berat akhir</strong>, <strong>tanggal pengemasan</strong>, dan GB+pixel tidak melebihi berat akhir.
+                    Kolom <strong>Total Berat</strong> adalah <strong>stok green beans atau pixel</strong> (bukan jumlah berat akhir): dijumlah dari field berat green beans / pixel, lalu dikurangi pemesanan. Σ berat akhir di produksi bisa lebih besar jika ada bagian belum dialokasi ke GB/pixel. Proses mengikuti tampilan <strong>Kelola Produksi</strong>. Filter: tipe produk dan tanggal pengemasan.
                   </p>
                 </div>
               </div>
@@ -456,6 +454,7 @@
                       </tbody>
                     </table>
                   </div>
+                  <p id="stokRingkasanFooter" class="small text-muted mb-0 mt-2 px-1 d-none" role="note"></p>
                 </div>
               </div>
             </div>

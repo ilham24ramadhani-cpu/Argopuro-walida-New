@@ -2241,9 +2241,32 @@ def get_stok():
         
         stok_array = [v for v in stok_map.values() if v['totalBerat'] > 0]
         stok_array.sort(key=lambda x: (x['tipeProduk'], x['jenisKopi']))
+
+        s_ba = sum(float(p.get('beratAkhir') or 0) for p in produksi_list)
+        s_gb = sum(float(p.get('beratGreenBeans') or 0) for p in produksi_list)
+        s_px = sum(float(p.get('beratPixel') or 0) for p in produksi_list)
+        tot_gb_stok = sum(
+            float(v.get('totalBerat') or 0)
+            for v in stok_array
+            if (v.get('tipeProduk') or '').strip() == 'Green Beans'
+        )
+        tot_px_stok = sum(
+            float(v.get('totalBerat') or 0)
+            for v in stok_array
+            if (v.get('tipeProduk') or '').strip() == 'Pixel'
+        )
+        ringkasan = {
+            'jumlahBatchPengemasan': len(produksi_list),
+            'sumBeratAkhir': round(s_ba, 4),
+            'sumBeratGreenBeansBruto': round(s_gb, 4),
+            'sumBeratPixelBruto': round(s_px, 4),
+            'selisihBeratAkhirVsGbPx': round(s_ba - s_gb - s_px, 4),
+            'totalStokGreenBeansSetelahOrdering': round(tot_gb_stok, 4),
+            'totalStokPixelSetelahOrdering': round(tot_px_stok, 4),
+        }
         
         print(f"📊 [STOK GET] Aggregated {len(stok_array)} stok (filter tipe={tipe_filter or 'semua'}, tanggal={tanggal_filter or 'semua'})")
-        return jsonify(json_serialize(stok_array)), 200
+        return jsonify(json_serialize({'rows': stok_array, 'ringkasan': ringkasan})), 200
     except Exception as e:
         print(f"❌ [STOK GET] ERROR: {str(e)}")
         import traceback

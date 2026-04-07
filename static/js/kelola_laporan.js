@@ -1351,7 +1351,8 @@ const LAPORAN_REKAP_CONFIG = {
       // Gunakan API Stok.getAll() seperti di displayStok()
       try {
         if (window.API && window.API.Stok && window.API.Stok.getAll) {
-          return await window.API.Stok.getAll({});
+          const res = await window.API.Stok.getAll({});
+          return res.rows || [];
         }
       } catch (error) {
         console.error("Error loading stok for export:", error);
@@ -3270,7 +3271,8 @@ async function displayStok() {
     
     // Gunakan API Stok.getAll() seperti di kelola_stok.js
     if (window.API && window.API.Stok && window.API.Stok.getAll) {
-      stokArray = await window.API.Stok.getAll({});
+      const res = await window.API.Stok.getAll({});
+      stokArray = res.rows || [];
       console.log(`✅ Loaded ${stokArray.length} stok records for laporan`);
     } else {
       console.warn("⚠️ API.Stok.getAll not available, using fallback");
