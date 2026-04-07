@@ -314,7 +314,7 @@ function buildAlurProduksiTableHtml(item) {
     <th scope="col" class="text-nowrap">Tanggal</th>
     <th scope="col" class="text-nowrap">B. awal</th>
     <th scope="col" class="text-nowrap">B. akhir</th>
-    <th scope="col" class="text-nowrap" title="kg bahan per kg hasil tahap">Randomen</th>
+    <th scope="col" class="text-nowrap" title="Berat awal batch ÷ berat hasil pada tahap itu">Randomen</th>
     <th scope="col" class="text-nowrap">Kadar</th>
     <th scope="col">Catatan</th>
   </tr>`;
@@ -1077,7 +1077,7 @@ const LAPORAN_REKAP_CONFIG = {
             : "-",
       },
       {
-        label: "Randomen ID (kg bahan / kg green beans)",
+        label: "Randomen ID (berat awal ÷ berat akhir)",
         value: (item) =>
           window.ProduksiRandomen
             ? window.ProduksiRandomen.formatRandomenPerIdCell(item)
@@ -1644,7 +1644,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       <div class="summary rekap-randomen-proses" style="margin-top: 24px">
         <h2>Rekap randomen per proses pengolahan</h2>
         <p class="meta" style="margin: 0 0 12px 0; color: #6b7280; font-size: 12px">
-          Belum ada batch pengemasan lengkap (bahan &amp; hasil green beans / berat akhir valid) pada filter ini.
+          Belum ada batch pengemasan lengkap (berat awal &amp; berat akhir valid) pada filter ini.
         </p>
       </div>`;
   }
@@ -1684,16 +1684,16 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       <div class="summary rekap-randomen-proses" style="margin-top: 24px">
         <h2>Rekap randomen per proses pengolahan</h2>
         <p class="meta" style="margin: 0 0 12px 0; color: #6b7280; font-size: 12px">
-          Randomen = kg bahan masuk per 1 kg hasil (green beans; jika tidak diisi dipakai berat akhir). Hanya batch yang sudah pengemasan dengan berat valid.
+          Randomen = berat awal ÷ berat akhir (kg). Hanya batch yang sudah tahap pengemasan dengan berat akhir terisi.
         </p>
         <table>
           <thead>
             <tr>
               <th>Proses pengolahan</th>
               <th style="text-align: right">Jumlah batch</th>
-              <th style="text-align: right">Σ Bahan masuk (kg)</th>
-              <th style="text-align: right">Σ Hasil GB / akhir (kg)</th>
-              <th style="text-align: right">Randomen (kg/kg)</th>
+              <th style="text-align: right">Σ Berat awal (kg)</th>
+              <th style="text-align: right">Σ Berat akhir (kg)</th>
+              <th style="text-align: right">Randomen (awal ÷ akhir)</th>
             </tr>
           </thead>
           <tbody>
@@ -2156,9 +2156,9 @@ function buildTimelineItem(item, isFirst, index = 0, bahanById) {
     ? `<div class="alert alert-light border small mt-3 mb-0 py-2">
           <strong>Randomen (per ID)</strong>:
           ${escapeHtmlLaporan(PR.formatRandomenPerIdCell(item))}
-          <span class="text-muted"> — kg bahan per kg green beans (berat awal ÷ berat GB atau berat akhir; per ID setelah pengemasan)</span>
+          <span class="text-muted"> — berat awal ÷ berat akhir (setelah tahap pengemasan)</span>
         </div>
-        <p class="small text-muted mt-2 mb-1 fw-semibold">Randomen per tahapan (kg bahan / kg hasil di tahap itu)</p>
+        <p class="small text-muted mt-2 mb-1 fw-semibold">Randomen per tahapan (berat awal batch ÷ berat hasil di tahap itu)</p>
         <pre class="small text-muted mb-0 bg-body-secondary rounded p-2" style="white-space:pre-wrap;font-family:inherit">${escapeHtmlLaporan(
           PR.buildRingkasanPerTahapanText(item)
         )}</pre>`
@@ -2663,7 +2663,7 @@ function generateProduksiPDF(id) {
   const rndValPdf = PRpdf ? PRpdf.computeRandomenPerId(item) : null;
   const rndPerId =
     rndValPdf != null && PRpdf
-      ? `${PRpdf.formatRandomenRatio(rndValPdf)} kg bahan / kg green beans`
+      ? `${PRpdf.formatRandomenRatio(rndValPdf)} (berat awal ÷ berat akhir)`
       : "—";
   const pairsProd = [
     ["ID Produksi", item.idProduksi || "—"],
@@ -2705,7 +2705,7 @@ function generateProduksiPDF(id) {
   doc.setFont(undefined, "normal");
   doc.setTextColor(80, 80, 80);
   doc.text(
-    "Tiap baris: tahapan, tanggal, berat, randomen (kg bahan per kg hasil tahap), kadar air, catatan.",
+    "Tiap baris: tahapan, tanggal, berat, randomen (berat awal ÷ berat hasil tahap), kadar air, catatan.",
     20,
     y
   );

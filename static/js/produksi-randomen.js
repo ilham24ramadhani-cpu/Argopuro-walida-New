@@ -1,5 +1,6 @@
 /**
- * Randomen: kg bahan masuk per 1 kg hasil (green beans / hasil tahapan).
+ * Randomen / rendemen: berat awal ÷ berat akhir (pengemasan).
+ * Untuk baris alur per tahapan: berat awal batch ÷ berat hasil pada tahap itu.
  * Digunakan Kelola Produksi & Laporan Produksi.
  */
 (function (global) {
@@ -21,18 +22,16 @@
     return ratio.toLocaleString("id-ID", { maximumFractionDigits: 4 });
   }
 
-  /** Penyebut akhir: berat green beans jika ada, jika tidak berat akhir pengemasan */
+  /** Penyebut rendemen per batch: berat akhir pengemasan (kg). */
   function getDenominatorAkhirProduksi(p) {
-    const gb = safeNum(p.beratGreenBeans);
-    if (gb > 0) return gb;
     return safeNum(p.beratAkhir);
   }
 
-  /** Produksi sudah pengemasan dan punya berat akhir / green beans untuk perhitungan */
+  /** Produksi sudah pengemasan dan punya berat akhir > 0 untuk perhitungan */
   function isPengemasanUntukRandomen(p) {
     const st = (p.statusTahapan || "").toLowerCase();
     if (!st.includes("pengemasan")) return false;
-    return getDenominatorAkhirProduksi(p) > 0;
+    return safeNum(p.beratAkhir) > 0;
   }
 
   function tahapanIncludesPengemasan(name) {
@@ -48,18 +47,16 @@
   function getHasilKgUntukBarisAlur(item, h, rowKind) {
     if (rowKind === "current") {
       if (tahapanIncludesPengemasan(item.statusTahapan)) {
-        return getDenominatorAkhirProduksi(item);
+        return safeNum(item.beratAkhir);
       }
       const bt = safeNum(item.beratTerkini);
       return bt > 0 ? bt : 0;
     }
     const nama = getTahapanLabelFromHistory(h, item);
     if (tahapanIncludesPengemasan(nama)) {
-      const gb = safeNum(item.beratGreenBeans);
-      if (gb > 0) return gb;
       const ba = safeNum(h.beratAkhir);
       if (ba > 0) return ba;
-      return getDenominatorAkhirProduksi(item);
+      return safeNum(item.beratAkhir);
     }
     const bt = safeNum(h.beratTerkini);
     if (bt > 0) return bt;
@@ -75,12 +72,12 @@
   }
 
   /**
-   * Randomen per ID: bahan awal ÷ (green beans atau berat akhir).
+   * Randomen per ID produksi: berat awal ÷ berat akhir (tahap pengemasan).
    */
   function computeRandomenPerId(p) {
     if (!isPengemasanUntukRandomen(p)) return null;
     const b = safeNum(p.beratAwal);
-    const d = getDenominatorAkhirProduksi(p);
+    const d = safeNum(p.beratAkhir);
     return ratioBahanPerHasil(b, d);
   }
 
@@ -171,7 +168,7 @@
     (items || []).forEach((p) => {
       if (!isPengemasanUntukRandomen(p)) return;
       const b = safeNum(p.beratAwal);
-      const h = getDenominatorAkhirProduksi(p);
+      const h = safeNum(p.beratAkhir);
       if (b <= 0 || h <= 0) return;
       const key = (getProses && getProses(p)) || p.prosesPengolahan || "—";
       if (!byProses[key]) byProses[key] = { bahan: 0, hasil: 0, batch: 0 };
@@ -188,9 +185,9 @@
         const { bahan, hasil } = byProses[k];
         const r = hasil > 0 ? bahan / hasil : null;
         const rasioStr = r != null ? formatRandomenRatio(r) : "—";
-        return `${k}: ${rasioStr} kg bahan/kg hasil (Σ ${formatRandomenRatio(
+        return `${k}: ${rasioStr} (Σ berat awal ${formatRandomenRatio(
           bahan
-        )} kg → ${formatRandomenRatio(hasil)} kg)`;
+        )} kg ÷ Σ berat akhir ${formatRandomenRatio(hasil)} kg)`;
       });
 
     const totalRatio = sumHasil > 0 ? sumBahan / sumHasil : null;
