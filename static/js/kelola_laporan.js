@@ -7,7 +7,6 @@ let sanitasi = [];
 let pemasok = [];
 let keuangan = [];
 let pemesanan = []; // TAMBAHAN: Data pemesanan untuk laporan
-let selectedWeeklyYear = new Date().getFullYear();
 
 /** Produksi sudah tahap pengemasan dan punya berat akhir > 0 */
 function isProduksiPengemasanBeratAkhir(p) {
@@ -146,7 +145,7 @@ function buildAlurProduksiTableRows(item) {
     if (!PR) return "—";
     const b = PR.safeNum(item.beratAwal);
     const r = PR.ratioBahanPerHasil(b, hasilKg);
-    return r != null ? PR.formatRandomenRatio(r) : "—";
+    return r != null ? PR.formatRandomenBanding1(r) : "—";
   };
 
   if (hist.length === 0) {
@@ -314,7 +313,7 @@ function buildAlurProduksiTableHtml(item) {
     <th scope="col" class="text-nowrap">Tanggal</th>
     <th scope="col" class="text-nowrap">B. awal</th>
     <th scope="col" class="text-nowrap">B. akhir</th>
-    <th scope="col" class="text-nowrap" title="Berat awal batch ÷ berat hasil pada tahap itu">Randomen</th>
+    <th scope="col" class="text-nowrap" title="Dibulatkan: N banding 1 (kg bahan per 1 kg hasil tahap)">Randomen</th>
     <th scope="col" class="text-nowrap">Kadar</th>
     <th scope="col">Catatan</th>
   </tr>`;
@@ -595,6 +594,7 @@ async function loadAllReportData() {
     if (!Array.isArray(pemesanan)) pemesanan = [];
 
     refreshBahanPemasokFilterOptions();
+    refreshLaporanProsesTahapanFilterOptions();
 
     const endTime = performance.now();
     const loadTime = ((endTime - startTime) / 1000).toFixed(2);
@@ -699,9 +699,7 @@ async function refreshAllTables() {
     displayKeuangan();
     displayStok();
     displayPemesananLaporan(); // TAMBAHAN: Display pemesanan
-    renderWeeklyRecap();
     renderBahanPriceStats();
-    renderProduksiTimeline();
 
     console.log("✅ All tables refreshed successfully");
   } catch (error) {
@@ -769,44 +767,6 @@ function parseValidDate(value) {
   if (!value) return null;
   const date = new Date(value);
   return isNaN(date) ? null : date;
-}
-
-function getWeekNumber(date) {
-  const tempDate = new Date(
-    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
-  );
-  const dayNum = tempDate.getUTCDay() || 7;
-  tempDate.setUTCDate(tempDate.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(tempDate.getUTCFullYear(), 0, 1));
-  return Math.ceil(((tempDate - yearStart) / 86400000 + 1) / 7);
-}
-
-function getWeekBoundaries(date) {
-  const start = new Date(date);
-  const day = start.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  start.setDate(start.getDate() + diff);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  end.setHours(23, 59, 59, 999);
-  return { start, end };
-}
-
-function getAvailableYears() {
-  const yearSet = new Set();
-  const collectYear = (value) => {
-    const date = parseValidDate(value);
-    if (date) {
-      yearSet.add(date.getFullYear());
-    }
-  };
-
-  bahan.forEach((item) => collectYear(item.tanggalMasuk));
-  produksi.forEach((item) => collectYear(item.tanggalMasuk));
-  hasilProduksi.forEach((item) => collectYear(item.tanggal));
-
-  return Array.from(yearSet).sort((a, b) => b - a);
 }
 
 function safeNumber(value) {
@@ -895,8 +855,13 @@ function getPeriodMeta(date, range) {
 }
 
 const tableFilters = {
-  bahan: { mode: "all", value: "", pemasok: "" },
-  produksi: { mode: "all", value: "" },
+  bahan: { mode: "all", value: "", pemasok: "", prosesPengolahan: "" },
+  produksi: {
+    mode: "all",
+    value: "",
+    prosesPengolahan: "",
+    statusTahapan: "",
+  },
   hasil: { mode: "all", value: "" },
   sanitasi: { mode: "all", value: "" },
   keuangan: { mode: "all", value: "" },
@@ -1077,7 +1042,7 @@ const LAPORAN_REKAP_CONFIG = {
             : "-",
       },
       {
-        label: "Randomen ID (berat awal ÷ berat akhir)",
+        label: "Randomen ID (N banding 1)",
         value: (item) =>
           window.ProduksiRandomen
             ? window.ProduksiRandomen.formatRandomenPerIdCell(item)
@@ -1459,9 +1424,27 @@ function initializeTableFilters() {
     if (resetButton) {
       resetButton.addEventListener("click", () => {
         if (category === "bahan") {
-          tableFilters[category] = { mode: "all", value: "", pemasok: "" };
+          tableFilters[category] = {
+            mode: "all",
+            value: "",
+            pemasok: "",
+            prosesPengolahan: "",
+          };
           const pemSel = document.getElementById("bahanFilterPemasok");
           if (pemSel) pemSel.value = "";
+          const prosesSel = document.getElementById("bahanFilterProses");
+          if (prosesSel) prosesSel.value = "";
+        } else if (category === "produksi") {
+          tableFilters[category] = {
+            mode: "all",
+            value: "",
+            prosesPengolahan: "",
+            statusTahapan: "",
+          };
+          const ps = document.getElementById("produksiFilterProses");
+          const th = document.getElementById("produksiFilterTahapan");
+          if (ps) ps.value = "";
+          if (th) th.value = "";
         } else {
           tableFilters[category] = { mode: "all", value: "" };
         }
@@ -1513,12 +1496,58 @@ function applyTableFilter(category, data, dateGetter) {
   return data.filter((item) => matchesDateFilter(dateGetter(item), filter));
 }
 
-/** Bahan masuk: filter waktu + opsional pemasok (untuk tabel & rekap). */
+function normalizeLaporanFilterStr(s) {
+  return String(s || "").trim().toLowerCase();
+}
+
+/** Bahan masuk: filter waktu + pemasok + opsional proses pengolahan (untuk tabel & rekap). */
 function getBahanFilteredForDisplay() {
   let data = applyTableFilter("bahan", bahan, (item) => item.tanggalMasuk);
-  const pem = tableFilters.bahan && tableFilters.bahan.pemasok;
+  const bf = tableFilters.bahan;
+  const pem = bf && bf.pemasok;
   if (pem) {
     data = data.filter((item) => (item.pemasok || "") === pem);
+  }
+  const proses = bf && bf.prosesPengolahan;
+  if (proses) {
+    const pn = normalizeLaporanFilterStr(proses);
+    data = data.filter((item) => {
+      const lines = Array.isArray(item.prosesBahan) ? item.prosesBahan : [];
+      return lines.some(
+        (l) =>
+          normalizeLaporanFilterStr(l && l.prosesPengolahan) === pn
+      );
+    });
+  }
+  return data;
+}
+
+/** Produksi: filter waktu + opsional proses pengolahan + status tahapan (untuk tabel, timeline & rekap). */
+function getProduksiFilteredForDisplay() {
+  let data = applyTableFilter(
+    "produksi",
+    produksi,
+    (item) => item.tanggalMasuk
+  );
+  const pf = tableFilters.produksi;
+  if (!pf) return data;
+  const bahanMap = getBahanMapForLaporan();
+  const fp = pf.prosesPengolahan;
+  if (fp) {
+    const fpn = normalizeLaporanFilterStr(fp);
+    data = data.filter(
+      (p) =>
+        normalizeLaporanFilterStr(
+          getProsesPengolahanTampilanLaporan(p, bahanMap)
+        ) === fpn
+    );
+  }
+  const ft = pf.statusTahapan;
+  if (ft) {
+    const ftn = normalizeLaporanFilterStr(ft);
+    data = data.filter(
+      (p) => normalizeLaporanFilterStr(p.statusTahapan) === ftn
+    );
   }
   return data;
 }
@@ -1551,10 +1580,155 @@ function refreshBahanPemasokFilterOptions() {
       o.textContent = n;
       sel.appendChild(o);
     });
-  if (!tableFilters.bahan) tableFilters.bahan = { mode: "all", value: "", pemasok: "" };
+  if (!tableFilters.bahan)
+    tableFilters.bahan = {
+      mode: "all",
+      value: "",
+      pemasok: "",
+      prosesPengolahan: "",
+    };
   const keep = prev && names.has(prev) ? prev : "";
   tableFilters.bahan.pemasok = keep;
   sel.value = keep;
+}
+
+/** Isi dropdown proses (bahan & produksi) dan tahapan produksi dari data terbaru. */
+function refreshLaporanProsesTahapanFilterOptions() {
+  const ensureBahanFilter = () => {
+    if (!tableFilters.bahan)
+      tableFilters.bahan = {
+        mode: "all",
+        value: "",
+        pemasok: "",
+        prosesPengolahan: "",
+      };
+    if (!Object.prototype.hasOwnProperty.call(tableFilters.bahan, "prosesPengolahan"))
+      tableFilters.bahan.prosesPengolahan = "";
+  };
+  const ensureProduksiFilter = () => {
+    if (!tableFilters.produksi)
+      tableFilters.produksi = {
+        mode: "all",
+        value: "",
+        prosesPengolahan: "",
+        statusTahapan: "",
+      };
+    if (!Object.prototype.hasOwnProperty.call(tableFilters.produksi, "prosesPengolahan"))
+      tableFilters.produksi.prosesPengolahan = "";
+    if (!Object.prototype.hasOwnProperty.call(tableFilters.produksi, "statusTahapan"))
+      tableFilters.produksi.statusTahapan = "";
+  };
+
+  const fillSelect = (sel, emptyLabel, values, filterObj, prop) => {
+    if (!sel) return;
+    const set = new Set(values.filter(Boolean));
+    const prev = filterObj[prop] || "";
+    const keep = prev && set.has(prev) ? prev : "";
+    filterObj[prop] = keep;
+    sel.innerHTML = "";
+    const o0 = document.createElement("option");
+    o0.value = "";
+    o0.textContent = emptyLabel;
+    sel.appendChild(o0);
+    [...set]
+      .sort((a, b) => a.localeCompare(b, "id"))
+      .forEach((v) => {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = v;
+        sel.appendChild(o);
+      });
+    sel.value = keep;
+  };
+
+  ensureBahanFilter();
+  const prosesBahanNames = [];
+  (bahan || []).forEach((b) => {
+    (b.prosesBahan || []).forEach((line) => {
+      const n = (line && line.prosesPengolahan && String(line.prosesPengolahan).trim()) || "";
+      if (n) prosesBahanNames.push(n);
+    });
+  });
+  fillSelect(
+    document.getElementById("bahanFilterProses"),
+    "Semua proses pengolahan",
+    prosesBahanNames,
+    tableFilters.bahan,
+    "prosesPengolahan"
+  );
+
+  ensureProduksiFilter();
+  const bahanMap = getBahanMapForLaporan();
+  const prosesProdNames = [];
+  const tahapanNames = [];
+  (produksi || []).forEach((p) => {
+    const t = getProsesPengolahanTampilanLaporan(p, bahanMap);
+    if (t && t !== "-") prosesProdNames.push(String(t).trim());
+    const st = (p.statusTahapan && String(p.statusTahapan).trim()) || "";
+    if (st) tahapanNames.push(st);
+  });
+  fillSelect(
+    document.getElementById("produksiFilterProses"),
+    "Semua proses pengolahan",
+    prosesProdNames,
+    tableFilters.produksi,
+    "prosesPengolahan"
+  );
+  fillSelect(
+    document.getElementById("produksiFilterTahapan"),
+    "Semua tahapan",
+    tahapanNames,
+    tableFilters.produksi,
+    "statusTahapan"
+  );
+}
+
+function initializeLaporanProsesTahapanFilterListeners() {
+  const bp = document.getElementById("bahanFilterProses");
+  if (bp && bp.dataset.laporanBound !== "1") {
+    bp.dataset.laporanBound = "1";
+    bp.addEventListener("change", () => {
+      if (!tableFilters.bahan)
+        tableFilters.bahan = {
+          mode: "all",
+          value: "",
+          pemasok: "",
+          prosesPengolahan: "",
+        };
+      tableFilters.bahan.prosesPengolahan = bp.value;
+      renderTableByCategory("bahan");
+    });
+  }
+  const pp = document.getElementById("produksiFilterProses");
+  if (pp && pp.dataset.laporanBound !== "1") {
+    pp.dataset.laporanBound = "1";
+    pp.addEventListener("change", () => {
+      if (!tableFilters.produksi)
+        tableFilters.produksi = {
+          mode: "all",
+          value: "",
+          prosesPengolahan: "",
+          statusTahapan: "",
+        };
+      tableFilters.produksi.prosesPengolahan = pp.value;
+      renderTableByCategory("produksi");
+    });
+  }
+  const pt = document.getElementById("produksiFilterTahapan");
+  if (pt && pt.dataset.laporanBound !== "1") {
+    pt.dataset.laporanBound = "1";
+    pt.addEventListener("change", () => {
+      if (!tableFilters.produksi)
+        tableFilters.produksi = {
+          mode: "all",
+          value: "",
+          prosesPengolahan: "",
+          statusTahapan: "",
+        };
+      tableFilters.produksi.statusTahapan = pt.value;
+      renderTableByCategory("produksi");
+    });
+  }
 }
 
 function initializeBahanPemasokFilterListener() {
@@ -1562,7 +1736,13 @@ function initializeBahanPemasokFilterListener() {
   if (!sel || sel.dataset.laporanBound === "1") return;
   sel.dataset.laporanBound = "1";
   sel.addEventListener("change", () => {
-    if (!tableFilters.bahan) tableFilters.bahan = { mode: "all", value: "", pemasok: "" };
+    if (!tableFilters.bahan)
+      tableFilters.bahan = {
+        mode: "all",
+        value: "",
+        pemasok: "",
+        prosesPengolahan: "",
+      };
     tableFilters.bahan.pemasok = sel.value;
     renderTableByCategory("bahan");
   });
@@ -1571,18 +1751,17 @@ function initializeBahanPemasokFilterListener() {
 function updateBahanPemasokInsight() {
   const el = document.getElementById("bahanPemasokInsight");
   if (!el) return;
-  const dateFiltered = applyTableFilter("bahan", bahan, (item) => item.tanggalMasuk);
+  const filtered = getBahanFilteredForDisplay();
   const pemFilter = tableFilters.bahan && tableFilters.bahan.pemasok;
   if (pemFilter) {
-    const sub = dateFiltered.filter((item) => (item.pemasok || "") === pemFilter);
-    const kg = sub.reduce((s, i) => s + safeNumber(i.jumlah), 0);
+    const kg = filtered.reduce((s, i) => s + safeNumber(i.jumlah), 0);
     el.innerHTML = `<span class="text-dark fw-semibold">${pemFilter}</span> — total masuk <strong>${formatKgValue(
       kg
-    )}</strong> dari <strong>${sub.length}</strong> transaksi (sesuai filter waktu).`;
+    )}</strong> dari <strong>${filtered.length}</strong> transaksi (sesuai filter).`;
     return;
   }
   const bySupplier = {};
-  dateFiltered.forEach((item) => {
+  filtered.forEach((item) => {
     const p = (item.pemasok || "").trim() || "(Tanpa nama)";
     bySupplier[p] = (bySupplier[p] || 0) + safeNumber(item.jumlah);
   });
@@ -1602,11 +1781,7 @@ function getFilteredDataForCategory(category) {
     case "bahan":
       return getBahanFilteredForDisplay();
     case "produksi":
-      return applyTableFilter(
-        "produksi",
-        produksi,
-        (item) => item.tanggalMasuk
-      );
+      return getProduksiFilteredForDisplay();
     case "hasil":
       return applyTableFilter("hasil", hasilProduksi, (item) => item.tanggal);
     case "sanitasi":
@@ -1662,7 +1837,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       <td style="text-align: right">${fmtKg(row.bahan)}</td>
       <td style="text-align: right">${fmtKg(row.hasil)}</td>
       <td style="text-align: right">${
-        r != null ? PR.formatRandomenRatio(r) : "—"
+        r != null ? PR.formatRandomenBanding1(r) : "—"
       }</td>
     </tr>`;
     })
@@ -1675,7 +1850,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       <td style="text-align: right"><strong>${totalBatch}</strong></td>
       <td style="text-align: right"><strong>${fmtKg(agg.sumBahan)}</strong></td>
       <td style="text-align: right"><strong>${fmtKg(agg.sumHasil)}</strong></td>
-      <td style="text-align: right"><strong>${PR.formatRandomenRatio(
+      <td style="text-align: right"><strong>${PR.formatRandomenBanding1(
         agg.totalRatio
       )}</strong></td>
     </tr>`
@@ -1685,7 +1860,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       <div class="summary rekap-randomen-proses" style="margin-top: 24px">
         <h2>Rekap randomen per proses pengolahan</h2>
         <p class="meta" style="margin: 0 0 12px 0; color: #6b7280; font-size: 12px">
-          Randomen = berat awal ÷ berat akhir (kg). Hanya batch yang sudah tahap pengemasan dengan berat akhir terisi.
+          Randomen ditampilkan dibulatkan sebagai <strong>N banding 1</strong> (N kg bahan per 1 kg hasil). Perhitungan: Σ berat awal ÷ Σ berat akhir per proses. Hanya batch pengemasan dengan berat valid.
         </p>
         <table>
           <thead>
@@ -1694,7 +1869,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
               <th style="text-align: right">Jumlah batch</th>
               <th style="text-align: right">Σ Berat awal (kg)</th>
               <th style="text-align: right">Σ Berat akhir (kg)</th>
-              <th style="text-align: right">Randomen (awal ÷ akhir)</th>
+              <th style="text-align: right">Randomen (N banding 1)</th>
             </tr>
           </thead>
           <tbody>
@@ -1718,8 +1893,20 @@ function getFilterDescription(category) {
       timePart = `Periode: Tahunan (${filter.value})`;
     }
   }
-  if (category === "bahan" && filter && filter.pemasok) {
-    return `${timePart} | Pemasok: ${filter.pemasok}`;
+  if (category === "bahan" && filter) {
+    const parts = [timePart];
+    if (filter.pemasok) parts.push(`Pemasok: ${filter.pemasok}`);
+    if (filter.prosesPengolahan)
+      parts.push(`Proses pengolahan: ${filter.prosesPengolahan}`);
+    return parts.join(" | ");
+  }
+  if (category === "produksi" && filter) {
+    const parts = [timePart];
+    if (filter.prosesPengolahan)
+      parts.push(`Proses: ${filter.prosesPengolahan}`);
+    if (filter.statusTahapan)
+      parts.push(`Tahapan: ${filter.statusTahapan}`);
+    return parts.join(" | ");
   }
   return timePart;
 }
@@ -1898,141 +2085,6 @@ async function exportRekap(category) {
   }
 }
 
-// Display tabel bahan
-function renderWeeklyRecap() {
-  const tableBody = document.getElementById("weeklyRecapTable");
-  const emptyState = document.getElementById("weeklyRecapEmpty");
-  const yearSelect = document.getElementById("weeklyRecapYear");
-  if (!tableBody || !yearSelect) return;
-
-  const availableYears = getAvailableYears();
-  if (availableYears.length === 0) {
-    selectedWeeklyYear = new Date().getFullYear();
-  } else if (!availableYears.includes(selectedWeeklyYear)) {
-    selectedWeeklyYear = availableYears[0];
-  }
-
-  const selectOptions =
-    availableYears.length > 0
-      ? availableYears
-          .map((year) => `<option value="${year}">${year}</option>`)
-          .join("")
-      : `<option value="${selectedWeeklyYear}">${selectedWeeklyYear}</option>`;
-  yearSelect.innerHTML = selectOptions;
-  yearSelect.value = selectedWeeklyYear;
-
-  if (!yearSelect.dataset.listenerAttached) {
-    yearSelect.addEventListener("change", (event) => {
-      selectedWeeklyYear = parseInt(event.target.value, 10);
-      renderWeeklyRecap();
-    });
-    yearSelect.dataset.listenerAttached = "true";
-  }
-
-  const recapMap = {};
-  const upsertWeekData = (date) => {
-    if (!date || date.getFullYear() !== selectedWeeklyYear) return null;
-    const weekNumber = getWeekNumber(date);
-    const key = `${selectedWeeklyYear}-W${weekNumber}`;
-    if (!recapMap[key]) {
-      const { start, end } = getWeekBoundaries(date);
-      recapMap[key] = {
-        week: weekNumber,
-        rangeStart: start,
-        rangeEnd: end,
-        totalBahanKg: 0,
-        totalPengeluaran: 0,
-        batchProduksi: 0,
-        totalOutputKg: 0,
-        totalPengemasanKg: 0,
-      };
-    }
-    return recapMap[key];
-  };
-
-  bahan.forEach((item) => {
-    const date = parseValidDate(item.tanggalMasuk);
-    const weekData = upsertWeekData(date);
-    if (!weekData) return;
-    const jumlah =
-      typeof item.jumlah === "number"
-        ? item.jumlah
-        : parseFloat(item.jumlah) || 0;
-    const total =
-      typeof item.totalPengeluaran === "number"
-        ? item.totalPengeluaran
-        : parseFloat(item.totalPengeluaran) || jumlah * (item.hargaPerKg || 0);
-    weekData.totalBahanKg += jumlah;
-    weekData.totalPengeluaran += total;
-  });
-
-  produksi.forEach((item) => {
-    const dateMasuk = parseValidDate(item.tanggalMasuk);
-    const wdMasuk = upsertWeekData(dateMasuk);
-    if (wdMasuk) wdMasuk.batchProduksi += 1;
-
-    if (isProduksiPengemasanBeratAkhir(item)) {
-      const datePem =
-        parseValidDate(item.tanggalSekarang) || parseValidDate(item.tanggalMasuk);
-      const wdP = upsertWeekData(datePem);
-      if (wdP) {
-        wdP.totalPengemasanKg += parseFloat(item.beratAkhir) || 0;
-      }
-    }
-  });
-
-  hasilProduksi.forEach((item) => {
-    const date = parseValidDate(item.tanggal);
-    const weekData = upsertWeekData(date);
-    if (!weekData) return;
-    const berat =
-      typeof item.beratSaatIni === "number"
-        ? item.beratSaatIni
-        : parseFloat(item.beratSaatIni) || 0;
-    weekData.totalOutputKg += berat;
-  });
-
-  const rows = Object.values(recapMap).sort((a, b) => a.week - b.week);
-
-  if (rows.length === 0) {
-    tableBody.innerHTML = `
-      <tr>
-        <td colspan="7" class="text-center text-muted py-4">
-          Belum ada data mingguan pada tahun ${selectedWeeklyYear}.
-        </td>
-      </tr>
-    `;
-    emptyState?.classList.remove("d-none");
-    return;
-  }
-
-  emptyState?.classList.add("d-none");
-
-  tableBody.innerHTML = rows
-    .map(
-      (row) => `
-      <tr>
-        <td>W${row.week.toString().padStart(2, "0")}</td>
-        <td>${formatShortDate(row.rangeStart, true)} - ${formatShortDate(
-        row.rangeEnd,
-        true
-      )}</td>
-        <td>${formatKgValue(row.totalBahanKg)}</td>
-        <td>${
-          row.totalPengeluaran ? formatCurrency(row.totalPengeluaran) : "-"
-        }</td>
-        <td>${row.batchProduksi}</td>
-        <td>${formatKgValue(row.totalOutputKg)}</td>
-        <td class="text-nowrap" title="Total bahan (kg) ÷ total berat akhir pengemasan (kg) minggu ini">${formatRandemenCell(
-          row.totalBahanKg,
-          row.totalPengemasanKg
-        )}</td>
-      </tr>
-    `
-    )
-    .join("");
-}
-
 function renderBahanPriceStats() {
   const avgElement = document.getElementById("avgPriceSeason");
   const maxElement = document.getElementById("maxPriceSeason");
@@ -2128,7 +2180,9 @@ function renderProduksiTimeline() {
   const emptyState = document.getElementById("produksiTimelineEmpty");
   if (!wrapper) return;
 
-  if (produksi.length === 0) {
+  const filteredList = getProduksiFilteredForDisplay();
+
+  if (filteredList.length === 0) {
     wrapper.innerHTML = "";
     emptyState?.classList.remove("d-none");
     return;
@@ -2136,7 +2190,7 @@ function renderProduksiTimeline() {
 
   emptyState?.classList.add("d-none");
   const bahanById = getBahanMapForLaporan();
-  const sortedProduksi = [...produksi].sort((a, b) => {
+  const sortedProduksi = [...filteredList].sort((a, b) => {
     const dateA =
       parseValidDate(a.tanggalSekarang) || parseValidDate(a.tanggalMasuk);
     const dateB =
@@ -2157,9 +2211,9 @@ function buildTimelineItem(item, isFirst, index = 0, bahanById) {
     ? `<div class="alert alert-light border small mt-3 mb-0 py-2">
           <strong>Randomen (per ID)</strong>:
           ${escapeHtmlLaporan(PR.formatRandomenPerIdCell(item))}
-          <span class="text-muted"> — berat awal ÷ berat akhir (setelah tahap pengemasan)</span>
+          <span class="text-muted"> — ${escapeHtmlLaporan(PR.formatRandomenPerIdTooltip(item) || "setelah pengemasan")}</span>
         </div>
-        <p class="small text-muted mt-2 mb-1 fw-semibold">Randomen per tahapan (berat awal batch ÷ berat hasil di tahap itu)</p>
+        <p class="small text-muted mt-2 mb-1 fw-semibold">Randomen per tahapan (N banding 1, dibulatkan)</p>
         <pre class="small text-muted mb-0 bg-body-secondary rounded p-2" style="white-space:pre-wrap;font-family:inherit">${escapeHtmlLaporan(
           PR.buildRingkasanPerTahapanText(item)
         )}</pre>`
@@ -2398,14 +2452,11 @@ function displayProduksi() {
         </td>
       </tr>
     `;
+    renderProduksiTimeline();
     return;
   }
 
-  const filteredProduksi = applyTableFilter(
-    "produksi",
-    produksi,
-    (item) => item.tanggalMasuk
-  );
+  const filteredProduksi = getProduksiFilteredForDisplay();
 
   if (filteredProduksi.length === 0) {
     tbody.innerHTML = `
@@ -2416,6 +2467,7 @@ function displayProduksi() {
         </td>
       </tr>
     `;
+    renderProduksiTimeline();
     return;
   }
 
@@ -2432,10 +2484,15 @@ function displayProduksi() {
       const cellRandomenId = PR ? PR.formatRandomenPerIdCell(item) : "—";
       const titleR = PR
         ? escapeHtmlLaporan(
-            String(PR.buildRingkasanPerTahapanText(item) || "").replace(
-              /\n/g,
-              " "
-            )
+            [
+              PR.formatRandomenPerIdTooltip(item),
+              String(PR.buildRingkasanPerTahapanText(item) || "").replace(
+                /\n/g,
+                " "
+              ),
+            ]
+              .filter(Boolean)
+              .join(" | ")
           )
         : "";
       return `
@@ -2480,6 +2537,7 @@ function displayProduksi() {
     `;
     })
     .join("");
+  renderProduksiTimeline();
 }
 
 // Fungsi displayHasilProduksi dihapus karena laporan hasil produksi sudah tidak digunakan
@@ -2664,7 +2722,7 @@ function generateProduksiPDF(id) {
   const rndValPdf = PRpdf ? PRpdf.computeRandomenPerId(item) : null;
   const rndPerId =
     rndValPdf != null && PRpdf
-      ? `${PRpdf.formatRandomenRatio(rndValPdf)} (berat awal ÷ berat akhir)`
+      ? `${PRpdf.formatRandomenBanding1(rndValPdf)} — ${PRpdf.formatRandomenPerIdTooltip(item)}`
       : "—";
   const pairsProd = [
     ["ID Produksi", item.idProduksi || "—"],
@@ -2706,7 +2764,7 @@ function generateProduksiPDF(id) {
   doc.setFont(undefined, "normal");
   doc.setTextColor(80, 80, 80);
   doc.text(
-    "Tiap baris: tahapan, tanggal, berat, randomen (berat awal ÷ berat hasil tahap), kadar air, catatan.",
+    "Tiap baris: randomen = N banding 1 (dibulatkan), bahan per 1 kg hasil tahap; kadar air, catatan.",
     20,
     y
   );
@@ -4597,6 +4655,7 @@ document.addEventListener("DOMContentLoaded", function () {
       await initializeHashes();
       initializeTableFilters();
       initializeBahanPemasokFilterListener();
+      initializeLaporanProsesTahapanFilterListeners();
 
       // Display semua tabel
       await refreshAllTables();

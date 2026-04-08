@@ -1,7 +1,7 @@
 /**
  * Randomen / rendemen: berat awal ÷ berat akhir (pengemasan).
- * Untuk baris alur per tahapan: berat awal batch ÷ berat hasil pada tahap itu.
- * Digunakan Kelola Produksi & Laporan Produksi.
+ * Tampilan utama: N banding 1 (Math.round), arti ±N kg bahan untuk 1 kg hasil.
+ * Detail rasio (desimal) untuk tooltip / PDF: formatRandomenDesimal, formatRandomenPerIdTooltip.
  */
 (function (global) {
   function safeNum(v) {
@@ -17,9 +17,35 @@
     return b / h;
   }
 
-  function formatRandomenRatio(ratio) {
+  /** Nilai pembulatan: kg bahan per 1 kg hasil (untuk tampilan "N banding 1"). */
+  function roundBahanPerSatuKgHasil(ratio) {
+    if (ratio == null || !Number.isFinite(ratio) || ratio <= 0) return null;
+    const n = Math.round(ratio);
+    return n < 1 ? 1 : n;
+  }
+
+  /** Tampilan utama: "6 banding 1" = ±6 kg bahan untuk 1 kg hasil (dibulatkan). */
+  function formatRandomenBanding1(ratio) {
+    const n = roundBahanPerSatuKgHasil(ratio);
+    if (n == null) return "—";
+    return `${n.toLocaleString("id-ID")} banding 1`;
+  }
+
+  /** Angka rasio detail (tooltip / PDF teks penjelas), bukan untuk kolom utama. */
+  function formatRandomenDesimal(ratio) {
     if (ratio == null || !Number.isFinite(ratio)) return "—";
     return ratio.toLocaleString("id-ID", { maximumFractionDigits: 4 });
+  }
+
+  function formatKgAngka(kg) {
+    const n = safeNum(kg);
+    if (n <= 0) return "—";
+    return n.toLocaleString("id-ID", { maximumFractionDigits: 4 });
+  }
+
+  /** @deprecated Gunakan formatRandomenBanding1 untuk rasio; formatKgAngka untuk berat. */
+  function formatRandomenRatio(ratio) {
+    return formatRandomenBanding1(ratio);
   }
 
   /** Penyebut rendemen per batch: berat akhir pengemasan (kg). */
@@ -83,7 +109,16 @@
 
   function formatRandomenPerIdCell(p) {
     const r = computeRandomenPerId(p);
-    return r != null ? `${formatRandomenRatio(r)} kg/kg` : "—";
+    return r != null ? formatRandomenBanding1(r) : "—";
+  }
+
+  /** Tooltip: contoh 85,5 ÷ 17,09 ≈ 5,0032 */
+  function formatRandomenPerIdTooltip(p) {
+    const r = computeRandomenPerId(p);
+    if (r == null) return "";
+    const b = safeNum(p.beratAwal);
+    const h = safeNum(p.beratAkhir);
+    return `${formatKgAngka(b)} ÷ ${formatKgAngka(h)} ≈ ${formatRandomenDesimal(r)}`;
   }
 
   /**
@@ -100,7 +135,7 @@
       const short =
         clean.length > 22 ? `${clean.slice(0, 19)}…` : clean;
       parts.push(
-        `${short}: ${ratio != null ? formatRandomenRatio(ratio) : "—"}`
+        `${short}: ${ratio != null ? formatRandomenBanding1(ratio) : "—"}`
       );
     };
     if (hist.length === 0) {
@@ -131,9 +166,7 @@
     const push = (label, hasilKg) => {
       const ratio = ratioBahanPerHasil(bahan, hasilKg);
       const tail =
-        ratio != null
-          ? `${formatRandomenRatio(ratio)} kg bahan / kg hasil`
-          : "—";
+        ratio != null ? formatRandomenBanding1(ratio) : "—";
       parts.push(`${label}: ${tail}`);
     };
 
@@ -184,10 +217,10 @@
       .map((k) => {
         const { bahan, hasil } = byProses[k];
         const r = hasil > 0 ? bahan / hasil : null;
-        const rasioStr = r != null ? formatRandomenRatio(r) : "—";
-        return `${k}: ${rasioStr} (Σ berat awal ${formatRandomenRatio(
+        const rasioStr = r != null ? formatRandomenBanding1(r) : "—";
+        return `${k}: ${rasioStr} (Σ berat awal ${formatKgAngka(
           bahan
-        )} kg ÷ Σ berat akhir ${formatRandomenRatio(hasil)} kg)`;
+        )} kg ÷ Σ berat akhir ${formatKgAngka(hasil)} kg)`;
       });
 
     const totalRatio = sumHasil > 0 ? sumBahan / sumHasil : null;
@@ -205,10 +238,15 @@
     safeNum,
     ratioBahanPerHasil,
     formatRandomenRatio,
+    formatRandomenBanding1,
+    formatRandomenDesimal,
+    formatKgAngka,
+    roundBahanPerSatuKgHasil,
     getDenominatorAkhirProduksi,
     isPengemasanUntukRandomen,
     computeRandomenPerId,
     formatRandomenPerIdCell,
+    formatRandomenPerIdTooltip,
     getHasilKgUntukBarisAlur,
     getTahapanLabelFromHistory,
     buildRingkasanPerTahapanText,

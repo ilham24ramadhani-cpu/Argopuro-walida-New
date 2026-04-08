@@ -1670,10 +1670,15 @@ async function displayProduksi() {
         const cellRandomen = PR ? PR.formatRandomenPerIdCell(p) : "—";
         const titleRand = PR
           ? attrEscapeProduksi(
-              String(PR.buildRingkasanPerTahapanText(p) || "").replace(
-                /\n/g,
-                " ",
-              ),
+              [
+                PR.formatRandomenPerIdTooltip(p),
+                String(PR.buildRingkasanPerTahapanText(p) || "").replace(
+                  /\n/g,
+                  " ",
+                ),
+              ]
+                .filter(Boolean)
+                .join(" | "),
             )
           : "";
         const idBahanTampil = (() => {

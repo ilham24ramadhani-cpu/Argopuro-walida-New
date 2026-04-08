@@ -1,0 +1,54 @@
+{# Rekap mingguan — dipakai bersama oleh kelola_laporan (admin) dan kelola_laporan_owner #}
+          <!-- Weekly Recap -->
+          <div class="card shadow-sm mb-4">
+            <div class="card-body">
+              <div
+                class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3"
+              >
+                <div>
+                  <h5 class="fw-bold mb-1">Rekap Mingguan 12 Bulan Terakhir</h5>
+                  <p class="text-muted mb-0">
+                    Pantau ringkasan bahan, produksi, dan hasil per minggu untuk
+                    satu tahun. Kolom Randemen = total bahan masuk (kg) dibagi
+                    total berat akhir produksi yang sudah tahap pengemasan (kg)
+                    pada minggu yang sama.
+                  </p>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                  <label for="weeklyRecapYear" class="text-muted small mb-0"
+                    >Pilih Tahun</label
+                  >
+                  <select
+                    id="weeklyRecapYear"
+                    class="form-select form-select-sm"
+                    style="min-width: 130px"
+                  ></select>
+                </div>
+              </div>
+              <div id="weeklyRecapEmpty" class="alert alert-info d-none mb-0">
+                Belum ada data untuk tahun yang dipilih.
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th scope="col">Minggu</th>
+                      <th scope="col">Rentang Tanggal</th>
+                      <th scope="col">Total Bahan (kg)</th>
+                      <th scope="col">Pengeluaran Bahan</th>
+                      <th scope="col">Batch Produksi</th>
+                      <th scope="col">Output Hasil (kg)</th>
+                      <th scope="col">Randemen</th>
+                    </tr>
+                  </thead>
+                  <tbody id="weeklyRecapTable">
+                    <tr>
+                      <td colspan="7" class="text-center text-muted py-4">
+                        Memuat ringkasan...
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>

@@ -1,0 +1,102 @@
+{# Panel filter produksi (waktu + proses + tahapan) — dipakai admin & owner #}
+              <div class="card border shadow-sm mb-3">
+                <div class="card-body py-3">
+                  <div
+                    class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom"
+                  >
+                    <i class="bi bi-funnel" aria-hidden="true"></i>
+                    <span class="small fw-semibold text-uppercase text-muted"
+                      >Filter laporan produksi</span
+                    >
+                  </div>
+                  <div class="row gy-3 gx-3 align-items-end mb-0 filter-bar">
+                    <div class="col-md-6 col-xl-3">
+                      <label
+                        for="produksiFilterMode"
+                        class="form-label small text-muted mb-1"
+                        >Filter Waktu</label
+                      >
+                      <select
+                        id="produksiFilterMode"
+                        class="form-select form-select-sm"
+                        aria-label="Filter waktu produksi"
+                      >
+                        <option value="all">Semua</option>
+                        <option value="daily">Harian</option>
+                        <option value="monthly">Bulanan</option>
+                        <option value="yearly">Tahunan</option>
+                      </select>
+                    </div>
+                    <div class="col-md-6 col-xl-3">
+                      <label
+                        for="produksiFilterValue"
+                        class="form-label small text-muted mb-1"
+                        >Nilai Filter</label
+                      >
+                      <input
+                        type="date"
+                        id="produksiFilterValue"
+                        class="form-control form-control-sm"
+                        aria-label="Nilai filter produksi"
+                        disabled
+                      />
+                    </div>
+                    <div class="col-6 col-xl-2">
+                      <label class="form-label small text-muted mb-1 invisible"
+                        >Reset</label
+                      >
+                      <button
+                        id="produksiFilterReset"
+                        class="btn btn-outline-secondary btn-sm w-100"
+                        type="button"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <div class="col-6 col-xl-2">
+                      <label class="form-label small text-muted mb-1 invisible"
+                        >Rekap</label
+                      >
+                      <button
+                        class="btn btn-primary btn-sm w-100"
+                        type="button"
+                        onclick="exportRekap('produksi')"
+                      >
+                        <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    class="row gy-3 gx-3 align-items-end mt-3 pt-3 border-top"
+                  >
+                    <div class="col-md-6 col-xl-4">
+                      <label
+                        for="produksiFilterProses"
+                        class="form-label small text-muted mb-1"
+                        >Proses pengolahan</label
+                      >
+                      <select
+                        id="produksiFilterProses"
+                        class="form-select form-select-sm"
+                        aria-label="Filter proses pengolahan produksi"
+                      >
+                        <option value="">Semua proses pengolahan</option>
+                      </select>
+                    </div>
+                    <div class="col-md-6 col-xl-4">
+                      <label
+                        for="produksiFilterTahapan"
+                        class="form-label small text-muted mb-1"
+                        >Tahapan produksi</label
+                      >
+                      <select
+                        id="produksiFilterTahapan"
+                        class="form-select form-select-sm"
+                        aria-label="Filter status tahapan produksi"
+                      >
+                        <option value="">Semua tahapan</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>

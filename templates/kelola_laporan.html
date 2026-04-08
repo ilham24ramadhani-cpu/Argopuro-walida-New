@@ -344,7 +344,7 @@
             </div>
           </div>
 
-          <!-- Weekly Recap -->
+          <!-- Weekly Recap (inline — selaras dengan partials/laporan_weekly_recap_card.html) -->
           <div class="card shadow-sm mb-4">
             <div class="card-body">
               <div
@@ -566,8 +566,9 @@
                   </button>
                 </div>
               </div>
-              <div class="row gy-2 gx-3 align-items-start mb-3">
-                <div class="col-md-5 col-lg-4">
+              <!-- Filter pemasok + proses (inline — selaras partials/laporan_bahan_pemasok_proses_row.html) -->
+              <div class="row gy-2 gx-3 align-items-end mb-3">
+                <div class="col-md-6 col-lg-3">
                   <label
                     for="bahanFilterPemasok"
                     class="form-label small text-muted mb-1"
@@ -581,11 +582,29 @@
                     <option value="">Semua pemasok</option>
                   </select>
                 </div>
-                <div class="col-md-7 col-lg-8">
-                  <label class="form-label small text-muted mb-1 d-block d-md-none"
-                    >Ringkasan</label
+                <div class="col-md-6 col-lg-3">
+                  <label
+                    for="bahanFilterProses"
+                    class="form-label small text-muted mb-1"
+                    >Proses pengolahan</label
                   >
-                  <p class="small text-muted mb-0 mt-md-4" id="bahanPemasokInsight">
+                  <select
+                    id="bahanFilterProses"
+                    class="form-select form-select-sm"
+                    aria-label="Filter proses pengolahan bahan masuk"
+                  >
+                    <option value="">Semua proses</option>
+                  </select>
+                </div>
+                <div class="col-12 col-lg-6">
+                  <label
+                    class="form-label small text-muted mb-1 d-block d-lg-none"
+                    >Ringkasan pemasok</label
+                  >
+                  <p
+                    class="small text-muted mb-0 mt-lg-4"
+                    id="bahanPemasokInsight"
+                  >
                     Memuat ringkasan pemasok…
                   </p>
                 </div>
@@ -667,61 +686,106 @@
               role="tabpanel"
               aria-labelledby="produksi-tab"
             >
-              <div class="row gy-3 gx-3 align-items-end mb-3 filter-bar">
-                <div class="col-md-4">
-                  <label
-                    for="produksiFilterMode"
-                    class="form-label small text-muted mb-1"
-                    >Filter Waktu</label
+              <!-- Filter produksi (inline — selaras partials/laporan_produksi_filter_card.html) -->
+              <div class="card border shadow-sm mb-3">
+                <div class="card-body py-3">
+                  <div
+                    class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom"
                   >
-                  <select
-                    id="produksiFilterMode"
-                    class="form-select form-select-sm"
-                    aria-label="Filter waktu produksi"
+                    <i class="bi bi-funnel" aria-hidden="true"></i>
+                    <span class="small fw-semibold text-uppercase text-muted"
+                      >Filter laporan produksi</span
+                    >
+                  </div>
+                  <div class="row gy-3 gx-3 align-items-end mb-0 filter-bar">
+                    <div class="col-md-6 col-xl-3">
+                      <label
+                        for="produksiFilterMode"
+                        class="form-label small text-muted mb-1"
+                        >Filter Waktu</label
+                      >
+                      <select
+                        id="produksiFilterMode"
+                        class="form-select form-select-sm"
+                        aria-label="Filter waktu produksi"
+                      >
+                        <option value="all">Semua</option>
+                        <option value="daily">Harian</option>
+                        <option value="monthly">Bulanan</option>
+                        <option value="yearly">Tahunan</option>
+                      </select>
+                    </div>
+                    <div class="col-md-6 col-xl-3">
+                      <label
+                        for="produksiFilterValue"
+                        class="form-label small text-muted mb-1"
+                        >Nilai Filter</label
+                      >
+                      <input
+                        type="date"
+                        id="produksiFilterValue"
+                        class="form-control form-control-sm"
+                        aria-label="Nilai filter produksi"
+                        disabled
+                      />
+                    </div>
+                    <div class="col-6 col-xl-2">
+                      <label class="form-label small text-muted mb-1 invisible"
+                        >Reset</label
+                      >
+                      <button
+                        id="produksiFilterReset"
+                        class="btn btn-outline-secondary btn-sm w-100"
+                        type="button"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    <div class="col-6 col-xl-2">
+                      <label class="form-label small text-muted mb-1 invisible"
+                        >Rekap</label
+                      >
+                      <button
+                        class="btn btn-primary btn-sm w-100"
+                        type="button"
+                        onclick="exportRekap('produksi')"
+                      >
+                        <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    class="row gy-3 gx-3 align-items-end mt-3 pt-3 border-top"
                   >
-                    <option value="all">Semua</option>
-                    <option value="daily">Harian</option>
-                    <option value="monthly">Bulanan</option>
-                    <option value="yearly">Tahunan</option>
-                  </select>
-                </div>
-                <div class="col-md-4">
-                  <label
-                    for="produksiFilterValue"
-                    class="form-label small text-muted mb-1"
-                    >Nilai Filter</label
-                  >
-                  <input
-                    type="date"
-                    id="produksiFilterValue"
-                    class="form-control form-control-sm"
-                    aria-label="Nilai filter produksi"
-                    disabled
-                  />
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small text-muted mb-1 invisible"
-                    >Reset</label
-                  >
-                  <button
-                    id="produksiFilterReset"
-                    class="btn btn-outline-secondary btn-sm w-100"
-                    type="button"
-                  >
-                    Reset
-                  </button>
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small text-muted mb-1 invisible"
-                    >Rekap</label
-                  >
-                  <button
-                    class="btn btn-primary btn-sm w-100"
-                    type="button"
-                    onclick="exportRekap('produksi')"
-                  >
-                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
-                  </button>
+                    <div class="col-md-6 col-xl-4">
+                      <label
+                        for="produksiFilterProses"
+                        class="form-label small text-muted mb-1"
+                        >Proses pengolahan</label
+                      >
+                      <select
+                        id="produksiFilterProses"
+                        class="form-select form-select-sm"
+                        aria-label="Filter proses pengolahan produksi"
+                      >
+                        <option value="">Semua proses pengolahan</option>
+                      </select>
+                    </div>
+                    <div class="col-md-6 col-xl-4">
+                      <label
+                        for="produksiFilterTahapan"
+                        class="form-label small text-muted mb-1"
+                        >Tahapan produksi</label
+                      >
+                      <select
+                        id="produksiFilterTahapan"
+                        class="form-select form-select-sm"
+                        aria-label="Filter status tahapan produksi"
+                      >
+                        <option value="">Semua tahapan</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="card shadow-sm">
@@ -737,7 +801,7 @@
                           <th scope="col">Berat Saat Ini (kg)</th>
                           <th
                             scope="col"
-                            title="Berat awal ÷ berat akhir (setelah tahap pengemasan)"
+                            title="N banding 1 (dibulatkan): ±N kg bahan untuk 1 kg hasil"
                           >
                             Randomen
                           </th>
