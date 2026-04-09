@@ -3981,83 +3981,80 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       // Handle QRCode PDF generation
       handleQRCodePDF();
-      
+
       // Load data dari API atau localStorage saat page load
       await loadAllReportData();
 
       // Initialize hashes
       await initializeHashes();
       initializeTableFilters();
-      
+
       // Display semua tabel
       await refreshAllTables();
 
-  // Refresh data when storage changes (dari tab/window lain)
-  window.addEventListener("storage", function (e) {
-    if (
-      [
-        "bahan",
-        "produksi",
-        "hasilProduksi",
-        "sanitasi",
-        "pemasok",
-        "keuangan",
-      ].includes(e.key)
-    ) {
-      if (await checkDataChanges()) {
-        await refreshAllTables();
-      }
-    }
-    } catch (error) {
-      console.error("Error handling storage event:", error);
-    }
-  });
+      // Refresh data when storage changes (dari tab/window lain)
+      window.addEventListener("storage", async function (e) {
+        try {
+          if (
+            [
+              "bahan",
+              "produksi",
+              "hasilProduksi",
+              "sanitasi",
+              "pemasok",
+              "keuangan",
+            ].includes(e.key)
+          ) {
+            if (await checkDataChanges()) {
+              await refreshAllTables();
+            }
+          }
+        } catch (error) {
+          console.error("Error handling storage event:", error);
+        }
+      });
 
-  // Listen for custom dataUpdated event (dari script lain)
-  window.addEventListener("dataUpdated", async function (event) {
-    try {
-      // Refresh langsung untuk update real-time
-      const dataType = event.detail ? event.detail.type : null;
-      
-      // Reload data dari API atau localStorage
-      await loadAllReportData();
-      
-      // Update hashes
-      dataHashes.bahan = generateHash(bahan);
-      dataHashes.produksi = generateHash(produksi);
-      dataHashes.hasilProduksi = generateHash(hasilProduksi);
-      dataHashes.sanitasi = generateHash(sanitasi);
-      dataHashes.pemasok = generateHash(pemasok);
-      dataHashes.keuangan = generateHash(keuangan);
-      
-      // Refresh semua tabel langsung
-      await refreshAllTables();
-    } catch (error) {
-      console.error("Error handling dataUpdated event:", error);
-    }
-  });
+      // Listen for custom dataUpdated event (dari script lain)
+      window.addEventListener("dataUpdated", async function () {
+        try {
+          // Reload data dari API atau localStorage
+          await loadAllReportData();
 
-  // Listen for localStorageUpdated event (dari override setItem)
-  window.addEventListener("localStorageUpdated", async function (event) {
-    try {
-      if (await checkDataChanges()) {
-        await refreshAllTables();
-      }
-    } catch (error) {
-      console.error("Error handling localStorageUpdated event:", error);
-    }
-  });
+          // Update hashes
+          dataHashes.bahan = generateHash(bahan);
+          dataHashes.produksi = generateHash(produksi);
+          dataHashes.hasilProduksi = generateHash(hasilProduksi);
+          dataHashes.sanitasi = generateHash(sanitasi);
+          dataHashes.pemasok = generateHash(pemasok);
+          dataHashes.keuangan = generateHash(keuangan);
 
-  // Polling mechanism untuk check perubahan setiap 1 detik (lebih responsif)
-  setInterval(async function () {
-    try {
-      if (await checkDataChanges()) {
-        await refreshAllTables();
-      }
-    } catch (error) {
-      console.error("Error in polling:", error);
-    }
-  }, 1000);
+          await refreshAllTables();
+        } catch (error) {
+          console.error("Error handling dataUpdated event:", error);
+        }
+      });
+
+      // Listen for localStorageUpdated event (dari override setItem)
+      window.addEventListener("localStorageUpdated", async function (event) {
+        try {
+          if (await checkDataChanges()) {
+            await refreshAllTables();
+          }
+        } catch (error) {
+          console.error("Error handling localStorageUpdated event:", error);
+        }
+      });
+
+      // Polling mechanism untuk check perubahan setiap 1 detik (lebih responsif)
+      setInterval(async function () {
+        try {
+          if (await checkDataChanges()) {
+            await refreshAllTables();
+          }
+        } catch (error) {
+          console.error("Error in polling:", error);
+        }
+      }, 1000);
     } catch (error) {
       console.error("Error initializing laporan page:", error);
     }
