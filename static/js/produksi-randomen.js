@@ -1,6 +1,7 @@
 /**
- * Randomen / rendemen: berat awal ÷ berat akhir (pengemasan).
- * Tampilan utama: N banding 1 (Math.round), arti ±N kg bahan untuk 1 kg hasil.
+ * Randomen / rendemen: berat awal ÷ berat green beans (pengemasan).
+ * Berat pixel hanya dicatat, tidak masuk penyebut. Jika beratGreenBeans belum ada (data lama), fallback ke beratAkhir.
+ * Tampilan utama: N banding 1 (Math.round), arti ±N kg bahan untuk 1 kg hasil GB.
  * Detail rasio (desimal) untuk tooltip / PDF: formatRandomenDesimal, formatRandomenPerIdTooltip.
  */
 (function (global) {
@@ -48,16 +49,36 @@
     return formatRandomenBanding1(ratio);
   }
 
-  /** Penyebut rendemen per batch: berat akhir pengemasan (kg). */
-  function getDenominatorAkhirProduksi(p) {
-    return safeNum(p.beratAkhir);
+  /**
+   * Penyebut randomen: berat green beans (kg). Pixel tidak dihitung.
+   * Fallback beratAkhir untuk dokumen lama tanpa beratGreenBeans.
+   */
+  function getDenominatorHasilRandomenFromDoc(doc) {
+    if (!doc) return 0;
+    const gb = safeNum(doc.beratGreenBeans);
+    if (gb > 0) return gb;
+    return safeNum(doc.beratAkhir);
   }
 
-  /** Produksi sudah pengemasan dan punya berat akhir > 0 untuk perhitungan */
+  function getDenominatorHasilRandomenFromHistory(h, doc) {
+    if (!h) return getDenominatorHasilRandomenFromDoc(doc);
+    const gbH = safeNum(h.beratGreenBeans);
+    if (gbH > 0) return gbH;
+    const baH = safeNum(h.beratAkhir);
+    if (baH > 0) return baH;
+    return getDenominatorHasilRandomenFromDoc(doc);
+  }
+
+  /** @deprecated Gunakan getDenominatorHasilRandomenFromDoc */
+  function getDenominatorAkhirProduksi(p) {
+    return getDenominatorHasilRandomenFromDoc(p);
+  }
+
+  /** Produksi sudah pengemasan dan punya penyebut randomen (GB atau fallback akhir) > 0 */
   function isPengemasanUntukRandomen(p) {
     const st = (p.statusTahapan || "").toLowerCase();
     if (!st.includes("pengemasan")) return false;
-    return safeNum(p.beratAkhir) > 0;
+    return getDenominatorHasilRandomenFromDoc(p) > 0;
   }
 
   function tahapanIncludesPengemasan(name) {
@@ -73,16 +94,14 @@
   function getHasilKgUntukBarisAlur(item, h, rowKind) {
     if (rowKind === "current") {
       if (tahapanIncludesPengemasan(item.statusTahapan)) {
-        return safeNum(item.beratAkhir);
+        return getDenominatorHasilRandomenFromDoc(item);
       }
       const bt = safeNum(item.beratTerkini);
       return bt > 0 ? bt : 0;
     }
     const nama = getTahapanLabelFromHistory(h, item);
     if (tahapanIncludesPengemasan(nama)) {
-      const ba = safeNum(h.beratAkhir);
-      if (ba > 0) return ba;
-      return safeNum(item.beratAkhir);
+      return getDenominatorHasilRandomenFromHistory(h, item);
     }
     const bt = safeNum(h.beratTerkini);
     if (bt > 0) return bt;
@@ -98,12 +117,12 @@
   }
 
   /**
-   * Randomen per ID produksi: berat awal ÷ berat akhir (tahap pengemasan).
+   * Randomen per ID produksi: berat awal ÷ berat green beans (tahap pengemasan; pixel tidak dihitung).
    */
   function computeRandomenPerId(p) {
     if (!isPengemasanUntukRandomen(p)) return null;
     const b = safeNum(p.beratAwal);
-    const d = safeNum(p.beratAkhir);
+    const d = getDenominatorHasilRandomenFromDoc(p);
     return ratioBahanPerHasil(b, d);
   }
 
@@ -117,8 +136,10 @@
     const r = computeRandomenPerId(p);
     if (r == null) return "";
     const b = safeNum(p.beratAwal);
-    const h = safeNum(p.beratAkhir);
-    return `${formatKgAngka(b)} ÷ ${formatKgAngka(h)} ≈ ${formatRandomenDesimal(r)}`;
+    const h = getDenominatorHasilRandomenFromDoc(p);
+    const pakaiGb = safeNum(p.beratGreenBeans) > 0;
+    const label = pakaiGb ? "green beans" : "berat akhir (data lama)";
+    return `${formatKgAngka(b)} ÷ ${formatKgAngka(h)} kg (${label}) ≈ ${formatRandomenDesimal(r)}`;
   }
 
   /**
@@ -201,7 +222,7 @@
     (items || []).forEach((p) => {
       if (!isPengemasanUntukRandomen(p)) return;
       const b = safeNum(p.beratAwal);
-      const h = safeNum(p.beratAkhir);
+      const h = getDenominatorHasilRandomenFromDoc(p);
       if (b <= 0 || h <= 0) return;
       const key = (getProses && getProses(p)) || p.prosesPengolahan || "—";
       if (!byProses[key]) byProses[key] = { bahan: 0, hasil: 0, batch: 0 };
@@ -220,7 +241,7 @@
         const rasioStr = r != null ? formatRandomenBanding1(r) : "—";
         return `${k}: ${rasioStr} (Σ berat awal ${formatKgAngka(
           bahan
-        )} kg ÷ Σ berat akhir ${formatKgAngka(hasil)} kg)`;
+        )} kg ÷ Σ GB randomen ${formatKgAngka(hasil)} kg)`;
       });
 
     const totalRatio = sumHasil > 0 ? sumBahan / sumHasil : null;
@@ -243,6 +264,8 @@
     formatKgAngka,
     roundBahanPerSatuKgHasil,
     getDenominatorAkhirProduksi,
+    getDenominatorHasilRandomenFromDoc,
+    getDenominatorHasilRandomenFromHistory,
     isPengemasanUntukRandomen,
     computeRandomenPerId,
     formatRandomenPerIdCell,

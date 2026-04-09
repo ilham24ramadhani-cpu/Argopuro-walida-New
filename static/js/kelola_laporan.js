@@ -8,15 +8,17 @@ let pemasok = [];
 let keuangan = [];
 let pemesanan = []; // TAMBAHAN: Data pemesanan untuk laporan
 
-/** Produksi sudah tahap pengemasan dan punya berat akhir > 0 */
+/** Produksi sudah pengemasan dengan penyebut rendemen valid: berat green beans, atau fallback berat akhir (data lama). Pixel tidak dipakai. */
 function isProduksiPengemasanBeratAkhir(p) {
   const st = (p.statusTahapan || "").toLowerCase();
   if (!st.includes("pengemasan")) return false;
+  const gb = parseFloat(p.beratGreenBeans);
+  if (Number.isFinite(gb) && gb > 0) return true;
   const ba = parseFloat(p.beratAkhir);
   return Number.isFinite(ba) && ba > 0;
 }
 
-/** Randemen = total bahan (kg) ÷ total berat akhir pengemasan (kg); — jika penyebut 0 */
+/** Randemen agregat = Σ bahan (kg) ÷ Σ berat green beans pengemasan (fallback berat akhir jika GB kosong). Pixel tidak dijumlahkan di penyebut. */
 function formatRandemenCell(totalBahanKg, totalPengemasanKg) {
   const d = Number(totalPengemasanKg) || 0;
   const n = Number(totalBahanKg) || 0;
@@ -779,8 +781,8 @@ function safeNumber(value) {
 }
 
 /**
- * Rendemen agregat untuk daftar bahan terfilter: Σ jumlah (kg) ÷ Σ berat akhir pengemasan
- * dari produksi yang idBahan-nya ada di daftar (sama dengan konsep kolom Randemen rekap mingguan).
+ * Rendemen agregat untuk daftar bahan terfilter: Σ jumlah (kg) ÷ Σ berat green beans (fallback berat akhir)
+ * dari produksi yang idBahan-nya ada di daftar. Pixel tidak masuk penyebut.
  */
 function computeRendemenAggregatForBahanItems(bahanItems) {
   const totalBahanKg = (bahanItems || []).reduce(
@@ -797,7 +799,9 @@ function computeRendemenAggregatForBahanItems(bahanItems) {
   (produksi || []).forEach((p) => {
     if (!p || !idSet.has(p.idBahan)) return;
     if (!isProduksiPengemasanBeratAkhir(p)) return;
-    totalPengemasanKg += parseFloat(p.beratAkhir) || 0;
+    const gb = parseFloat(p.beratGreenBeans);
+    totalPengemasanKg +=
+      Number.isFinite(gb) && gb > 0 ? gb : parseFloat(p.beratAkhir) || 0;
   });
   return { totalBahanKg, totalPengemasanKg };
 }
@@ -1012,10 +1016,10 @@ const LAPORAN_REKAP_CONFIG = {
             totalPengemasanKg > 0
               ? `${rasio} | bahan ${formatKgValue(
                   totalBahanKg
-                )}, pengemasan ${formatKgValue(totalPengemasanKg)}`
-              : `${rasio} | belum ada berat akhir pengemasan untuk ID bahan pada filter ini`;
+                )}, Σ GB (randomen) ${formatKgValue(totalPengemasanKg)}`
+              : `${rasio} | belum ada berat green beans / berat akhir pengemasan untuk ID bahan pada filter ini`;
           return {
-            label: "Rendemen (Σ bahan kg ÷ Σ berat akhir pengemasan)",
+            label: "Rendemen (Σ bahan kg ÷ Σ berat green beans)",
             value: detail,
           };
         })(),
@@ -1820,7 +1824,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       <div class="summary rekap-randomen-proses" style="margin-top: 24px">
         <h2>Rekap randomen per proses pengolahan</h2>
         <p class="meta" style="margin: 0 0 12px 0; color: #6b7280; font-size: 12px">
-          Belum ada batch pengemasan lengkap (berat awal &amp; berat akhir valid) pada filter ini.
+          Belum ada batch pengemasan lengkap (berat awal &amp; berat green beans atau berat akhir valid) pada filter ini.
         </p>
       </div>`;
   }
@@ -1860,7 +1864,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       <div class="summary rekap-randomen-proses" style="margin-top: 24px">
         <h2>Rekap randomen per proses pengolahan</h2>
         <p class="meta" style="margin: 0 0 12px 0; color: #6b7280; font-size: 12px">
-          Randomen ditampilkan dibulatkan sebagai <strong>N banding 1</strong> (N kg bahan per 1 kg hasil). Perhitungan: Σ berat awal ÷ Σ berat akhir per proses. Hanya batch pengemasan dengan berat valid.
+          Randomen: <strong>N banding 1</strong> (N kg bahan per 1 kg <strong>green beans</strong>). Penyebut = berat green beans; pixel tidak dihitung. Data lama tanpa GB memakai berat akhir. Hanya batch pengemasan dengan berat valid.
         </p>
         <table>
           <thead>
@@ -1868,7 +1872,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
               <th>Proses pengolahan</th>
               <th style="text-align: right">Jumlah batch</th>
               <th style="text-align: right">Σ Berat awal (kg)</th>
-              <th style="text-align: right">Σ Berat akhir (kg)</th>
+              <th style="text-align: right">Σ Berat GB randomen (kg)</th>
               <th style="text-align: right">Randomen (N banding 1)</th>
             </tr>
           </thead>
@@ -2764,7 +2768,7 @@ function generateProduksiPDF(id) {
   doc.setFont(undefined, "normal");
   doc.setTextColor(80, 80, 80);
   doc.text(
-    "Tiap baris: randomen = N banding 1 (dibulatkan), bahan per 1 kg hasil tahap; kadar air, catatan.",
+    "Tiap baris: randomen = N banding 1 (dibulatkan), bahan per 1 kg green beans (pengemasan); pixel tidak di penyebut; kadar air, catatan.",
     20,
     y
   );
