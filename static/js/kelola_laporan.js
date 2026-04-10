@@ -130,14 +130,17 @@ function pdfAppendCatatanPerTahapanList(doc, y, item) {
 }
 
 /** Baris tabel alur produksi untuk PDF & halaman laporan (dari history + baris status saat ini). */
-function buildAlurProduksiTableRows(item) {
+function buildAlurProduksiTableRows(item, options = {}) {
+  const numericWeight = options.numericWeightInCells === true;
   const rows = [];
   const hist = Array.isArray(item.historyTahapan) ? item.historyTahapan : [];
   const PR = window.ProduksiRandomen;
   const fmtKg = (v) => {
     if (v == null || v === "") return "—";
     const n = typeof v === "number" ? v : parseFloat(v);
-    return Number.isFinite(n) ? `${n.toLocaleString("id-ID")} kg` : "—";
+    if (!Number.isFinite(n)) return "—";
+    const s = n.toLocaleString("id-ID");
+    return numericWeight ? s : `${s} kg`;
   };
   const fmtKadar = (v) => {
     if (v == null || v === "") return "—";
@@ -763,6 +766,14 @@ function formatShortDate(dateValue, includeYear = false) {
 function formatKgValue(value) {
   if (value === null || value === undefined || isNaN(value)) return "-";
   return `${value.toLocaleString("id-ID", { maximumFractionDigits: 2 })} kg`;
+}
+
+/** Isi sel tabel ekspor (PDF/HTML rekap/Excel): hapus sufiks kg jika satuan sudah di header kolom. */
+function stripKgSuffixForExportCell(value) {
+  if (value === undefined || value === null) return "";
+  const s = String(value).trim();
+  if (s === "" || s === "—" || s === "-") return s;
+  return s.replace(/\s+kg(?:\s*\/\s*kg)?\s*$/i, "").trim();
 }
 
 function parseValidDate(value) {
@@ -2032,7 +2043,14 @@ function buildRekapReportFragments(config, data) {
   const rowsHtml = data
     .map((item, index) => {
       const cells = config.columns
-        .map((column) => `<td>${column.value(item)}</td>`)
+        .map((column) => {
+          const raw = column.value(item);
+          const cell =
+            raw === undefined || raw === null
+              ? ""
+              : stripKgSuffixForExportCell(String(raw));
+          return `<td>${cell}</td>`;
+        })
         .join("");
       return `<tr><td>${index + 1}</td>${cells}</tr>`;
     })
@@ -2568,7 +2586,10 @@ async function exportRekapExcel(category) {
       config.columns.forEach((col, ci) => {
         const raw = col.value(item);
         const c = wsData.getCell(rowIdx, ci + 2);
-        c.value = raw === undefined || raw === null ? "" : String(raw);
+        c.value =
+          raw === undefined || raw === null
+            ? ""
+            : stripKgSuffixForExportCell(String(raw));
         c.fill = rowFill;
         c.alignment = { vertical: "top", horizontal: "left", wrapText: true };
         rekapExcelBorderAll(c);
@@ -3406,7 +3427,9 @@ function generateProduksiPDF(id) {
   doc.setTextColor(0, 0, 0);
   doc.line(20, y, 190, y);
   y += 5;
-  const alurRowsPdf = buildAlurProduksiTableRows(item);
+  const alurRowsPdf = buildAlurProduksiTableRows(item, {
+    numericWeightInCells: true,
+  });
   y = pdfRenderAlurProduksiTable(doc, y, alurRowsPdf);
 
   if (y > 240) {
@@ -3729,7 +3752,9 @@ function generateHasilProduksiPDF(id) {
     doc.line(20, y, 190, y);
     y += 5;
     doc.setFont(undefined, "normal");
-    const alurRowsHasilPdf = buildAlurProduksiTableRows(produksiData);
+    const alurRowsHasilPdf = buildAlurProduksiTableRows(produksiData, {
+      numericWeightInCells: true,
+    });
     y = pdfRenderAlurProduksiTable(doc, y, alurRowsHasilPdf);
   }
 
@@ -4596,7 +4621,9 @@ async function generateDataKemasanPDF(id) {
       detailY = pdfRenderAlurProduksiTable(
         detailDoc,
         detailY,
-        buildAlurProduksiTableRows(produksiData)
+        buildAlurProduksiTableRows(produksiData, {
+          numericWeightInCells: true,
+        })
       );
     }
 
@@ -5540,7 +5567,7 @@ async function exportRekapPemesanan() {
         p.idPembelian || "—",
         p.namaPembeli || "—",
         p.tipePemesanan || "—",
-        `${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg`,
+        (p.jumlahPesananKg || 0).toLocaleString("id-ID"),
         `Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}`,
         p.statusPemesanan || "—",
       ]),
