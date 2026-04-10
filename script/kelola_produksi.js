@@ -525,14 +525,17 @@ function validateSequentialTahapan() {
       return;
     }
 
-    // Validasi: tahapan baru harus setelah tahapan lama
-    if (indexBaru <= indexLama) {
-      statusErrorText.textContent = `Tidak dapat mengubah tahapan dari "${currentProduksiTahapanAktif}" ke "${selectedTahapan}". Tahapan harus dijalankan secara berurutan.`;
+    if (indexBaru < indexLama) {
+      statusErrorText.textContent = `Tidak dapat mengubah tahapan dari "${currentProduksiTahapanAktif}" ke "${selectedTahapan}". Tidak boleh kembali ke tahapan sebelumnya.`;
       statusError.classList.remove("d-none");
       return;
     }
 
-    // Validasi: tidak boleh loncat tahapan
+    if (indexBaru === indexLama) {
+      statusError.classList.add("d-none");
+      return;
+    }
+
     if (indexBaru - indexLama > 1) {
       const tahapanTerlewat = urutanTahapan.slice(indexLama + 1, indexBaru);
       // Filter hanya tahapan yang ada di konfigurasi master

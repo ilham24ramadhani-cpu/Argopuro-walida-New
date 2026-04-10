@@ -1127,16 +1127,13 @@ async function loadTahapanFromMasterProduksi(overrideProsesNama) {
       const tahapanNormalized = tahapanMap[tahapan.key] || tahapan.key;
       const indexBaru = urutanTahapan.indexOf(tahapanNormalized);
       
-      // Disable tahapan yang tidak valid:
-      // 1. Tahapan yang sama dengan tahapan lama
-      // 2. Tahapan yang sebelum tahapan lama (mundur)
-      // 3. Tahapan yang loncat (tidak berurutan)
+      // Disable: mundur saja. Tahapan sama tetap bisa dipilih (simpan edit tanpa maju proses).
+      // Disable loncat jika ada tahapan aktif terlewat.
       if (indexLama !== -1 && indexBaru !== -1) {
-        if (indexBaru <= indexLama) {
-          // Mundur atau sama
+        if (indexBaru < indexLama) {
           option.disabled = true;
           option.textContent += " (Tidak dapat mundur)";
-        } else if (indexBaru - indexLama > 1) {
+        } else if (indexBaru > indexLama && indexBaru - indexLama > 1) {
           // Cek apakah ada tahapan terlewat yang aktif di master
           const tahapanTerlewat = urutanTahapan.slice(indexLama + 1, indexBaru);
           const adaTahapanTerlewatAktif = tahapanTerlewat.some((t) => {
@@ -1328,14 +1325,19 @@ function validateSequentialTahapan() {
       return;
     }
 
-    // Validasi: tahapan baru harus setelah tahapan lama
-    if (indexBaru <= indexLama) {
-      statusErrorText.textContent = `Tidak dapat mengubah tahapan dari "${currentProduksiTahapanAktif}" ke "${selectedTahapan}". Tahapan harus dijalankan secara berurutan.`;
+    // Tidak boleh mundur. Tahapan sama = tetap di tahap berjalan (boleh simpan).
+    if (indexBaru < indexLama) {
+      statusErrorText.textContent = `Tidak dapat mengubah tahapan dari "${currentProduksiTahapanAktif}" ke "${selectedTahapan}". Tidak boleh kembali ke tahapan sebelumnya.`;
       statusError.classList.remove("d-none");
       return;
     }
 
-    // Validasi: tidak boleh loncat tahapan
+    if (indexBaru === indexLama) {
+      statusError.classList.add("d-none");
+      return;
+    }
+
+    // Validasi: tidak boleh loncat tahapan (hanya saat maju)
     if (indexBaru - indexLama > 1) {
       const tahapanTerlewat = urutanTahapan.slice(indexLama + 1, indexBaru);
       // Filter hanya tahapan yang ada di konfigurasi master
@@ -1428,15 +1430,18 @@ function validateSequentialTahapanBeforeSave(
     const indexLama = urutanTahapan.indexOf(tahapanLamaNormalized);
 
     if (indexLama !== -1) {
-      // Validasi: tahapan baru harus setelah tahapan lama
-      if (indexBaru <= indexLama) {
+      if (indexBaru < indexLama) {
         return {
           valid: false,
-          error: `Tahapan harus dijalankan secara berurutan. Tidak dapat mengubah dari "${statusTahapanLama}" ke "${statusTahapanBaru}".`,
+          error: `Tidak boleh kembali ke tahapan sebelumnya. Tidak dapat mengubah dari "${statusTahapanLama}" ke "${statusTahapanBaru}".`,
         };
       }
 
-      // Validasi: tidak boleh loncat tahapan
+      if (indexBaru === indexLama) {
+        return { valid: true, error: null };
+      }
+
+      // Validasi: tidak boleh loncat tahapan (hanya saat maju)
       if (indexBaru - indexLama > 1) {
         const tahapanTerlewat = urutanTahapan.slice(indexLama + 1, indexBaru);
         // Filter hanya tahapan yang ada di konfigurasi master

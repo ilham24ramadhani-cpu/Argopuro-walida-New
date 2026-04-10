@@ -128,7 +128,9 @@ def get_next_id_produksi_preview():
 # Helper function untuk validasi sequential tahapan produksi
 def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_tahapan_lama=None):
     """
-    Validasi bahwa tahapan produksi dijalankan secara berurutan sesuai konfigurasi master.
+    Validasi urutan tahapan menurut master. Pada update: boleh menyimpan dengan tahapan **sama**
+    (edit berat, tambah ID bahan, catatan); tidak boleh mundur; maju hanya satu langkah aktif
+    sekaligus (anti-loncat) kecuali tidak ada tahapan terlewat yang wajib.
     
     Args:
         proses_pengolahan: Nama proses pengolahan
@@ -202,11 +204,19 @@ def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_t
                 index_lama = urutan_tahapan.index(status_lama_normalized)
                 index_baru = urutan_tahapan.index(status_baru_normalized)
                 
-                # Validasi: tahapan baru harus setelah tahapan lama (tidak boleh mundur atau sama)
-                if index_baru <= index_lama:
-                    return False, f'Tidak dapat mengubah tahapan dari "{status_tahapan_lama}" ke "{status_tahapan_baru}". Tahapan harus dijalankan secara berurutan.'
+                # Tidak boleh mundur ke tahapan sebelumnya. Tahapan **sama** diperbolehkan
+                # agar bisa simpan edit (tambah ID bahan, berat, catatan) tanpa memajukan proses.
+                if index_baru < index_lama:
+                    return False, (
+                        f'Tidak dapat mengubah tahapan dari "{status_tahapan_lama}" ke "{status_tahapan_baru}". '
+                        'Tidak boleh kembali ke tahapan sebelumnya.'
+                    )
                 
-                # Validasi: tidak boleh loncat tahapan
+                # Jika tidak maju tahapan, tidak perlu cek loncat
+                if index_baru == index_lama:
+                    return True, None
+                
+                # Validasi: tidak boleh loncat tahapan (hanya saat maju)
                 if index_baru - index_lama > 1:
                     tahapan_terlewat = urutan_tahapan[index_lama + 1:index_baru]
                     # Filter hanya tahapan yang ada di konfigurasi master
