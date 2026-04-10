@@ -1866,7 +1866,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
         <p class="meta" style="margin: 0 0 12px 0; color: #6b7280; font-size: 12px">
           Randomen: <strong>N banding 1</strong> (N kg bahan per 1 kg <strong>green beans</strong>). Penyebut = berat green beans; pixel tidak dihitung. Data lama tanpa GB memakai berat akhir. Hanya batch pengemasan dengan berat valid.
         </p>
-        <table>
+        <table class="data-table">
           <thead>
             <tr>
               <th>Proses pengolahan</th>
@@ -1915,14 +1915,20 @@ function getFilterDescription(category) {
   return timePart;
 }
 
-async function exportRekap(category) {
-  const config = LAPORAN_REKAP_CONFIG[category];
-  if (!config) {
-    alert("Konfigurasi rekap tidak ditemukan.");
-    return;
-  }
+const REKAP_CATEGORY_FILE_SLUG = {
+  bahan: "bahan_masuk",
+  produksi: "produksi",
+  hasil: "hasil_produksi",
+  sanitasi: "sanitasi",
+  keuangan: "pengeluaran",
+  stok: "stok",
+};
 
-  // Handle async dataset untuk stok
+/** Muat data rekap sesuai filter. error: 'no_config' | 'no_data' jika gagal. */
+async function loadRekapExportContext(category) {
+  const config = LAPORAN_REKAP_CONFIG[category];
+  if (!config) return { error: "no_config" };
+
   let data;
   if (typeof config.dataset === "function" && category === "stok") {
     data = await config.dataset();
@@ -1931,12 +1937,95 @@ async function exportRekap(category) {
   }
 
   if (!data || data.length === 0) {
-    alert("Tidak ada data untuk direkap berdasarkan filter saat ini.");
-    return;
+    return { error: "no_data" };
   }
 
-  const filterInfo = getFilterDescription(category);
-  const generatedAt = new Date().toLocaleString("id-ID");
+  return {
+    config,
+    data,
+    filterInfo: getFilterDescription(category),
+    generatedAt: new Date().toLocaleString("id-ID", {
+      dateStyle: "long",
+      timeStyle: "short",
+    }),
+  };
+}
+
+function rekapExportFilenameBase(category) {
+  const slug = REKAP_CATEGORY_FILE_SLUG[category] || "rekap";
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `Rekap_${slug}_${y}-${m}-${day}`;
+}
+
+/** Baris untuk lembar "Randomen per proses" di Excel (sama logika dengan rekap PDF produksi). */
+function buildRandomenPerProsesSheetMatrix(items) {
+  const PR = window.ProduksiRandomen;
+  if (!PR || !items || !items.length) {
+    return [
+      [
+        "Proses pengolahan",
+        "Jumlah batch",
+        "Σ Berat awal (kg)",
+        "Σ Berat GB randomen (kg)",
+        "Randomen (N banding 1)",
+      ],
+      ["Tidak ada data produksi pada filter ini.", "", "", "", ""],
+    ];
+  }
+  const bahanMap = getBahanMapForLaporan();
+  const agg = PR.summarizeRandomenAgregat(items, (p) =>
+    getProsesPengolahanTampilanLaporan(p, bahanMap)
+  );
+  const keys = Object.keys(agg.byProses || {}).sort();
+  const header = [
+    "Proses pengolahan",
+    "Jumlah batch",
+    "Σ Berat awal (kg)",
+    "Σ Berat GB randomen (kg)",
+    "Randomen (N banding 1)",
+  ];
+  if (keys.length === 0) {
+    return [
+      header,
+      [
+        "Belum ada batch pengemasan lengkap (berat valid) pada filter ini.",
+        "",
+        "",
+        "",
+        "",
+      ],
+    ];
+  }
+  let totalBatch = 0;
+  const body = keys.map((k) => {
+    const row = agg.byProses[k];
+    totalBatch += row.batch || 0;
+    const r = row.hasil > 0 ? row.bahan / row.hasil : null;
+    return [
+      k,
+      row.batch ?? "",
+      row.bahan ?? "",
+      row.hasil ?? "",
+      r != null ? PR.formatRandomenBanding1(r) : "",
+    ];
+  });
+  if (agg.sumHasil > 0) {
+    body.push([
+      "Total (keseluruhan)",
+      totalBatch,
+      agg.sumBahan,
+      agg.sumHasil,
+      PR.formatRandomenBanding1(agg.totalRatio),
+    ]);
+  }
+  return [header, ...body];
+}
+
+/** Fragmen HTML tabel + ringkasan (dipakai Lihat rekap & PDF). */
+function buildRekapReportFragments(config, data) {
   const columnsHeader = config.columns
     .map((column) => `<th>${column.label}</th>`)
     .join("");
@@ -1981,18 +2070,50 @@ async function exportRekap(category) {
         </div>
       `
       : "";
+  return { columnsHeader, rowsHtml, summaryHtml, extraSummaryHtml };
+}
+
+const REKAP_EXCEL_BORDER = {
+  style: "thin",
+  color: { argb: "FFD1D5DB" },
+};
+
+function rekapExcelBorderAll(cell) {
+  const b = REKAP_EXCEL_BORDER;
+  cell.border = { top: b, left: b, bottom: b, right: b };
+}
+
+/**
+ * Buka tab baru: hanya tampilan rekap (seperti perilaku awal, tanpa panel cetak PDF).
+ */
+async function exportRekapView(category) {
+  const ctx = await loadRekapExportContext(category);
+  if (!ctx || ctx.error) {
+    if (ctx && ctx.error === "no_config") {
+      alert("Konfigurasi rekap tidak ditemukan.");
+    } else {
+      alert("Tidak ada data untuk direkap berdasarkan filter saat ini.");
+    }
+    return;
+  }
+
+  const { config, data, filterInfo, generatedAt } = ctx;
+  const { columnsHeader, rowsHtml, summaryHtml, extraSummaryHtml } =
+    buildRekapReportFragments(config, data);
 
   const htmlContent = `
     <!DOCTYPE html>
     <html lang="id">
       <head>
         <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>${config.title}</title>
         <style>
           body {
             font-family: Arial, sans-serif;
             margin: 32px;
             color: #1f2937;
+            line-height: 1.45;
           }
           h1 {
             font-size: 22px;
@@ -2072,7 +2193,7 @@ async function exportRekap(category) {
         ${summaryHtml}
         ${extraSummaryHtml}
         <div class="footer">
-          Dicetak pada ${generatedAt} &ndash; Argopuro Walida System
+          Ditampilkan pada ${generatedAt} — Argopuro Walida
         </div>
       </body>
     </html>
@@ -2084,9 +2205,518 @@ async function exportRekap(category) {
     reportWindow.document.close();
   } else {
     alert(
-      "Pop-up diblokir oleh browser. Mohon izinkan pop-up untuk mengunduh rekap."
+      "Pop-up diblokir oleh browser. Mohon izinkan pop-up untuk melihat rekap."
     );
   }
+}
+
+/**
+ * Rekap untuk dicetak / disimpan sebagai PDF lewat dialog cetak browser.
+ */
+async function exportRekapPdf(category) {
+  const ctx = await loadRekapExportContext(category);
+  if (!ctx || ctx.error) {
+    if (ctx && ctx.error === "no_config") {
+      alert("Konfigurasi rekap tidak ditemukan.");
+    } else {
+      alert("Tidak ada data untuk direkap berdasarkan filter saat ini.");
+    }
+    return;
+  }
+
+  const { config, data, filterInfo, generatedAt } = ctx;
+  const { columnsHeader, rowsHtml, summaryHtml, extraSummaryHtml } =
+    buildRekapReportFragments(config, data);
+
+  const infoRowsHtml = `
+    <table class="info-table" aria-label="Informasi laporan">
+      <tbody>
+        <tr><th scope="row">Judul laporan</th><td>${config.title}</td></tr>
+        <tr><th scope="row">Filter &amp; periode</th><td>${filterInfo}</td></tr>
+        <tr><th scope="row">Jumlah baris data</th><td>${data.length}</td></tr>
+        <tr><th scope="row">Waktu generate</th><td>${generatedAt}</td></tr>
+        <tr><th scope="row">Sistem</th><td>Argopuro Walida</td></tr>
+      </tbody>
+    </table>
+  `;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="id">
+      <head>
+        <meta charset="utf-8" />
+        <title>${config.title}</title>
+        <style>
+          body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            margin: 28px 36px 40px;
+            color: #1f2937;
+            line-height: 1.45;
+          }
+          .no-print {
+            margin-bottom: 20px;
+            padding: 14px 16px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #1e3a5f;
+          }
+          .no-print strong { display: block; margin-bottom: 6px; }
+          .no-print button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            font-size: 13px;
+            cursor: pointer;
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+          }
+          .no-print button:hover { background: #1d4ed8; }
+          .brand {
+            font-size: 11px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 6px;
+          }
+          h1 {
+            font-size: 22px;
+            margin: 0 0 16px 0;
+            color: #0f172a;
+          }
+          .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            margin-bottom: 22px;
+          }
+          .info-table th,
+          .info-table td {
+            border: 1px solid #e2e8f0;
+            padding: 8px 10px;
+            text-align: left;
+            vertical-align: top;
+          }
+          .info-table th {
+            width: 28%;
+            background: #f8fafc;
+            color: #475569;
+            font-weight: 600;
+          }
+          .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+          }
+          .data-table th, .data-table td {
+            border: 1px solid #d1d5db;
+            padding: 7px 8px;
+            vertical-align: top;
+          }
+          .data-table th {
+            background-color: #f1f5f9;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+          }
+          .data-table tr:nth-child(even) td { background-color: #fafafa; }
+          .summary {
+            margin-top: 20px;
+            padding: 12px 16px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+          }
+          .summary h2 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            color: #0f172a;
+          }
+          .summary ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+          }
+          .summary li {
+            font-size: 12px;
+            color: #374151;
+            margin-bottom: 4px;
+          }
+          .summary li strong { color: #111827; }
+          .footer {
+            margin-top: 28px;
+            padding-top: 12px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 11px;
+            color: #6b7280;
+          }
+          @media print {
+            .no-print { display: none !important; }
+            body { margin: 12mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="no-print">
+          <strong>Cetak atau simpan sebagai PDF</strong>
+          Gunakan menu browser: <kbd>Ctrl+P</kbd> (Windows) atau <kbd>Cmd+P</kbd> (Mac), lalu pilih &quot;Simpan sebagai PDF&quot; sebagai printer.
+          <div><button type="button" onclick="window.print()">Buka dialog cetak</button></div>
+        </div>
+        <div class="brand">Argopuro Walida</div>
+        <h1>${config.title}</h1>
+        ${infoRowsHtml}
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>No</th>
+              ${columnsHeader}
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+        ${category === "produksi" ? htmlRekapRandomenPerProsesPengolahan(data) : ""}
+        ${summaryHtml}
+        ${extraSummaryHtml}
+        <div class="footer">
+          Dokumen ini dibuat otomatis. Dicetak / diekspor pada ${generatedAt}.
+        </div>
+      </body>
+    </html>
+  `;
+
+  const reportWindow = window.open("", "_blank");
+  if (reportWindow) {
+    reportWindow.document.write(htmlContent);
+    reportWindow.document.close();
+  } else {
+    alert(
+      "Pop-up diblokir oleh browser. Mohon izinkan pop-up untuk membuka rekap PDF."
+    );
+  }
+}
+
+/**
+ * Rekap ke .xlsx memakai ExcelJS (warna header, zebra, border) agar selaras tampilan PDF.
+ */
+async function exportRekapExcel(category) {
+  const ExcelJS = window.ExcelJS;
+  if (!ExcelJS) {
+    alert(
+      "Library Excel belum dimuat. Muat ulang halaman ini lalu coba lagi."
+    );
+    return;
+  }
+
+  const ctx = await loadRekapExportContext(category);
+  if (!ctx || ctx.error) {
+    if (ctx && ctx.error === "no_config") {
+      alert("Konfigurasi rekap tidak ditemukan.");
+    } else {
+      alert("Tidak ada data untuk direkap berdasarkan filter saat ini.");
+    }
+    return;
+  }
+
+  const { config, data, filterInfo, generatedAt } = ctx;
+  const fillSection = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFE2E8F0" },
+  };
+  const fillLabelKey = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFF8FAFC" },
+  };
+  const fillHeader = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFF1F5F9" },
+  };
+
+  try {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Argopuro Walida";
+    wb.created = new Date();
+
+    // --- Ringkasan (dua kolom: label | nilai, seperti cuplikan Numbers) ---
+    const wsRing = wb.addWorksheet("Ringkasan", {
+      views: [{ showGridLines: true }],
+    });
+    let r = 1;
+    const sectionTitle = (title) => {
+      wsRing.mergeCells(r, 1, r, 2);
+      const c = wsRing.getCell(r, 1);
+      c.value = title;
+      c.font = { bold: true, size: 11, name: "Calibri" };
+      c.fill = fillSection;
+      c.alignment = { vertical: "middle", horizontal: "left" };
+      rekapExcelBorderAll(wsRing.getCell(r, 1));
+      rekapExcelBorderAll(wsRing.getCell(r, 2));
+      r += 1;
+    };
+    const kvRing = (label, val, opts = {}) => {
+      const c1 = wsRing.getCell(r, 1);
+      const c2 = wsRing.getCell(r, 2);
+      c1.value = label;
+      c1.font = { bold: true, size: 11, name: "Calibri" };
+      c1.fill = fillLabelKey;
+      c1.alignment = { vertical: "top", horizontal: "left", wrapText: true };
+      if (opts.numeric) {
+        c2.value =
+          typeof val === "number" && !Number.isNaN(val) ? val : Number(val);
+      } else {
+        c2.value = val === undefined || val === null ? "" : String(val);
+      }
+      c2.alignment = { vertical: "top", horizontal: "left", wrapText: true };
+      rekapExcelBorderAll(c1);
+      rekapExcelBorderAll(c2);
+      r += 1;
+    };
+
+    sectionTitle("RINGKASAN & INFORMASI");
+    kvRing("Judul laporan", config.title);
+    kvRing("Filter & periode", filterInfo);
+    kvRing("Jumlah baris data", data.length, { numeric: true });
+    kvRing("Diekspor pada", generatedAt);
+    kvRing("Sistem", "Argopuro Walida");
+    kvRing(
+      "Struktur berkas",
+      "Lembar «Data» = tabel utama. Produksi memiliki lembar «Randomen» (agregat per proses)."
+    );
+
+    if (config.averages && config.averages.length) {
+      r += 1;
+      sectionTitle("RINGKASAN RATA-RATA");
+      config.averages.forEach((avg) => kvRing(avg.label, avg.compute(data)));
+    }
+    if (typeof config.extraSummary === "function") {
+      const extra = config.extraSummary(data);
+      if (extra && extra.length) {
+        r += 1;
+        sectionTitle("RINGKASAN TAMBAHAN");
+        extra.forEach((item) => kvRing(item.label, item.value));
+      }
+    }
+    wsRing.getColumn(1).width = 34;
+    wsRing.getColumn(2).width = 78;
+
+    // --- Data: blok info seperti PDF + tabel dengan header abu & zebra ---
+    const wsData = wb.addWorksheet("Data", {
+      views: [{ showGridLines: true }],
+    });
+    let dr = 1;
+    const infoPairs = [
+      ["Judul laporan", config.title],
+      ["Filter & periode", filterInfo],
+      ["Jumlah baris data", data.length],
+      ["Waktu generate", generatedAt],
+      ["Sistem", "Argopuro Walida"],
+    ];
+    infoPairs.forEach(([k, v]) => {
+      const c1 = wsData.getCell(dr, 1);
+      const c2 = wsData.getCell(dr, 2);
+      c1.value = k;
+      c1.font = { bold: true, name: "Calibri" };
+      c1.fill = fillLabelKey;
+      c2.value = k === "Jumlah baris data" ? v : String(v);
+      c2.fill = fillLabelKey;
+      c1.alignment = { vertical: "top", wrapText: true };
+      c2.alignment = { vertical: "top", wrapText: true };
+      rekapExcelBorderAll(c1);
+      rekapExcelBorderAll(c2);
+      dr += 1;
+    });
+
+    const labels = ["No", ...config.columns.map((c) => c.label)];
+    labels.forEach((label, i) => {
+      const c = wsData.getCell(dr, i + 1);
+      c.value = String(label).toUpperCase();
+      c.font = { bold: true, size: 10, name: "Calibri" };
+      c.fill = fillHeader;
+      c.alignment = {
+        vertical: "middle",
+        horizontal: "center",
+        wrapText: true,
+      };
+      rekapExcelBorderAll(c);
+    });
+    const headerRowIndex = dr;
+    dr += 1;
+
+    data.forEach((item, idx) => {
+      const rowIdx = dr + idx;
+      const zebra = idx % 2 === 0 ? "FFFFFFFF" : "FFFAFAFA";
+      const rowFill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: zebra },
+      };
+      const cNo = wsData.getCell(rowIdx, 1);
+      cNo.value = idx + 1;
+      cNo.fill = rowFill;
+      cNo.alignment = {
+        vertical: "top",
+        horizontal: "center",
+        wrapText: true,
+      };
+      rekapExcelBorderAll(cNo);
+      config.columns.forEach((col, ci) => {
+        const raw = col.value(item);
+        const c = wsData.getCell(rowIdx, ci + 2);
+        c.value = raw === undefined || raw === null ? "" : String(raw);
+        c.fill = rowFill;
+        c.alignment = { vertical: "top", horizontal: "left", wrapText: true };
+        rekapExcelBorderAll(c);
+      });
+    });
+
+    wsData.views = [
+      {
+        state: "frozen",
+        xSplit: 0,
+        ySplit: headerRowIndex,
+        topLeftCell: `A${headerRowIndex + 1}`,
+        activeCell: `A${headerRowIndex + 1}`,
+        showGridLines: true,
+      },
+    ];
+    wsData.getColumn(1).width = 6;
+    for (let i = 1; i < labels.length; i += 1) {
+      const L = String(labels[i]).length;
+      wsData.getColumn(i + 1).width = Math.min(
+        48,
+        Math.max(12, Math.round(L * 0.85 + 8))
+      );
+    }
+
+    if (category === "produksi") {
+      const wsRnd = wb.addWorksheet("Randomen", {
+        views: [{ showGridLines: true }],
+      });
+      const rndMatrix = buildRandomenPerProsesSheetMatrix(data);
+      const rndHeader = rndMatrix[0] || [];
+      const rndBody = rndMatrix.slice(1);
+      const nc = Math.max(rndHeader.length, 5);
+      let rr = 1;
+
+      const mergeBorderRow = (row, text, fontSize = 11) => {
+        wsRnd.mergeCells(row, 1, row, nc);
+        const cell = wsRnd.getCell(row, 1);
+        cell.value = text;
+        cell.font = { bold: true, size: fontSize, name: "Calibri" };
+        cell.fill = fillSection;
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: "left",
+          wrapText: true,
+        };
+        for (let col = 1; col <= nc; col += 1) {
+          rekapExcelBorderAll(wsRnd.getCell(row, col));
+        }
+      };
+
+      mergeBorderRow(
+        rr,
+        "Rekap randomen per proses pengolahan",
+        11
+      );
+      rr += 1;
+      mergeBorderRow(
+        rr,
+        "N banding 1 (kg bahan per 1 kg green beans). Hanya batch pengemasan dengan berat valid.",
+        10
+      );
+      rr += 1;
+
+      rndHeader.forEach((h, i) => {
+        const c = wsRnd.getCell(rr, i + 1);
+        c.value = h;
+        c.font = { bold: true, size: 10, name: "Calibri" };
+        c.fill = fillHeader;
+        c.alignment = {
+          vertical: "middle",
+          horizontal: "center",
+          wrapText: true,
+        };
+        rekapExcelBorderAll(c);
+      });
+      const rndHeaderRow = rr;
+      rr += 1;
+
+      rndBody.forEach((bodyRow, idx) => {
+        const rowIdx = rr + idx;
+        const zebra = idx % 2 === 0 ? "FFFFFFFF" : "FFFAFAFA";
+        const rowFill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: zebra },
+        };
+        for (let ci = 0; ci < nc; ci += 1) {
+          const val = bodyRow[ci];
+          const c = wsRnd.getCell(rowIdx, ci + 1);
+          if (val === "" || val === undefined || val === null) {
+            c.value = "";
+          } else if (typeof val === "number") {
+            c.value = val;
+          } else {
+            c.value = String(val);
+          }
+          c.fill = rowFill;
+          c.alignment = {
+            vertical: "top",
+            horizontal: ci >= 1 ? "right" : "left",
+            wrapText: true,
+          };
+          rekapExcelBorderAll(c);
+        }
+      });
+
+      wsRnd.views = [
+        {
+          state: "frozen",
+          xSplit: 0,
+          ySplit: rndHeaderRow,
+          topLeftCell: `A${rndHeaderRow + 1}`,
+          activeCell: `A${rndHeaderRow + 1}`,
+          showGridLines: true,
+        },
+      ];
+      const rndWidths = [30, 14, 18, 22, 20];
+      for (let i = 0; i < nc; i += 1) {
+        wsRnd.getColumn(i + 1).width = rndWidths[i] || 14;
+      }
+    }
+
+    const fname = `${rekapExportFilenameBase(category)}.xlsx`;
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fname;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("exportRekapExcel:", err);
+    alert(
+      "Gagal membuat file Excel. Coba muat ulang halaman atau gunakan browser lain."
+    );
+  }
+}
+
+/** Kompatibilitas lama: sama dengan melihat rekap di tab baru. */
+async function exportRekap(category) {
+  await exportRekapView(category);
 }
 
 function renderBahanPriceStats() {

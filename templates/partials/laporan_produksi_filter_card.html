@@ -55,15 +55,55 @@
                     </div>
                     <div class="col-6 col-xl-2">
                       <label class="form-label small text-muted mb-1 invisible"
-                        >Rekap</label
+                        >Export rekap</label
                       >
-                      <button
-                        class="btn btn-primary btn-sm w-100"
-                        type="button"
-                        onclick="exportRekap('produksi')"
-                      >
-                        <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
-                      </button>
+                      <div class="btn-group w-100">
+                        <button
+                          class="btn btn-primary btn-sm dropdown-toggle w-100"
+                          type="button"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                          aria-label="Export rekap produksi"
+                        >
+                          <i class="bi bi-download me-1"></i>Export
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                          <li>
+                            <button
+                              type="button"
+                              class="dropdown-item"
+                              onclick="exportRekapView('produksi')"
+                            >
+                              <i class="bi bi-eye text-primary me-2"></i>
+                              Lihat rekap
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              type="button"
+                              class="dropdown-item"
+                              onclick="exportRekapPdf('produksi')"
+                            >
+                              <i
+                                class="bi bi-file-earmark-pdf text-danger me-2"
+                              ></i
+                              >PDF (cetak / simpan)
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              type="button"
+                              class="dropdown-item"
+                              onclick="exportRekapExcel('produksi')"
+                            >
+                              <i
+                                class="bi bi-file-earmark-spreadsheet text-success me-2"
+                              ></i
+                              >Excel (.xlsx)
+                            </button>
+                          </li>
+                        </ul>
+                      </div>
                     </div>
                   </div>
                   <div

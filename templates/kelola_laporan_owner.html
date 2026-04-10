@@ -38,6 +38,7 @@
     <script src="{{ url_for('static', filename='js/api-service.js') }}"></script>
     <script src="{{ url_for('static', filename='js/produksi-randomen.js') }}"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <script
       src="{{ url_for('static', filename='js/kelola_laporan.js') }}"
@@ -455,15 +456,53 @@
                 </div>
                 <div class="col-md-2">
                   <label class="form-label small text-muted mb-1 invisible"
-                    >Rekap</label
+                    >Export rekap</label
                   >
-                  <button
-                    class="btn btn-primary btn-sm w-100"
-                    type="button"
-                    onclick="exportRekap('bahan')"
-                  >
-                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
-                  </button>
+                  <div class="btn-group w-100">
+                    <button
+                      class="btn btn-primary btn-sm dropdown-toggle w-100"
+                      type="button"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      aria-label="Export rekap bahan masuk"
+                    >
+                      <i class="bi bi-download me-1"></i>Export
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapView('bahan')"
+                        >
+                          <i class="bi bi-eye text-primary me-2"></i>
+                          Lihat rekap
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapPdf('bahan')"
+                        >
+                          <i class="bi bi-file-earmark-pdf text-danger me-2"></i
+                          >PDF (cetak / simpan)
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapExcel('bahan')"
+                        >
+                          <i
+                            class="bi bi-file-earmark-spreadsheet text-success me-2"
+                          ></i
+                          >Excel (.xlsx)
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
               {% include 'partials/laporan_bahan_pemasok_proses_row.html' %}
@@ -656,15 +695,53 @@
                 </div>
                 <div class="col-md-2">
                   <label class="form-label small text-muted mb-1 invisible"
-                    >Rekap</label
+                    >Export rekap</label
                   >
-                  <button
-                    class="btn btn-primary btn-sm w-100"
-                    type="button"
-                    onclick="exportRekap('hasil')"
-                  >
-                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
-                  </button>
+                  <div class="btn-group w-100">
+                    <button
+                      class="btn btn-primary btn-sm dropdown-toggle w-100"
+                      type="button"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      aria-label="Export rekap hasil produksi"
+                    >
+                      <i class="bi bi-download me-1"></i>Export
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapView('hasil')"
+                        >
+                          <i class="bi bi-eye text-primary me-2"></i>
+                          Lihat rekap
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapPdf('hasil')"
+                        >
+                          <i class="bi bi-file-earmark-pdf text-danger me-2"></i
+                          >PDF (cetak / simpan)
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapExcel('hasil')"
+                        >
+                          <i
+                            class="bi bi-file-earmark-spreadsheet text-success me-2"
+                          ></i
+                          >Excel (.xlsx)
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
               <div class="card shadow-sm">
@@ -749,15 +826,53 @@
                 </div>
                 <div class="col-md-2">
                   <label class="form-label small text-muted mb-1 invisible"
-                    >Rekap</label
+                    >Export rekap</label
                   >
-                  <button
-                    class="btn btn-primary btn-sm w-100"
-                    type="button"
-                    onclick="exportRekap('sanitasi')"
-                  >
-                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
-                  </button>
+                  <div class="btn-group w-100">
+                    <button
+                      class="btn btn-primary btn-sm dropdown-toggle w-100"
+                      type="button"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      aria-label="Export rekap sanitasi"
+                    >
+                      <i class="bi bi-download me-1"></i>Export
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapView('sanitasi')"
+                        >
+                          <i class="bi bi-eye text-primary me-2"></i>
+                          Lihat rekap
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapPdf('sanitasi')"
+                        >
+                          <i class="bi bi-file-earmark-pdf text-danger me-2"></i
+                          >PDF (cetak / simpan)
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapExcel('sanitasi')"
+                        >
+                          <i
+                            class="bi bi-file-earmark-spreadsheet text-success me-2"
+                          ></i
+                          >Excel (.xlsx)
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
               <div class="card shadow-sm">
@@ -869,15 +984,53 @@
                 </div>
                 <div class="col-md-2">
                   <label class="form-label small text-muted mb-1 invisible"
-                    >Rekap</label
+                    >Export rekap</label
                   >
-                  <button
-                    class="btn btn-primary btn-sm w-100"
-                    type="button"
-                    onclick="exportRekap('keuangan')"
-                  >
-                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
-                  </button>
+                  <div class="btn-group w-100">
+                    <button
+                      class="btn btn-primary btn-sm dropdown-toggle w-100"
+                      type="button"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      aria-label="Export rekap pengeluaran"
+                    >
+                      <i class="bi bi-download me-1"></i>Export
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapView('keuangan')"
+                        >
+                          <i class="bi bi-eye text-primary me-2"></i>
+                          Lihat rekap
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapPdf('keuangan')"
+                        >
+                          <i class="bi bi-file-earmark-pdf text-danger me-2"></i
+                          >PDF (cetak / simpan)
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapExcel('keuangan')"
+                        >
+                          <i
+                            class="bi bi-file-earmark-spreadsheet text-success me-2"
+                          ></i
+                          >Excel (.xlsx)
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
               <div class="card shadow-sm">
@@ -985,13 +1138,53 @@
                         Data stok dikategorikan berdasarkan kemasan
                       </p>
                     </div>
-                    <button
-                      class="btn btn-primary btn-sm"
-                      type="button"
-                      onclick="exportRekap('stok')"
-                    >
-                      <i class="bi bi-file-earmark-arrow-down me-1"></i>Rekap
-                    </button>
+                    <div class="btn-group">
+                      <button
+                        class="btn btn-primary btn-sm dropdown-toggle"
+                        type="button"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                        aria-label="Export rekap stok"
+                      >
+                        <i class="bi bi-download me-1"></i>Export rekap
+                      </button>
+                      <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                        <li>
+                          <button
+                            type="button"
+                            class="dropdown-item"
+                            onclick="exportRekapView('stok')"
+                          >
+                            <i class="bi bi-eye text-primary me-2"></i>
+                            Lihat rekap
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="dropdown-item"
+                            onclick="exportRekapPdf('stok')"
+                          >
+                            <i
+                              class="bi bi-file-earmark-pdf text-danger me-2"
+                            ></i
+                            >PDF (cetak / simpan)
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            class="dropdown-item"
+                            onclick="exportRekapExcel('stok')"
+                          >
+                            <i
+                              class="bi bi-file-earmark-spreadsheet text-success me-2"
+                            ></i
+                            >Excel (.xlsx)
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
                   </div>
                   <div class="table-responsive">
                     <table class="table table-hover align-middle">
