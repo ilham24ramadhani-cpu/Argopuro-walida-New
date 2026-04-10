@@ -741,6 +741,15 @@ function formatCurrency(amount) {
   }).format(amount);
 }
 
+/** Nilai rupiah tanpa teks "Rp" (untuk sel tabel; keterangan di header kolom). */
+function formatCurrencyNumeric(amount) {
+  if (amount === null || amount === undefined || isNaN(amount)) return "-";
+  return Math.round(Number(amount)).toLocaleString("id-ID", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+}
+
 // Format date
 function formatDate(dateString) {
   if (!dateString) return "-";
@@ -774,6 +783,25 @@ function stripKgSuffixForExportCell(value) {
   const s = String(value).trim();
   if (s === "" || s === "—" || s === "-") return s;
   return s.replace(/\s+kg(?:\s*\/\s*kg)?\s*$/i, "").trim();
+}
+
+function stripRpPrefixForExportCell(value) {
+  if (value === undefined || value === null) return "";
+  const s = String(value).trim();
+  if (s === "" || s === "—" || s === "-") return s;
+  return s
+    .replace(/^Rp\.?\s*/i, "")
+    .replace(/^[\u202f\xa0\s]+/, "")
+    .trim();
+}
+
+/** Sel tabel rekap untuk PDF/Excel: angka saja (hapus sufiks kg & prefiks Rp jika masih ada). */
+function sanitizeRekapDataCellForExport(raw) {
+  if (raw === undefined || raw === null) return "";
+  let s = String(raw).trim();
+  s = stripKgSuffixForExportCell(s);
+  s = stripRpPrefixForExportCell(s);
+  return s;
 }
 
 function parseValidDate(value) {
@@ -937,14 +965,16 @@ const LAPORAN_REKAP_CONFIG = {
         value: (item) => formatKgValue(safeNumber(item.jumlah)) || "-",
       },
       {
-        label: "Harga/Kg",
+        label: "Harga/Kg (Rp)",
         value: (item) =>
-          item.hargaPerKg ? formatCurrency(item.hargaPerKg) : "-",
+          item.hargaPerKg ? formatCurrencyNumeric(item.hargaPerKg) : "-",
       },
       {
-        label: "Total Pengeluaran",
+        label: "Total Pengeluaran (Rp)",
         value: (item) =>
-          item.totalPengeluaran ? formatCurrency(item.totalPengeluaran) : "-",
+          item.totalPengeluaran
+            ? formatCurrencyNumeric(item.totalPengeluaran)
+            : "-",
       },
       {
         label: "Tanggal Masuk",
@@ -968,7 +998,8 @@ const LAPORAN_REKAP_CONFIG = {
         },
       },
       {
-        label: "Rata-rata Harga/Kg (Total Pengeluaran / Total Berat)",
+        label:
+          "Rata-rata Harga/Kg (Rp) — total pengeluaran ÷ total berat (kg)",
         compute: (items) => {
           if (!items || items.length === 0) return "-";
           let totalPengeluaran = 0;
@@ -986,7 +1017,7 @@ const LAPORAN_REKAP_CONFIG = {
           if (totalBerat === 0) return "-";
           // Rata-rata = Total Pengeluaran / Total Berat (kg)
           const avg = totalPengeluaran / totalBerat;
-          return formatCurrency(Math.round(avg));
+          return formatCurrencyNumeric(Math.round(avg));
         },
       },
     ],
@@ -1004,14 +1035,14 @@ const LAPORAN_REKAP_CONFIG = {
       );
       return [
         {
-          label: "Harga Tertinggi",
-          value: `${formatCurrency(safeNumber(maxItem.hargaPerKg))} (${
+          label: "Harga Tertinggi (Rp/kg)",
+          value: `${formatCurrencyNumeric(safeNumber(maxItem.hargaPerKg))} (${
             maxItem.idBahan || "-"
           })`,
         },
         {
-          label: "Harga Terendah",
-          value: `${formatCurrency(safeNumber(minItem.hargaPerKg))} (${
+          label: "Harga Terendah (Rp/kg)",
+          value: `${formatCurrencyNumeric(safeNumber(minItem.hargaPerKg))} (${
             minItem.idBahan || "-"
           })`,
         },
@@ -1275,8 +1306,9 @@ const LAPORAN_REKAP_CONFIG = {
       },
       { label: "ID Bahan Baku", value: (item) => item.idBahanBaku || "-" },
       {
-        label: "Nilai",
-        value: (item) => (item.nilai ? formatCurrency(item.nilai) : "-"),
+        label: "Nilai (Rp)",
+        value: (item) =>
+          item.nilai ? formatCurrencyNumeric(item.nilai) : "-",
       },
       { label: "Catatan", value: (item) => item.notes || "-" },
     ],
@@ -1294,14 +1326,14 @@ const LAPORAN_REKAP_CONFIG = {
       );
       return [
         {
-          label: "Maksimal Total Pengeluaran",
-          value: `${formatCurrency(safeNumber(maxItem.nilai))} (${
+          label: "Maksimal Total Pengeluaran (Rp)",
+          value: `${formatCurrencyNumeric(safeNumber(maxItem.nilai))} (${
             maxItem.jenisPengeluaran || "-"
           }${maxItem.idBahanBaku ? ` - ${maxItem.idBahanBaku}` : ""})`,
         },
         {
-          label: "Total Pengeluaran",
-          value: formatCurrency(totalPengeluaran),
+          label: "Total Pengeluaran (Rp)",
+          value: formatCurrencyNumeric(totalPengeluaran),
         },
       ];
     },
@@ -2048,7 +2080,7 @@ function buildRekapReportFragments(config, data) {
           const cell =
             raw === undefined || raw === null
               ? ""
-              : stripKgSuffixForExportCell(String(raw));
+              : sanitizeRekapDataCellForExport(String(raw));
           return `<td>${cell}</td>`;
         })
         .join("");
@@ -2589,7 +2621,7 @@ async function exportRekapExcel(category) {
         c.value =
           raw === undefined || raw === null
             ? ""
-            : stripKgSuffixForExportCell(String(raw));
+            : sanitizeRekapDataCellForExport(String(raw));
         c.fill = rowFill;
         c.alignment = { vertical: "top", horizontal: "left", wrapText: true };
         rekapExcelBorderAll(c);
@@ -2815,8 +2847,12 @@ function renderBahanPriceStats() {
   const minT = Math.min(...validEntries.map((e) => e.date.getTime()));
   const maxT = Math.max(...validEntries.map((e) => e.date.getTime()));
 
-  avgElement.textContent = formatCurrency(Math.round(avgHargaTertimbang));
-  maxElement.textContent = formatCurrency(safeNumber(maxEntry.hargaPerKg));
+  avgElement.textContent = formatCurrencyNumeric(
+    Math.round(avgHargaTertimbang)
+  );
+  maxElement.textContent = formatCurrencyNumeric(
+    safeNumber(maxEntry.hargaPerKg)
+  );
   supplierElement.textContent = `${maxEntry.pemasok || "Tanpa pemasok"}${
     maxEntry.idBahan ? ` (${maxEntry.idBahan})` : ""
   }`;
@@ -3059,11 +3095,13 @@ function displayBahan() {
       <td>${index + 1}</td>
       <td>${item.idBahan || "-"}</td>
       <td>${item.pemasok || "-"}</td>
-      <td>${item.jumlah ? item.jumlah.toLocaleString("id-ID") : "-"} kg</td>
+      <td>${item.jumlah ? item.jumlah.toLocaleString("id-ID") : "-"}</td>
       <td>${item.varietas || "-"}</td>
-      <td>${item.hargaPerKg ? formatCurrency(item.hargaPerKg) : "-"}</td>
+      <td>${item.hargaPerKg ? formatCurrencyNumeric(item.hargaPerKg) : "-"}</td>
         <td>${
-          item.totalPengeluaran ? formatCurrency(item.totalPengeluaran) : "-"
+          item.totalPengeluaran
+            ? formatCurrencyNumeric(item.totalPengeluaran)
+            : "-"
         }</td>
       <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => 'bg-secondary'))(item.jenisKopi)}">${item.jenisKopi || "-"}</span></td>
       <td>${formatDate(item.tanggalMasuk)}</td>
@@ -3319,14 +3357,19 @@ function generateBahanPDF(id) {
     ["ID Bahan", item.idBahan || "—"],
     ["Pemasok", item.pemasok || "—"],
     [
-      "Jumlah",
-      `${item.jumlah ? item.jumlah.toLocaleString("id-ID") : "—"} kg`,
+      "Jumlah (kg)",
+      item.jumlah ? item.jumlah.toLocaleString("id-ID") : "—",
     ],
     ["Varietas", item.varietas || "—"],
-    ["Harga per Kg", item.hargaPerKg ? formatCurrency(item.hargaPerKg) : "—"],
     [
-      "Total Pengeluaran",
-      item.totalPengeluaran ? formatCurrency(item.totalPengeluaran) : "—",
+      "Harga per Kg (Rp)",
+      item.hargaPerKg ? formatCurrencyNumeric(item.hargaPerKg) : "—",
+    ],
+    [
+      "Total Pengeluaran (Rp)",
+      item.totalPengeluaran
+        ? formatCurrencyNumeric(item.totalPengeluaran)
+        : "—",
     ],
     ["Jenis Kopi", item.jenisKopi || "—"],
     ["Tanggal Masuk", formatDate(item.tanggalMasuk)],
@@ -3574,10 +3617,10 @@ function generateHasilProduksiPDF(id) {
     y += 10;
 
     doc.setFont(undefined, "bold");
-    doc.text("Jumlah:", 20, y);
+    doc.text("Jumlah (kg):", 20, y);
     doc.setFont(undefined, "normal");
     doc.text(
-      `${bahanData.jumlah ? bahanData.jumlah.toLocaleString("id-ID") : "-"} kg`,
+      bahanData.jumlah ? bahanData.jumlah.toLocaleString("id-ID") : "-",
       60,
       y
     );
@@ -3590,21 +3633,23 @@ function generateHasilProduksiPDF(id) {
     y += 10;
 
     doc.setFont(undefined, "bold");
-    doc.text("Harga per Kg:", 20, y);
+    doc.text("Harga per Kg (Rp):", 20, y);
     doc.setFont(undefined, "normal");
     doc.text(
-      bahanData.hargaPerKg ? formatCurrency(bahanData.hargaPerKg) : "-",
+      bahanData.hargaPerKg
+        ? formatCurrencyNumeric(bahanData.hargaPerKg)
+        : "-",
       60,
       y
     );
     y += 10;
 
     doc.setFont(undefined, "bold");
-    doc.text("Total Pengeluaran:", 20, y);
+    doc.text("Total Pengeluaran (Rp):", 20, y);
     doc.setFont(undefined, "normal");
     doc.text(
       bahanData.totalPengeluaran
-        ? formatCurrency(bahanData.totalPengeluaran)
+        ? formatCurrencyNumeric(bahanData.totalPengeluaran)
         : "-",
       60,
       y
@@ -3959,7 +4004,7 @@ function displayKeuangan() {
       <td>${formatDate(item.tanggal)}</td>
       <td>${jenisBadge}</td>
       <td>${item.idBahanBaku || "-"}</td>
-      <td>${item.nilai ? formatCurrency(item.nilai) : "-"}</td>
+      <td>${item.nilai ? formatCurrencyNumeric(item.nilai) : "-"}</td>
       <td>${item.notes || "-"}</td>
       <td class="text-center">
           <button class="btn btn-sm btn-primary" onclick="generateKeuanganPDF(${
@@ -4524,20 +4569,22 @@ async function generateDataKemasanPDF(id) {
         ["ID Bahan", bahanData.idBahan || "—"],
         ["Pemasok", bahanData.pemasok || "—"],
         [
-          "Jumlah",
-          `${
-            bahanData.jumlah ? bahanData.jumlah.toLocaleString("id-ID") : "—"
-          } kg`,
+          "Jumlah (kg)",
+          bahanData.jumlah
+            ? bahanData.jumlah.toLocaleString("id-ID")
+            : "—",
         ],
         ["Varietas", bahanData.varietas || "—"],
         [
-          "Harga per Kg",
-          bahanData.hargaPerKg ? formatCurrency(bahanData.hargaPerKg) : "—",
+          "Harga per Kg (Rp)",
+          bahanData.hargaPerKg
+            ? formatCurrencyNumeric(bahanData.hargaPerKg)
+            : "—",
         ],
         [
-          "Total Pengeluaran",
+          "Total Pengeluaran (Rp)",
           bahanData.totalPengeluaran
-            ? formatCurrency(bahanData.totalPengeluaran)
+            ? formatCurrencyNumeric(bahanData.totalPengeluaran)
             : "—",
         ],
         ["Jenis Kopi", bahanData.jenisKopi || "—"],
@@ -5230,7 +5277,7 @@ function generateKeuanganPDF(id) {
     pairsKeu.push(["ID Bahan Baku", item.idBahanBaku]);
   }
   pairsKeu.push(
-    ["Nilai", item.nilai ? formatCurrency(item.nilai) : "—"],
+    ["Nilai (Rp)", item.nilai ? formatCurrencyNumeric(item.nilai) : "—"],
     [
       "Catatan / notes",
       item.notes && String(item.notes).trim() ? item.notes : "—",
@@ -5465,8 +5512,8 @@ function displayPemesananLaporan() {
         </td>
         <td>${p.negara || "-"}</td>
         <td>${p.tipeProduk || "-"}</td>
-        <td>${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg</td>
-        <td>Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}</td>
+        <td>${(p.jumlahPesananKg || 0).toLocaleString("id-ID")}</td>
+        <td>${(p.totalHarga || 0).toLocaleString("id-ID")}</td>
         <td>
           <span class="badge ${
             p.statusPemesanan === "Complete" ? "bg-success" : "bg-warning"
@@ -5559,7 +5606,7 @@ async function exportRekapPemesanan() {
         "Nama Pembeli",
         "Tipe",
         "Jumlah (kg)",
-        "Total Harga",
+        "Total Harga (Rp)",
         "Status",
       ],
       ...filteredPemesanan.map((p, index) => [
@@ -5568,7 +5615,7 @@ async function exportRekapPemesanan() {
         p.namaPembeli || "—",
         p.tipePemesanan || "—",
         (p.jumlahPesananKg || 0).toLocaleString("id-ID"),
-        `Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}`,
+        (p.totalHarga || 0).toLocaleString("id-ID"),
         p.statusPemesanan || "—",
       ]),
     ];
@@ -5591,8 +5638,8 @@ async function exportRekapPemesanan() {
       doc,
       y,
       [
-        ["Total jumlah pesanan", `${totalJumlah.toLocaleString("id-ID")} kg`],
-        ["Total harga", `Rp ${totalHarga.toLocaleString("id-ID")}`],
+        ["Total jumlah pesanan (kg)", totalJumlah.toLocaleString("id-ID")],
+        ["Total harga (Rp)", totalHarga.toLocaleString("id-ID")],
       ],
       { title: "Ringkasan" }
     );
@@ -5694,16 +5741,16 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
 
     const hargaPairs = [
       [
-        "Jumlah Pesanan",
-        `${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg`,
+        "Jumlah Pesanan (kg)",
+        (p.jumlahPesananKg || 0).toLocaleString("id-ID"),
       ],
       [
-        "Harga per Kg",
-        `Rp ${(p.hargaPerKg || 0).toLocaleString("id-ID")}`,
+        "Harga per Kg (Rp)",
+        (p.hargaPerKg || 0).toLocaleString("id-ID"),
       ],
       [
-        "Total Harga",
-        `Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}`,
+        "Total Harga (Rp)",
+        (p.totalHarga || 0).toLocaleString("id-ID"),
       ],
     ];
     y = pdfRenderKeyValueTable(doc, y, hargaPairs, { title: "Rincian harga" });
@@ -5822,16 +5869,16 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
 
     const hargaPairsQr = [
       [
-        "Jumlah Pesanan",
-        `${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg`,
+        "Jumlah Pesanan (kg)",
+        (p.jumlahPesananKg || 0).toLocaleString("id-ID"),
       ],
       [
-        "Harga per Kg",
-        `Rp ${(p.hargaPerKg || 0).toLocaleString("id-ID")}`,
+        "Harga per Kg (Rp)",
+        (p.hargaPerKg || 0).toLocaleString("id-ID"),
       ],
       [
-        "Total Harga",
-        `Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}`,
+        "Total Harga (Rp)",
+        (p.totalHarga || 0).toLocaleString("id-ID"),
       ],
     ];
     yQR = pdfRenderKeyValueTable(docWithQR, yQR, hargaPairsQr, {
