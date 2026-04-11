@@ -1406,10 +1406,37 @@ const LAPORAN_REKAP_CONFIG = {
     title: "Laporan Rekap Pemesanan",
     columns: [
       { label: "ID Pembelian", value: (item) => item.idPembelian || "-" },
+      {
+        label: "Tanggal",
+        value: (item) => formatDate(item.tanggalPemesanan),
+      },
       { label: "Nama Pembeli", value: (item) => item.namaPembeli || "-" },
-      { label: "Tipe", value: (item) => item.tipePemesanan || "-" },
+      { label: "Tipe pemesanan", value: (item) => item.tipePemesanan || "-" },
       { label: "Negara", value: (item) => item.negara || "-" },
-      { label: "Produk", value: (item) => item.tipeProduk || "-" },
+      {
+        label: "Kontak pembeli",
+        value: (item) =>
+          (item.kontakPembeli && String(item.kontakPembeli).trim()) || "-",
+      },
+      {
+        label: "Alamat pembeli",
+        value: (item) =>
+          (item.alamatPembeli && String(item.alamatPembeli).trim()) || "-",
+      },
+      {
+        label: "ID master pembeli",
+        value: (item) =>
+          item.idMasterPembeli != null && item.idMasterPembeli !== ""
+            ? String(item.idMasterPembeli)
+            : "-",
+      },
+      { label: "Tipe produk", value: (item) => item.tipeProduk || "-" },
+      { label: "Jenis kopi", value: (item) => item.jenisKopi || "-" },
+      {
+        label: "Proses pengolahan",
+        value: (item) =>
+          (item.prosesPengolahan && String(item.prosesPengolahan).trim()) || "-",
+      },
       {
         label: "Jumlah (kg)",
         value: (item) =>
@@ -1418,16 +1445,42 @@ const LAPORAN_REKAP_CONFIG = {
             : "-",
       },
       {
-        label: "Total Harga (Rp)",
+        label: "Harga/kg (Rp)",
+        value: (item) =>
+          item.hargaPerKg != null && item.hargaPerKg !== ""
+            ? formatCurrencyNumeric(safeNumber(item.hargaPerKg))
+            : "-",
+      },
+      {
+        label: "Biaya pajak (Rp)",
+        value: (item) =>
+          item.biayaPajak != null && item.biayaPajak !== ""
+            ? formatCurrencyNumeric(safeNumber(item.biayaPajak))
+            : "-",
+      },
+      {
+        label: "Biaya pengiriman (Rp)",
+        value: (item) =>
+          item.biayaPengiriman != null && item.biayaPengiriman !== ""
+            ? formatCurrencyNumeric(safeNumber(item.biayaPengiriman))
+            : "-",
+      },
+      {
+        label: "Total harga (Rp)",
         value: (item) =>
           item.totalHarga != null && item.totalHarga !== ""
             ? formatCurrencyNumeric(safeNumber(item.totalHarga))
             : "-",
       },
-      { label: "Status", value: (item) => item.statusPemesanan || "-" },
+      { label: "Status pemesanan", value: (item) => item.statusPemesanan || "-" },
       {
-        label: "Tanggal",
-        value: (item) => formatDate(item.tanggalPemesanan),
+        label: "Status pembayaran",
+        value: (item) => item.statusPembayaran || "-",
+      },
+      {
+        label: "Catatan",
+        value: (item) =>
+          (item.catatanPemesanan && String(item.catatanPemesanan).trim()) || "-",
       },
     ],
     filterKey: "pemesanan",
@@ -1435,6 +1488,21 @@ const LAPORAN_REKAP_CONFIG = {
     dateGetter: (item) => item.tanggalPemesanan,
     extraSummary: (items) => {
       if (!items.length) return [];
+      const byProses = new Map();
+      items.forEach((p) => {
+        const raw = (p.prosesPengolahan && String(p.prosesPengolahan).trim()) || "";
+        const key = raw || "(Tanpa proses pengolahan)";
+        const cur = byProses.get(key) || { kg: 0, n: 0 };
+        cur.kg += safeNumber(p.jumlahPesananKg);
+        cur.n += 1;
+        byProses.set(key, cur);
+      });
+      const perProses = [...byProses.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0], "id"))
+        .map(([nama, { kg, n }]) => ({
+          label: `Σ kg per proses «${nama}»`,
+          value: `${formatKgValue(kg)} · ${n} pesanan`,
+        }));
       const totalKg = items.reduce(
         (sum, p) => sum + safeNumber(p.jumlahPesananKg),
         0
@@ -1444,9 +1512,13 @@ const LAPORAN_REKAP_CONFIG = {
         0
       );
       return [
-        { label: "Total jumlah pesanan (kg)", value: formatKgValue(totalKg) },
+        ...perProses,
         {
-          label: "Total harga (Rp)",
+          label: "Total jumlah pesanan (kg) — keseluruhan",
+          value: formatKgValue(totalKg),
+        },
+        {
+          label: "Total harga (Rp) — keseluruhan",
           value: formatCurrencyNumeric(totalHarga),
         },
       ];
@@ -2020,6 +2092,82 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       </div>`;
 }
 
+/** Agregat pemesanan: banyaknya pesanan & total kg per proses pengolahan. */
+function aggregatePemesananPerProses(items) {
+  const byProses = new Map();
+  if (!Array.isArray(items)) return [];
+  items.forEach((p) => {
+    const raw =
+      (p.prosesPengolahan && String(p.prosesPengolahan).trim()) || "";
+    const key = raw || "(Tanpa proses pengolahan)";
+    const cur = byProses.get(key) || { kg: 0, n: 0 };
+    cur.kg += safeNumber(p.jumlahPesananKg);
+    cur.n += 1;
+    byProses.set(key, cur);
+  });
+  return [...byProses.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0], "id"))
+    .map(([nama, { kg, n }]) => ({ nama, kg, n }));
+}
+
+/** Blok tabel ringkasan per proses (lihat rekap / cetak) — selaras pola rekap produksi. */
+function htmlRekapPemesananAggPerProses(items) {
+  const rows = aggregatePemesananPerProses(items);
+  if (!rows.length) return "";
+  const fmtKg = (n) =>
+    Number.isFinite(n)
+      ? n.toLocaleString("id-ID", { maximumFractionDigits: 4 })
+      : "—";
+  const body = rows
+    .map(
+      (r) =>
+        `<tr>
+      <td>${escapeHtmlLaporan(r.nama)}</td>
+      <td style="text-align: right">${r.n}</td>
+      <td style="text-align: right">${fmtKg(r.kg)}</td>
+    </tr>`
+    )
+    .join("");
+  const totalN = rows.reduce((s, r) => s + r.n, 0);
+  const totalKg = rows.reduce((s, r) => s + r.kg, 0);
+  return `
+      <div class="summary rekap-pemesanan-proses" style="margin-top: 24px">
+        <h2>Ringkasan per proses pengolahan</h2>
+        <p class="meta" style="margin: 0 0 12px 0; color: #6b7280; font-size: 12px">
+          <strong>Jumlah pesanan</strong> = banyaknya baris pemesanan pada filter ini.
+          <strong>Total kg</strong> = penjumlahan kolom jumlah (kg) untuk proses pengolahan yang sama.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Proses pengolahan</th>
+              <th style="text-align: right">Jumlah pesanan</th>
+              <th style="text-align: right">Total kg</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${body}
+            <tr>
+              <td><strong>Total</strong></td>
+              <td style="text-align: right"><strong>${totalN}</strong></td>
+              <td style="text-align: right"><strong>${fmtKg(totalKg)}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>`;
+}
+
+/** Matriks untuk lembar Excel «Per proses» (pemesanan). */
+function buildPemesananPerProsesSheetMatrix(items) {
+  const rows = aggregatePemesananPerProses(items);
+  const header = ["Proses pengolahan", "Jumlah pesanan", "Total kg"];
+  if (!rows.length) return [header, ["—", "", ""]];
+  const body = rows.map((r) => [r.nama, r.n, r.kg]);
+  const totalN = rows.reduce((s, r) => s + r.n, 0);
+  const totalKg = rows.reduce((s, r) => s + r.kg, 0);
+  return [header, ...body, ["Total", totalN, totalKg]];
+}
+
 function getFilterDescription(category) {
   if (category === "pemesanan") {
     const parts = [];
@@ -2354,6 +2502,7 @@ async function exportRekapView(category) {
           </tbody>
         </table>
         ${category === "produksi" ? htmlRekapRandomenPerProsesPengolahan(data) : ""}
+        ${category === "pemesanan" ? htmlRekapPemesananAggPerProses(data) : ""}
         ${summaryHtml}
         ${extraSummaryHtml}
         <div class="footer">
@@ -2543,6 +2692,7 @@ async function exportRekapPdf(category) {
           </tbody>
         </table>
         ${category === "produksi" ? htmlRekapRandomenPerProsesPengolahan(data) : ""}
+        ${category === "pemesanan" ? htmlRekapPemesananAggPerProses(data) : ""}
         ${summaryHtml}
         ${extraSummaryHtml}
         <div class="footer">
@@ -2650,7 +2800,7 @@ async function exportRekapExcel(category) {
     kvRing("Sistem", "Argopuro Walida");
     kvRing(
       "Struktur berkas",
-      "Lembar «Data» = tabel utama. Produksi memiliki lembar «Randomen» (agregat per proses)."
+      "Lembar «Data» = tabel utama. Produksi: lembar «Randomen». Pemesanan: lembar «Per proses»."
     );
 
     if (config.averages && config.averages.length) {
@@ -2857,6 +3007,103 @@ async function exportRekapExcel(category) {
       for (let i = 0; i < nc; i += 1) {
         wsRnd.getColumn(i + 1).width = rndWidths[i] || 14;
       }
+    }
+
+    if (category === "pemesanan") {
+      const wsPp = wb.addWorksheet("Per proses", {
+        views: [{ showGridLines: true }],
+      });
+      const ppMatrix = buildPemesananPerProsesSheetMatrix(data);
+      const ppHeader = ppMatrix[0] || [];
+      const ppBody = ppMatrix.slice(1);
+      const ncPp = 3;
+      let pr = 1;
+
+      const mergeBorderRowPp = (row, text, fontSize = 11) => {
+        wsPp.mergeCells(row, 1, row, ncPp);
+        const cell = wsPp.getCell(row, 1);
+        cell.value = text;
+        cell.font = { bold: true, size: fontSize, name: "Calibri" };
+        cell.fill = fillSection;
+        cell.alignment = {
+          vertical: "middle",
+          horizontal: "left",
+          wrapText: true,
+        };
+        for (let col = 1; col <= ncPp; col += 1) {
+          rekapExcelBorderAll(wsPp.getCell(row, col));
+        }
+      };
+
+      mergeBorderRowPp(
+        pr,
+        "Ringkasan jumlah pesanan & total kg per proses pengolahan",
+        11
+      );
+      pr += 1;
+      mergeBorderRowPp(
+        pr,
+        "Jumlah pesanan = banyaknya baris pada filter; total kg = jumlah kolom kg per proses.",
+        10
+      );
+      pr += 1;
+
+      ppHeader.forEach((h, i) => {
+        const c = wsPp.getCell(pr, i + 1);
+        c.value = h;
+        c.font = { bold: true, size: 10, name: "Calibri" };
+        c.fill = fillHeader;
+        c.alignment = {
+          vertical: "middle",
+          horizontal: i >= 1 ? "center" : "center",
+          wrapText: true,
+        };
+        rekapExcelBorderAll(c);
+      });
+      const ppHeaderRow = pr;
+      pr += 1;
+
+      ppBody.forEach((bodyRow, idx) => {
+        const rowIdx = pr + idx;
+        const zebra = idx % 2 === 0 ? "FFFFFFFF" : "FFFAFAFA";
+        const rowFill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: zebra },
+        };
+        for (let ci = 0; ci < ncPp; ci += 1) {
+          const val = bodyRow[ci];
+          const c = wsPp.getCell(rowIdx, ci + 1);
+          if (val === "" || val === undefined || val === null) {
+            c.value = "";
+          } else if (typeof val === "number") {
+            c.value = val;
+          } else {
+            c.value = String(val);
+          }
+          c.fill = rowFill;
+          c.alignment = {
+            vertical: "top",
+            horizontal: ci >= 1 ? "right" : "left",
+            wrapText: true,
+          };
+          rekapExcelBorderAll(c);
+        }
+      });
+
+      wsPp.views = [
+        {
+          state: "frozen",
+          xSplit: 0,
+          ySplit: ppHeaderRow,
+          topLeftCell: `A${ppHeaderRow + 1}`,
+          activeCell: `A${ppHeaderRow + 1}`,
+          showGridLines: true,
+        },
+      ];
+      wsPp.getColumn(1).width = 36;
+      wsPp.getColumn(2).width = 18;
+      wsPp.getColumn(3).width = 14;
     }
 
     const fname = `${rekapExportFilenameBase(category)}.xlsx`;
@@ -5605,7 +5852,7 @@ function displayPemesananLaporan() {
     if (filteredPemesanan.length === 0) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="11" class="text-center py-4 text-muted">
+          <td colspan="15" class="text-center py-4 text-muted">
             <i class="bi bi-inbox fs-1 d-block mb-2"></i>
             Tidak ada data pemesanan
           </td>
@@ -5630,6 +5877,9 @@ function displayPemesananLaporan() {
         </td>
         <td>${p.negara || "-"}</td>
         <td>${p.tipeProduk || "-"}</td>
+        <td>${(p.prosesPengolahan && String(p.prosesPengolahan).trim()) || "-"}</td>
+        <td>${p.jenisKopi || "-"}</td>
+        <td>${(p.hargaPerKg != null ? Number(p.hargaPerKg) : 0).toLocaleString("id-ID")}</td>
         <td>${(p.jumlahPesananKg || 0).toLocaleString("id-ID")}</td>
         <td>${(p.totalHarga || 0).toLocaleString("id-ID")}</td>
         <td>
@@ -5639,6 +5889,7 @@ function displayPemesananLaporan() {
             ${p.statusPemesanan || "-"}
           </span>
         </td>
+        <td>${p.statusPembayaran || "-"}</td>
         <td>${formatDate(p.tanggalPemesanan)}</td>
         <td class="text-center">
           <button 
@@ -5658,7 +5909,7 @@ function displayPemesananLaporan() {
     console.error("❌ Error displaying pemesanan laporan:", error);
     tableBody.innerHTML = `
       <tr>
-        <td colspan="11" class="text-center py-4 text-danger">
+        <td colspan="15" class="text-center py-4 text-danger">
           <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
           Error menampilkan data: ${error.message}
         </td>
