@@ -857,7 +857,7 @@
                   Jumlah &amp; harga
                 </h6>
                 <div class="row g-3 align-items-end">
-                  <div class="col-sm-6 col-lg-3">
+                  <div class="col-6 col-xl-2">
                     <label for="jumlahPesananKg" class="form-label"
                       >Jumlah (kg) <span class="text-danger">*</span></label
                     >
@@ -872,7 +872,7 @@
                       onchange="calculateTotalHarga()"
                     />
                   </div>
-                  <div class="col-sm-6 col-lg-3">
+                  <div class="col-6 col-xl-2">
                     <label for="hargaPerKg" class="form-label"
                       >Harga / kg (Rp) <span class="text-danger">*</span></label
                     >
@@ -887,7 +887,7 @@
                       onchange="calculateTotalHarga()"
                     />
                   </div>
-                  <div class="col-sm-6 col-lg-3">
+                  <div class="col-6 col-xl-2">
                     <label for="biayaPajak" class="form-label">
                       Pajak (Rp)
                       <span class="text-muted fw-normal small">opsional</span>
@@ -904,7 +904,24 @@
                       oninput="calculateTotalHarga()"
                     />
                   </div>
-                  <div class="col-sm-6 col-lg-3">
+                  <div class="col-6 col-xl-2">
+                    <label for="biayaPengiriman" class="form-label">
+                      Pengiriman (Rp)
+                      <span class="text-muted fw-normal small">opsional</span>
+                    </label>
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="biayaPengiriman"
+                      placeholder="0"
+                      min="0"
+                      step="1000"
+                      value="0"
+                      onchange="calculateTotalHarga()"
+                      oninput="calculateTotalHarga()"
+                    />
+                  </div>
+                  <div class="col-12 col-xl-4">
                     <label for="totalHarga" class="form-label">Total (Rp)</label>
                     <input
                       type="text"
@@ -915,7 +932,9 @@
                       tabindex="-1"
                       aria-readonly="true"
                     />
-                    <small class="text-muted">(kg × harga/kg) + pajak</small>
+                    <small class="text-muted"
+                      >(kg × harga/kg) + pajak + pengiriman</small
+                    >
                   </div>
                 </div>
               </div>

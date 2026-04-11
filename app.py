@@ -3894,12 +3894,15 @@ def create_pemesanan():
         biaya_pajak = float(data.get('biayaPajak') or 0)
         if biaya_pajak < 0:
             return jsonify({'error': 'Biaya pajak tidak boleh negatif'}), 400
+        biaya_pengiriman = float(data.get('biayaPengiriman') or 0)
+        if biaya_pengiriman < 0:
+            return jsonify({'error': 'Biaya pengiriman tidak boleh negatif'}), 400
         
-        # Validate totalHarga = (jumlah × harga/kg) + biaya pajak
+        # Validate totalHarga = (jumlah × harga/kg) + pajak + pengiriman
         jumlah_pesanan = float(data['jumlahPesananKg'])
         harga_per_kg = float(data['hargaPerKg'])
         total_harga_received = float(data['totalHarga'])
-        calculated_total = jumlah_pesanan * harga_per_kg + biaya_pajak
+        calculated_total = jumlah_pesanan * harga_per_kg + biaya_pajak + biaya_pengiriman
         
         # Allow small floating point differences (0.01)
         if abs(total_harga_received - calculated_total) > 0.01:
@@ -3933,6 +3936,7 @@ def create_pemesanan():
             'jumlahPesananKg': float(data['jumlahPesananKg']),
             'hargaPerKg': float(data['hargaPerKg']),
             'biayaPajak': biaya_pajak,
+            'biayaPengiriman': biaya_pengiriman,
             'totalHarga': float(data['totalHarga']),
             'statusPemesanan': data['statusPemesanan'],
             'statusPembayaran': status_bayar,
@@ -4006,11 +4010,11 @@ def update_pemesanan(pemesanan_id):
         update_data = {}
         for field in ['idPembelian', 'namaPembeli', 'tipePemesanan', 'negara', 'tipeProduk',
                      'prosesPengolahan', 'jenisKopi', 'jumlahPesananKg', 'hargaPerKg',
-                     'biayaPajak', 'totalHarga', 'statusPemesanan', 'tanggalPemesanan', 'idMasterPembeli',
+                     'biayaPajak', 'biayaPengiriman', 'totalHarga', 'statusPemesanan', 'tanggalPemesanan', 'idMasterPembeli',
                      'kontakPembeli', 'alamatPembeli', 'statusPembayaran', 'catatanPemesanan']:
             if field in data:
-                if field in ['jumlahPesananKg', 'hargaPerKg', 'totalHarga', 'biayaPajak']:
-                    if field == 'biayaPajak':
+                if field in ['jumlahPesananKg', 'hargaPerKg', 'totalHarga', 'biayaPajak', 'biayaPengiriman']:
+                    if field in ('biayaPajak', 'biayaPengiriman'):
                         update_data[field] = float(data[field] or 0)
                     else:
                         update_data[field] = float(data[field])
@@ -4019,18 +4023,22 @@ def update_pemesanan(pemesanan_id):
                 else:
                     update_data[field] = data[field]
 
-        _total_keys = ('totalHarga', 'jumlahPesananKg', 'hargaPerKg', 'biayaPajak')
+        _total_keys = ('totalHarga', 'jumlahPesananKg', 'hargaPerKg', 'biayaPajak', 'biayaPengiriman')
         if any(k in update_data for k in _total_keys):
             j = float(update_data.get('jumlahPesananKg', pemesanan.get('jumlahPesananKg', 0)))
             hk = float(update_data.get('hargaPerKg', pemesanan.get('hargaPerKg', 0)))
             pj = float(update_data.get('biayaPajak', pemesanan.get('biayaPajak', 0)) or 0)
+            pg = float(update_data.get('biayaPengiriman', pemesanan.get('biayaPengiriman', 0)) or 0)
             th = float(update_data.get('totalHarga', pemesanan.get('totalHarga', 0)))
             if pj < 0:
                 return jsonify({'error': 'Biaya pajak tidak boleh negatif'}), 400
-            if abs(th - (j * hk + pj)) > 0.01:
+            if pg < 0:
+                return jsonify({'error': 'Biaya pengiriman tidak boleh negatif'}), 400
+            expected = j * hk + pj + pg
+            if abs(th - expected) > 0.01:
                 return jsonify({
-                    'error': 'Total harga tidak sesuai dengan jumlah × harga/kg + biaya pajak',
-                    'expected': j * hk + pj,
+                    'error': 'Total harga tidak sesuai dengan jumlah × harga/kg + pajak + pengiriman',
+                    'expected': expected,
                     'received': th,
                 }), 400
 

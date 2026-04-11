@@ -178,7 +178,7 @@ function toggleNegaraField() {
   }
 }
 
-// Calculate total harga (subtotal + biaya pajak)
+// Calculate total harga (subtotal + pajak + pengiriman)
 function calculateTotalHarga() {
   const jumlah = parseFloat(
     document.getElementById("jumlahPesananKg").value || 0,
@@ -187,8 +187,12 @@ function calculateTotalHarga() {
   const pajakRaw = parseFloat(
     document.getElementById("biayaPajak")?.value || 0,
   );
+  const kirimRaw = parseFloat(
+    document.getElementById("biayaPengiriman")?.value || 0,
+  );
   const pajak = Number.isFinite(pajakRaw) ? Math.max(0, pajakRaw) : 0;
-  const total = jumlah * harga + pajak;
+  const kirim = Number.isFinite(kirimRaw) ? Math.max(0, kirimRaw) : 0;
+  const total = jumlah * harga + pajak + kirim;
 
   document.getElementById("totalHarga").value = total
     .toLocaleString("id-ID")
@@ -835,6 +839,8 @@ function openModal(mode = "add") {
     if (catPm) catPm.value = "";
     const bp = document.getElementById("biayaPajak");
     if (bp) bp.value = "0";
+    const bpg = document.getElementById("biayaPengiriman");
+    if (bpg) bpg.value = "0";
     calculateTotalHarga();
 
     const btnCetak = document.getElementById("btnSimpanCetakInvoice");
@@ -906,6 +912,8 @@ async function editPemesanan(id) {
     document.getElementById("hargaPerKg").value = p.hargaPerKg || "";
     const bpEl = document.getElementById("biayaPajak");
     if (bpEl) bpEl.value = p.biayaPajak != null ? p.biayaPajak : "0";
+    const bpgEl = document.getElementById("biayaPengiriman");
+    if (bpgEl) bpgEl.value = p.biayaPengiriman != null ? p.biayaPengiriman : "0";
     calculateTotalHarga();
     document.getElementById("statusPemesanan").value =
       p.statusPemesanan || "Ordering";
@@ -994,9 +1002,16 @@ async function savePemesanan(cetakInvoice) {
     document.getElementById("biayaPajak")?.value || 0,
   );
   if (!Number.isFinite(biayaPajak) || biayaPajak < 0) biayaPajak = 0;
+  let biayaPengiriman = parseFloat(
+    document.getElementById("biayaPengiriman")?.value || 0,
+  );
+  if (!Number.isFinite(biayaPengiriman) || biayaPengiriman < 0) {
+    biayaPengiriman = 0;
+  }
 
-  // Total = subtotal + pajak (sama dengan validasi backend)
-  const totalHarga = jumlahPesananKg * hargaPerKg + biayaPajak;
+  // Total = subtotal + pajak + pengiriman (sama dengan validasi backend)
+  const totalHarga =
+    jumlahPesananKg * hargaPerKg + biayaPajak + biayaPengiriman;
 
   const statusPemesanan = document.getElementById("statusPemesanan").value;
   const statusPembayaran = document.getElementById("statusPembayaran")?.value || "Belum Lunas";
@@ -1044,6 +1059,7 @@ async function savePemesanan(cetakInvoice) {
       jumlahPesananKg,
       hargaPerKg,
       biayaPajak,
+      biayaPengiriman,
       totalHarga,
       statusPemesanan,
       statusPembayaran,
@@ -1779,6 +1795,12 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.text("Pajak (Rp)", LX, y);
   doc.setFont(undefined, "normal");
   doc.text(pdfFmtIdNumber(pajakInv), C_SUB, y, { align: "right" });
+  y += 7;
+  const kirimInv = Math.max(0, parseFloat(p.biayaPengiriman) || 0);
+  doc.setFont(undefined, "bold");
+  doc.text("Pengiriman (Rp)", LX, y);
+  doc.setFont(undefined, "normal");
+  doc.text(pdfFmtIdNumber(kirimInv), C_SUB, y, { align: "right" });
   y += 7;
   doc.line(LX, y, 190, y);
   y += 8;
