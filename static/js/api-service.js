@@ -363,6 +363,33 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
     },
   };
 
+  // ==================== PEMBELI API (MASTER PEMBELI — MONGODB ONLY) ====================
+  const PembeliAPI = {
+    async getAll() {
+      return await apiCall("/pembeli");
+    },
+
+    async getById(id) {
+      return await apiCall(`/pembeli/${encodeURIComponent(id)}`);
+    },
+
+    async create(data) {
+      const payload = { ...data };
+      delete payload.id;
+      return await apiCall("/pembeli", "POST", payload);
+    },
+
+    async update(id, data) {
+      const payload = { ...data };
+      delete payload.id;
+      return await apiCall(`/pembeli/${encodeURIComponent(id)}`, "PUT", payload);
+    },
+
+    async delete(id) {
+      return await apiCall(`/pembeli/${encodeURIComponent(id)}`, "DELETE");
+    },
+  };
+
   // ==================== STOK API (MONGODB ONLY - NO localStorage fallback) ====================
   const StokAPI = {
     async getAll(params = {}) {
@@ -692,6 +719,7 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
   window.API.HasilProduksi = HasilProduksiAPI;
   window.API.Bahan = BahanAPI;
   window.API.Pemasok = PemasokAPI;
+  window.API.Pembeli = PembeliAPI;
   window.API.Stok = StokAPI;
   window.API.MasterData = MasterDataAPI;
   window.API.Users = UsersAPI;

@@ -332,6 +332,20 @@
                 <i class="bi bi-cart me-2"></i>Data Pemesanan
               </button>
             </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="data-pembeli-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#data-pembeli"
+                type="button"
+                role="tab"
+                aria-controls="data-pembeli"
+                aria-selected="false"
+              >
+                <i class="bi bi-people me-2"></i>Data Pembeli
+              </button>
+            </li>
           </ul>
 
           <!-- Tab Content -->
@@ -352,11 +366,11 @@
                 <div class="flex-grow-1">
                   <strong class="d-block mb-1">Informasi Stok Produksi</strong>
                   <p class="mb-0 small">
-                    Tabel ini menampilkan stok tersedia dari produksi yang sudah
-                    masuk tahap Pengemasan dengan berat akhir. Stok dihitung
-                    dari berat akhir produksi dikurangi dengan hasil produksi
-                    yang sudah dikemas. Data ini hanya untuk dilihat
-                    (read-only).
+                    Tabel ini memakai <strong>agregasi yang sama dengan halaman Kelola Stok</strong>:
+                    per kombinasi tipe produk, jenis kopi, dan proses pengolahan
+                    (batch pengemasan dengan tanggal pengemasan; green beans =
+                    berat akhir − pixel, pixel = berat pixel), setelah dikurangi
+                    pemesanan yang sudah diproses. Data hanya untuk dilihat (read-only).
                   </p>
                 </div>
               </div>
@@ -369,10 +383,8 @@
                       <thead class="table-light">
                         <tr>
                           <th scope="col">No</th>
-                          <th scope="col">ID Produksi</th>
                           <th scope="col">Tipe Produk</th>
                           <th scope="col">Jenis Kopi</th>
-                          <th scope="col">Varietas</th>
                           <th scope="col">Proses Pengolahan</th>
                           <th scope="col" class="text-end">
                             Stok Tersedia (kg)
@@ -412,6 +424,7 @@
                         <option value="">Semua Tipe</option>
                         <option value="Lokal">Lokal</option>
                         <option value="International">International</option>
+                        <option value="E-commerce">E-commerce</option>
                       </select>
                     </div>
                     <div class="col-md-3">
@@ -459,6 +472,7 @@
                           <th scope="col">Produk</th>
                           <th scope="col">Jumlah (kg)</th>
                           <th scope="col">Total Harga (Rp)</th>
+                          <th scope="col">Pembayaran</th>
                           <th scope="col">Status Pemesanan</th>
                           <th scope="col" class="text-center">Aksi</th>
                         </tr>
@@ -471,25 +485,93 @@
                 </div>
               </div>
             </div>
+
+            <!-- Tab 3: Data Pembeli (CRUD) -->
+            <div
+              class="tab-pane fade"
+              id="data-pembeli"
+              role="tabpanel"
+              aria-labelledby="data-pembeli-tab"
+            >
+              <div
+                class="alert alert-secondary d-flex align-items-start mb-4 shadow-sm"
+                role="alert"
+              >
+                <i class="bi bi-info-circle me-3 fs-4 mt-1"></i>
+                <div>
+                  <strong class="d-block mb-1">Master data pembeli</strong>
+                  <p class="mb-0 small">
+                    Kelola pembeli seperti master pemasok. Saat
+                    <strong>Tambah Pemesanan</strong>, pilih pembeli untuk
+                    mengisi nama, kontak, alamat, dan tipe pemesanan otomatis.
+                  </p>
+                </div>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="input-group" style="max-width: 320px">
+                  <span class="input-group-text"><i class="bi bi-search"></i></span>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="searchPembeliMaster"
+                    placeholder="Cari nama, ID, kontak..."
+                    onkeyup="applyFilterPembeliMaster()"
+                  />
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modalPembeli"
+                  onclick="openModalPembeli('add')"
+                >
+                  <i class="bi bi-plus-circle me-2"></i>Tambah Pembeli
+                </button>
+              </div>
+              <div class="card shadow-sm">
+                <div class="card-body">
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th>No</th>
+                          <th>ID Pembeli</th>
+                          <th>Nama</th>
+                          <th>Kontak</th>
+                          <th>Alamat</th>
+                          <th>Tipe</th>
+                          <th class="text-center">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tablePembeliMaster">
+                        <tr>
+                          <td colspan="7" class="text-center text-muted py-4">
+                            Memuat data...
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Modal Tambah/Edit Pemesanan -->
+    <!-- Modal Tambah/Edit Pembeli -->
     <div
       class="modal fade"
-      id="modalPemesanan"
+      id="modalPembeli"
       tabindex="-1"
-      aria-labelledby="modalPemesananLabel"
+      aria-labelledby="modalPembeliLabel"
       aria-hidden="true"
     >
       <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title" id="modalPemesananLabel">
-              Tambah Pemesanan
-            </h5>
+            <h5 class="modal-title" id="modalPembeliLabel">Tambah Pembeli</h5>
             <button
               type="button"
               class="btn-close"
@@ -498,176 +580,67 @@
             ></button>
           </div>
           <div class="modal-body">
-            <form id="formPemesanan">
-              <input type="hidden" id="pemesananId" />
-
-              <!-- ID Pembelian (Auto-generate) -->
+            <form id="formPembeli">
+              <input type="hidden" id="pembeliMongoId" />
               <div class="mb-3">
-                <label for="idPembelian" class="form-label"
-                  >ID Pembelian <span class="text-danger">*</span></label
+                <label for="idPembeliMaster" class="form-label"
+                  >ID Pembeli</label
                 >
                 <input
                   type="text"
                   class="form-control"
-                  id="idPembelian"
-                  placeholder="Auto-generate: PMB-YYYYMMDD-XXX"
-                  readonly
+                  id="idPembeliMaster"
+                  placeholder="Kosongkan untuk generate otomatis (PBL001)"
                 />
-                <small class="text-muted"
-                  >ID akan di-generate otomatis saat menyimpan</small
-                >
+                <small class="text-muted">Opsional — sistem bisa generate otomatis</small>
               </div>
-
-              <div class="row">
-                <div class="col-md-6 mb-3">
-                  <label for="namaPembeli" class="form-label"
-                    >Nama Pembeli <span class="text-danger">*</span></label
-                  >
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="namaPembeli"
-                    placeholder="Masukkan nama pembeli"
-                    required
-                  />
-                </div>
-                <div class="col-md-6 mb-3">
-                  <label for="tipePemesanan" class="form-label"
-                    >Tipe Pemesanan <span class="text-danger">*</span></label
-                  >
-                  <select
-                    class="form-select"
-                    id="tipePemesanan"
-                    required
-                    onchange="toggleNegaraField()"
-                  >
-                    <option value="">Pilih Tipe</option>
-                    <option value="Lokal">Lokal</option>
-                    <option value="International">International</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Negara (Conditional) -->
-              <div class="mb-3" id="fieldNegara" style="display: none">
-                <label for="negara" class="form-label"
-                  >Negara <span class="text-danger">*</span></label
+              <div class="mb-3">
+                <label for="namaPembeliMaster" class="form-label"
+                  >Nama <span class="text-danger">*</span></label
                 >
                 <input
                   type="text"
                   class="form-control"
-                  id="negara"
-                  placeholder="Masukkan nama negara"
-                />
-                <small class="text-muted"
-                  >Wajib diisi untuk pemesanan International</small
-                >
-              </div>
-
-              <div class="row">
-                <div class="col-md-6 mb-3">
-                  <label for="tipeProduk" class="form-label"
-                    >Tipe Produk <span class="text-danger">*</span></label
-                  >
-                  <select
-                    class="form-select"
-                    id="tipeProduk"
-                    required
-                  >
-                    <option value="">Pilih Tipe Produk</option>
-                    <!-- Akan diisi dari Master Data -->
-                  </select>
-                </div>
-              </div>
-
-              <div class="row">
-                <div class="col-md-6 mb-3">
-                  <label for="prosesPengolahan" class="form-label"
-                    >Proses Pengolahan <span class="text-danger">*</span></label
-                  >
-                  <select class="form-select" id="prosesPengolahan" required>
-                    <option value="">Pilih Proses Pengolahan</option>
-                    <!-- Akan diisi dari Master Data -->
-                  </select>
-                </div>
-                <div class="col-md-6 mb-3">
-                  <label for="jenisKopi" class="form-label"
-                    >Jenis Kopi <span class="text-danger">*</span></label
-                  >
-                  <select class="form-select" id="jenisKopi" required>
-                    <option value="">Pilih Jenis Kopi</option>
-                    <!-- Akan diisi dari Master Data -->
-                  </select>
-                </div>
-              </div>
-
-              <div class="row">
-                <div class="col-md-4 mb-3">
-                  <label for="jumlahPesananKg" class="form-label"
-                    >Jumlah Pesanan (kg)
-                    <span class="text-danger">*</span></label
-                  >
-                  <input
-                    type="number"
-                    class="form-control"
-                    id="jumlahPesananKg"
-                    placeholder="0"
-                    min="0"
-                    step="0.01"
-                    required
-                    onchange="calculateTotalHarga()"
-                  />
-                </div>
-                <div class="col-md-4 mb-3">
-                  <label for="hargaPerKg" class="form-label"
-                    >Harga per Kg (Rp) <span class="text-danger">*</span></label
-                  >
-                  <input
-                    type="number"
-                    class="form-control"
-                    id="hargaPerKg"
-                    placeholder="0"
-                    min="0"
-                    step="1000"
-                    required
-                    onchange="calculateTotalHarga()"
-                  />
-                </div>
-                <div class="col-md-4 mb-3">
-                  <label for="totalHarga" class="form-label"
-                    >Total Harga (Rp) <span class="text-danger">*</span></label
-                  >
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="totalHarga"
-                    placeholder="0"
-                    readonly
-                  />
-                  <small class="text-muted">Auto-calculated</small>
-                </div>
-              </div>
-
-              <div class="mb-3">
-                <label for="statusPemesanan" class="form-label"
-                  >Status Pemesanan <span class="text-danger">*</span></label
-                >
-                <select class="form-select" id="statusPemesanan" required>
-                  <option value="Ordering">Ordering</option>
-                  <option value="Complete">Complete</option>
-                </select>
-              </div>
-
-              <div class="mb-3">
-                <label for="tanggalPemesanan" class="form-label"
-                  >Tanggal Pemesanan <span class="text-danger">*</span></label
-                >
-                <input
-                  type="date"
-                  class="form-control"
-                  id="tanggalPemesanan"
+                  id="namaPembeliMaster"
                   required
+                  placeholder="Nama pembeli"
                 />
+              </div>
+              <div class="mb-3">
+                <label for="kontakPembeliMaster" class="form-label"
+                  >Kontak (email atau nomor)
+                  <span class="text-danger">*</span></label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="kontakPembeliMaster"
+                  required
+                  placeholder="contoh@email.com atau 08xxxxxxxxxx"
+                />
+              </div>
+              <div class="mb-3">
+                <label for="alamatPembeliMaster" class="form-label"
+                  >Alamat <span class="text-danger">*</span></label
+                >
+                <textarea
+                  class="form-control"
+                  id="alamatPembeliMaster"
+                  rows="2"
+                  required
+                  placeholder="Alamat lengkap"
+                ></textarea>
+              </div>
+              <div class="mb-3">
+                <label for="tipePembeliMaster" class="form-label"
+                  >Tipe pembeli <span class="text-danger">*</span></label
+                >
+                <select class="form-select" id="tipePembeliMaster" required>
+                  <option value="">Pilih</option>
+                  <option value="Lokal">Lokal</option>
+                  <option value="International">International</option>
+                  <option value="ecommerce">E-commerce</option>
+                </select>
               </div>
             </form>
           </div>
@@ -682,9 +655,341 @@
             <button
               type="button"
               class="btn btn-primary"
-              onclick="savePemesanan()"
+              onclick="savePembeliMaster()"
             >
               Simpan
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Tambah/Edit Pemesanan -->
+    <div
+      class="modal fade"
+      id="modalPemesanan"
+      tabindex="-1"
+      aria-labelledby="modalPemesananLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header border-bottom">
+            <h5 class="modal-title fw-semibold" id="modalPemesananLabel">
+              Tambah Pemesanan
+            </h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body py-3">
+            <form id="formPemesanan">
+              <input type="hidden" id="pemesananId" />
+              <input type="hidden" id="idMasterPembeli" value="" />
+
+              <!-- Dokumen -->
+              <div class="rounded-3 border bg-light p-3 mb-3">
+                <h6
+                  class="text-uppercase text-secondary small fw-semibold mb-3 pb-2 border-bottom border-secondary border-opacity-25"
+                >
+                  Dokumen
+                </h6>
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label for="idPembelian" class="form-label"
+                      >ID Pembelian <span class="text-danger">*</span></label
+                    >
+                    <input
+                      type="text"
+                      class="form-control font-monospace"
+                      id="idPembelian"
+                      placeholder="PMB-…"
+                      readonly
+                    />
+                    <small class="text-muted"
+                      >Dibuat otomatis; dapat diperbarui saat modal dibuka.</small
+                    >
+                  </div>
+                  <div class="col-md-6">
+                    <label for="tanggalPemesanan" class="form-label"
+                      >Tanggal pemesanan <span class="text-danger">*</span></label
+                    >
+                    <input
+                      type="date"
+                      class="form-control"
+                      id="tanggalPemesanan"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Pembeli -->
+              <div class="rounded-3 border p-3 mb-3">
+                <h6
+                  class="text-uppercase text-secondary small fw-semibold mb-3 pb-2 border-bottom border-secondary border-opacity-25"
+                >
+                  Pembeli
+                </h6>
+                <div class="mb-3">
+                  <label for="selectMasterPembeli" class="form-label"
+                    >Data pembeli (master)</label
+                  >
+                  <select
+                    class="form-select"
+                    id="selectMasterPembeli"
+                    onchange="onSelectMasterPembeliChange()"
+                  >
+                    <option value="">— Isi manual / tanpa master —</option>
+                  </select>
+                  <small class="text-muted"
+                    >Mengisi nama, kontak, alamat, dan tipe pemesanan dari tab
+                    <strong>Data Pembeli</strong>.</small
+                  >
+                </div>
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label for="namaPembeli" class="form-label"
+                      >Nama pembeli <span class="text-danger">*</span></label
+                    >
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="namaPembeli"
+                      placeholder="Nama lengkap"
+                      required
+                    />
+                  </div>
+                  <div class="col-md-6">
+                    <label for="tipePemesanan" class="form-label"
+                      >Tipe pemesanan <span class="text-danger">*</span></label
+                    >
+                    <select
+                      class="form-select"
+                      id="tipePemesanan"
+                      required
+                      onchange="toggleNegaraField()"
+                    >
+                      <option value="">Pilih tipe</option>
+                      <option value="Lokal">Lokal</option>
+                      <option value="International">International</option>
+                      <option value="E-commerce">E-commerce</option>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="kontakPembeli" class="form-label">Kontak</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="kontakPembeli"
+                      placeholder="Email atau nomor WhatsApp"
+                    />
+                  </div>
+                  <div class="col-md-6">
+                    <label for="alamatPembeli" class="form-label">Alamat</label>
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="alamatPembeli"
+                      placeholder="Alamat pengiriman / penagihan"
+                    />
+                  </div>
+                  <div class="col-12" id="fieldNegara" style="display: none">
+                    <label for="negara" class="form-label"
+                      >Negara <span class="text-danger">*</span></label
+                    >
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="negara"
+                      placeholder="Nama negara"
+                    />
+                    <small class="text-muted"
+                      >Wajib untuk tipe International.</small
+                    >
+                  </div>
+                </div>
+              </div>
+
+              <!-- Produk -->
+              <div class="rounded-3 border p-3 mb-3">
+                <h6
+                  class="text-uppercase text-secondary small fw-semibold mb-3 pb-2 border-bottom border-secondary border-opacity-25"
+                >
+                  Produk
+                </h6>
+                <div class="row g-3">
+                  <div class="col-lg-4 col-md-6">
+                    <label for="tipeProduk" class="form-label"
+                      >Tipe produk <span class="text-danger">*</span></label
+                    >
+                    <select class="form-select" id="tipeProduk" required>
+                      <option value="">Pilih tipe produk</option>
+                    </select>
+                  </div>
+                  <div class="col-lg-4 col-md-6">
+                    <label for="prosesPengolahan" class="form-label"
+                      >Proses pengolahan <span class="text-danger">*</span></label
+                    >
+                    <select class="form-select" id="prosesPengolahan" required>
+                      <option value="">Pilih proses</option>
+                    </select>
+                  </div>
+                  <div class="col-lg-4 col-md-12">
+                    <label for="jenisKopi" class="form-label"
+                      >Jenis kopi <span class="text-danger">*</span></label
+                    >
+                    <select class="form-select" id="jenisKopi" required>
+                      <option value="">Pilih jenis kopi</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Jumlah & harga -->
+              <div class="rounded-3 border p-3 mb-3">
+                <h6
+                  class="text-uppercase text-secondary small fw-semibold mb-3 pb-2 border-bottom border-secondary border-opacity-25"
+                >
+                  Jumlah &amp; harga
+                </h6>
+                <div class="row g-3 align-items-end">
+                  <div class="col-sm-6 col-lg-3">
+                    <label for="jumlahPesananKg" class="form-label"
+                      >Jumlah (kg) <span class="text-danger">*</span></label
+                    >
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="jumlahPesananKg"
+                      placeholder="0"
+                      min="0"
+                      step="0.01"
+                      required
+                      onchange="calculateTotalHarga()"
+                    />
+                  </div>
+                  <div class="col-sm-6 col-lg-3">
+                    <label for="hargaPerKg" class="form-label"
+                      >Harga / kg (Rp) <span class="text-danger">*</span></label
+                    >
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="hargaPerKg"
+                      placeholder="0"
+                      min="0"
+                      step="1000"
+                      required
+                      onchange="calculateTotalHarga()"
+                    />
+                  </div>
+                  <div class="col-sm-6 col-lg-3">
+                    <label for="biayaPajak" class="form-label">
+                      Pajak (Rp)
+                      <span class="text-muted fw-normal small">opsional</span>
+                    </label>
+                    <input
+                      type="number"
+                      class="form-control"
+                      id="biayaPajak"
+                      placeholder="0"
+                      min="0"
+                      step="1000"
+                      value="0"
+                      onchange="calculateTotalHarga()"
+                      oninput="calculateTotalHarga()"
+                    />
+                  </div>
+                  <div class="col-sm-6 col-lg-3">
+                    <label for="totalHarga" class="form-label">Total (Rp)</label>
+                    <input
+                      type="text"
+                      class="form-control fw-semibold text-success bg-success bg-opacity-10"
+                      id="totalHarga"
+                      placeholder="0"
+                      readonly
+                      tabindex="-1"
+                      aria-readonly="true"
+                    />
+                    <small class="text-muted">(kg × harga/kg) + pajak</small>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Status -->
+              <div class="rounded-3 border p-3 mb-3">
+                <h6
+                  class="text-uppercase text-secondary small fw-semibold mb-3 pb-2 border-bottom border-secondary border-opacity-25"
+                >
+                  Status
+                </h6>
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label for="statusPembayaran" class="form-label"
+                      >Status pembayaran <span class="text-danger">*</span></label
+                    >
+                    <select class="form-select" id="statusPembayaran" required>
+                      <option value="Belum Lunas">Belum Lunas</option>
+                      <option value="Lunas">Lunas</option>
+                      <option value="Pembayaran Bertahap">
+                        Pembayaran Bertahap
+                      </option>
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="statusPemesanan" class="form-label"
+                      >Status pemesanan <span class="text-danger">*</span></label
+                    >
+                    <select class="form-select" id="statusPemesanan" required>
+                      <option value="Ordering">Ordering</option>
+                      <option value="Complete">Complete</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Catatan -->
+              <div class="mb-0">
+                <label for="catatanPemesanan" class="form-label">
+                  Catatan
+                  <span class="text-muted fw-normal small">opsional</span>
+                </label>
+                <textarea
+                  class="form-control"
+                  id="catatanPemesanan"
+                  rows="2"
+                  maxlength="2000"
+                  placeholder="Termin, kemasan khusus, instruksi pengiriman, …"
+                ></textarea>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer border-top bg-light">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              onclick="savePemesanan(false)"
+            >
+              Simpan
+            </button>
+            <button
+              type="button"
+              class="btn btn-outline-success"
+              id="btnSimpanCetakInvoice"
+              onclick="savePemesanan(true)"
+            >
+              <i class="bi bi-printer me-1"></i>Simpan &amp; Cetak Invoice
             </button>
           </div>
         </div>
@@ -742,6 +1047,18 @@
                           <strong>Nama Pembeli:</strong>
                           <span id="displayNamaPembeli">-</span>
                         </p>
+                        <p class="mb-1 small">
+                          <strong>Kontak:</strong>
+                          <span id="displayKontakPembeliOrdering">-</span>
+                        </p>
+                        <p class="mb-1 small">
+                          <strong>Alamat:</strong>
+                          <span id="displayAlamatPembeliOrdering">-</span>
+                        </p>
+                        <p class="mb-1 small text-muted" id="wrapIdMasterPembeli" style="display:none">
+                          <strong>ID master pembeli:</strong>
+                          <span id="displayIdMasterPembeliOrdering">-</span>
+                        </p>
                         <p class="mb-1">
                           <strong>Tipe:</strong>
                           <span id="displayTipePemesanan">-</span>
@@ -768,43 +1085,36 @@
                           <strong>Total Harga:</strong>
                           <span id="displayTotalHarga">-</span>
                         </p>
+                        <p class="mb-1">
+                          <strong>Status pembayaran:</strong>
+                          <span id="displayStatusPembayaranOrdering">-</span>
+                        </p>
+                        <p class="mb-1 small">
+                          <strong>Catatan:</strong>
+                          <span id="displayCatatanPemesananOrdering" class="text-break">-</span>
+                        </p>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div class="mb-3">
-                <label for="idProduksiOrdering" class="form-label"
-                  >Pilih ID Produksi <span class="text-danger">*</span></label
-                >
-                <select
-                  class="form-select"
-                  id="idProduksiOrdering"
-                  required
-                  onchange="loadProduksiStok()"
-                >
-                  <option value="">Pilih ID Produksi</option>
-                  <!-- Akan diisi dari stok tersedia -->
-                </select>
-              </div>
-
-              <!-- Stok Info -->
               <div id="stokInfoDisplay" style="display: none">
                 <div class="alert alert-info">
-                  <h6 class="alert-heading">Informasi Stok</h6>
+                  <h6 class="alert-heading">Stok hasil produksi (agregat)</h6>
                   <p class="mb-1">
-                    <strong>Stok Tersedia:</strong>
+                    <strong>Stok tersedia untuk baris yang sama dengan pemesanan:</strong>
                     <span id="displayStokTersedia">-</span> kg
                   </p>
                   <p class="mb-1">
-                    <strong>Proses Pengolahan:</strong>
+                    <strong>Proses pengolahan:</strong>
                     <span id="displayProduksiProses">-</span>
                   </p>
-                  <p class="mb-0">
-                    <strong>Jenis Kopi:</strong>
+                  <p class="mb-1">
+                    <strong>Jenis kopi:</strong>
                     <span id="displayProduksiJenisKopi">-</span>
                   </p>
+                  <p id="displayStokAgregatHint" class="small text-muted mb-0"></p>
                 </div>
               </div>
 

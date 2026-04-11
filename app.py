@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, m
 from flask_cors import CORS  # pyright: ignore[reportMissingModuleSource]
 from pymongo import MongoClient  # pyright: ignore[reportMissingImports]
 import os
-from os.path import join, dirname, exists
+from os.path import join, dirname, exists, abspath
 from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
 from bson import ObjectId  # pyright: ignore[reportMissingImports]
 import jwt  # pyright: ignore[reportMissingImports]
@@ -12,6 +12,7 @@ from urllib.parse import quote_plus
 import base64
 
 app = Flask(__name__)
+_APP_ROOT_DIR = abspath(dirname(__file__))
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'SPARTA')
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)  # 7 days session
@@ -547,6 +548,18 @@ def get_user_role_from_session():
     """Get user role from session (can be extended for server-side sessions)"""
     # Currently handled client-side via sessionStorage
     return None
+
+# ==================== BRAND ASSETS (invoice, dll.) ====================
+
+@app.route('/brand-assets/logo.png')
+def brand_logo_argopuro():
+    """Logo Argopuro Walida untuk invoice PDF (Image/logo.png)."""
+    img_dir = join(_APP_ROOT_DIR, 'Image')
+    logo_path = join(img_dir, 'logo.png')
+    if not exists(logo_path):
+        return jsonify({'error': 'Logo tidak ditemukan'}), 404
+    return send_from_directory(img_dir, 'logo.png', mimetype='image/png')
+
 
 # ==================== MAIN ROUTES ====================
 
@@ -2109,6 +2122,140 @@ def delete_pemasok(pemasok_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+# ==================== PEMBELI (MASTER DATA PEMBELI) ====================
+
+@app.route('/api/pembeli', methods=['GET'])
+def get_pembeli():
+    """Daftar master pembeli."""
+    try:
+        rows = list(db.pembeli.find().sort('id', 1))
+        print(f"📊 [PEMBELI GET] {len(rows)} dokumen")
+        return jsonify(json_serialize(rows)), 200
+    except Exception as e:
+        print(f"❌ [PEMBELI GET] {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pembeli/<pembeli_id>', methods=['GET'])
+def get_pembeli_by_id(pembeli_id):
+    try:
+        try:
+            doc = db.pembeli.find_one({'_id': ObjectId(pembeli_id)})
+        except Exception:
+            doc = None
+        if not doc:
+            doc = db.pembeli.find_one({'idPembeli': pembeli_id}) or \
+                  db.pembeli.find_one({'id': int(pembeli_id)})
+        if not doc:
+            return jsonify({'error': 'Pembeli not found'}), 404
+        return jsonify(json_serialize(doc)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pembeli', methods=['POST'])
+def create_pembeli():
+    try:
+        data = request.json or {}
+        required = ['nama', 'kontak', 'alamat', 'tipePembeli']
+        for f in required:
+            if not str(data.get(f, '')).strip():
+                return jsonify({'error': f'Missing or empty field: {f}'}), 400
+        tipe = (data.get('tipePembeli') or '').strip()
+        if tipe not in ('Lokal', 'International', 'ecommerce'):
+            return jsonify({'error': 'tipePembeli harus Lokal, International, atau ecommerce'}), 400
+
+        numeric_id = get_next_id('pembeli')
+        id_pembeli = (data.get('idPembeli') or '').strip()
+        if id_pembeli:
+            if db.pembeli.find_one({'idPembeli': id_pembeli}):
+                return jsonify({'error': 'ID Pembeli sudah dipakai'}), 400
+        else:
+            id_pembeli = f"PBL{str(numeric_id).zfill(3)}"
+
+        row = {
+            'id': numeric_id,
+            'idPembeli': id_pembeli,
+            'nama': str(data['nama']).strip(),
+            'kontak': str(data['kontak']).strip(),
+            'alamat': str(data['alamat']).strip(),
+            'tipePembeli': tipe,
+            'createdAt': datetime.now(),
+            'updatedAt': datetime.now(),
+        }
+        ins = db.pembeli.insert_one(row)
+        row['_id'] = ins.inserted_id
+        print(f"✅ [PEMBELI CREATE] {row['idPembeli']}")
+        return jsonify(json_serialize(row)), 201
+    except Exception as e:
+        print(f"❌ [PEMBELI CREATE] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pembeli/<pembeli_id>', methods=['PUT'])
+def update_pembeli(pembeli_id):
+    try:
+        data = request.json or {}
+        try:
+            doc = db.pembeli.find_one({'_id': ObjectId(pembeli_id)})
+        except Exception:
+            doc = None
+        if not doc:
+            doc = db.pembeli.find_one({'idPembeli': pembeli_id}) or \
+                  db.pembeli.find_one({'id': int(pembeli_id)})
+        if not doc:
+            return jsonify({'error': 'Pembeli not found'}), 404
+
+        if 'idPembeli' in data and data['idPembeli']:
+            other = db.pembeli.find_one({
+                'idPembeli': data['idPembeli'],
+                '_id': {'$ne': doc['_id']},
+            })
+            if other:
+                return jsonify({'error': 'ID Pembeli sudah dipakai'}), 400
+
+        update_data = {}
+        for field in ['idPembeli', 'nama', 'kontak', 'alamat', 'tipePembeli']:
+            if field in data:
+                update_data[field] = data[field]
+        if 'tipePembeli' in update_data:
+            if update_data['tipePembeli'] not in ('Lokal', 'International', 'ecommerce'):
+                return jsonify({'error': 'tipePembeli tidak valid'}), 400
+        update_data['updatedAt'] = datetime.now()
+        db.pembeli.update_one({'_id': doc['_id']}, {'$set': update_data})
+        updated = db.pembeli.find_one({'_id': doc['_id']})
+        return jsonify(json_serialize(updated)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/pembeli/<pembeli_id>', methods=['DELETE'])
+def delete_pembeli(pembeli_id):
+    try:
+        try:
+            doc = db.pembeli.find_one({'_id': ObjectId(pembeli_id)})
+        except Exception:
+            doc = None
+        if not doc:
+            doc = db.pembeli.find_one({'idPembeli': pembeli_id}) or \
+                  db.pembeli.find_one({'id': int(pembeli_id)})
+        if not doc:
+            return jsonify({'error': 'Pembeli not found'}), 404
+        id_master = doc.get('idPembeli')
+        n = db.pemesanan.count_documents({'idMasterPembeli': id_master})
+        if n > 0:
+            return jsonify({
+                'error': f'Tidak dapat menghapus: ada {n} pemesanan terkait pembeli ini',
+            }), 400
+        db.pembeli.delete_one({'_id': doc['_id']})
+        return jsonify({'success': True, 'message': 'Pembeli dihapus'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 # ==================== STOK ENDPOINTS ====================
 
 def _stok_key(tipe, jenis_kopi, proses):
@@ -2183,6 +2330,200 @@ def _stok_berat_green_effective_dari_produksi(p):
     return max(0.0, ba - px)
 
 
+def _is_hasil_from_ordering_flag(h):
+    v = h.get('isFromOrdering')
+    return v in (True, 'true', 1, 'True')
+
+
+def _compute_stok_hasil_aggregate(tipe_filter='', tanggal_filter=''):
+    """
+    Logika sama dengan GET /api/stok: agregasi per tipeProduk + jenisKopi + prosesPengolahan,
+    setelah dikurangi hasil ordering. Mengembalikan (stok_array, ringkasan).
+    """
+    produksi_list = list(db.produksi.find({
+        'statusTahapan': {'$regex': 'Pengemasan', '$options': 'i'},
+    }))
+    produksi_list = [
+        p for p in produksi_list
+        if _produksi_masuk_stok_hasil_pengemasan(p)
+        and _stok_gb_pixel_tidak_lebih_dari_berat_akhir(p)
+    ]
+
+    if tanggal_filter:
+        produksi_list = [p for p in produksi_list if (p.get('tanggalPengemasan') or '')[:10] == tanggal_filter[:10]]
+
+    stok_map = {}
+    bahan_cache = {}
+
+    for p in produksi_list:
+        bahan = _bahan_cache_get_for_produksi(p, bahan_cache)
+        jenis_kopi = (bahan.get('jenisKopi') or '').strip()
+        proses_pengolahan = _proses_pengolahan_tampilan_untuk_agregasi(p, bahan)
+
+        stok_gb_batch = _stok_berat_green_effective_dari_produksi(p)
+        if stok_gb_batch > 0:
+            if not tipe_filter or tipe_filter == 'Green Beans':
+                key_gb = _stok_key('Green Beans', jenis_kopi, proses_pengolahan)
+                if key_gb not in stok_map:
+                    stok_map[key_gb] = {
+                        'tipeProduk': 'Green Beans',
+                        'jenisKopi': jenis_kopi,
+                        'prosesPengolahan': proses_pengolahan,
+                        'totalBerat': 0,
+                    }
+                stok_map[key_gb]['totalBerat'] += stok_gb_batch
+
+        berat_pixel = float(p.get('beratPixel', 0) or 0)
+        if berat_pixel > 0:
+            if not tipe_filter or tipe_filter == 'Pixel':
+                key_px = _stok_key('Pixel', jenis_kopi, proses_pengolahan)
+                if key_px not in stok_map:
+                    stok_map[key_px] = {
+                        'tipeProduk': 'Pixel',
+                        'jenisKopi': jenis_kopi,
+                        'prosesPengolahan': proses_pengolahan,
+                        'totalBerat': 0,
+                    }
+                stok_map[key_px]['totalBerat'] += berat_pixel
+
+    hasil_ordering = list(db.hasilProduksi.find({'isFromOrdering': True}))
+    id_untuk_resolve = set()
+    for p in produksi_list:
+        ip = str(p.get('idProduksi') or '').strip()
+        if ip:
+            id_untuk_resolve.add(ip)
+    for h in hasil_ordering:
+        ip = str(h.get('idProduksi') or '').strip()
+        if ip:
+            id_untuk_resolve.add(ip)
+    produksi_by_id = {}
+    if id_untuk_resolve:
+        for doc in db.produksi.find({'idProduksi': {'$in': list(id_untuk_resolve)}}):
+            produksi_by_id[str(doc.get('idProduksi') or '').strip()] = doc
+
+    for h in hasil_ordering:
+        idp = str(h.get('idProduksi') or '').strip()
+        pdoc = produksi_by_id.get(idp)
+        tipe_p = (h.get('tipeProduk') or '').strip()
+        berat_kurangi = float(h.get('beratSaatIni', 0) or 0)
+        if pdoc:
+            bh = _bahan_cache_get_for_produksi(pdoc, bahan_cache)
+            jk = (bh.get('jenisKopi') or '').strip() or (h.get('jenisKopi') or '').strip()
+            proses_eff = _proses_pengolahan_tampilan_untuk_agregasi(pdoc, bh)
+        else:
+            jk = (h.get('jenisKopi') or '').strip()
+            proses_eff = (h.get('prosesPengolahan') or '').strip()
+        key = _stok_key(tipe_p, jk, proses_eff)
+        if key in stok_map:
+            stok_map[key]['totalBerat'] = max(0, stok_map[key]['totalBerat'] - berat_kurangi)
+        else:
+            print(f"⚠️ [STOK AGREGAT] Key ordering tidak ada di stok_map (pengurangan {berat_kurangi} kg dilewati): {key}")
+
+    stok_array = [v for v in stok_map.values() if v['totalBerat'] > 0]
+    stok_array.sort(key=lambda x: (x['tipeProduk'], x['jenisKopi']))
+
+    s_ba = sum(float(p.get('beratAkhir') or 0) for p in produksi_list)
+    s_px = sum(float(p.get('beratPixel') or 0) for p in produksi_list)
+    s_stok_gb_bruto = sum(_stok_berat_green_effective_dari_produksi(p) for p in produksi_list)
+    s_gb_form = sum(float(p.get('beratGreenBeans') or 0) for p in produksi_list)
+    tot_gb_stok = sum(
+        float(v.get('totalBerat') or 0)
+        for v in stok_array
+        if (v.get('tipeProduk') or '').strip() == 'Green Beans'
+    )
+    tot_px_stok = sum(
+        float(v.get('totalBerat') or 0)
+        for v in stok_array
+        if (v.get('tipeProduk') or '').strip() == 'Pixel'
+    )
+    ringkasan = {
+        'jumlahBatchPengemasan': len(produksi_list),
+        'sumBeratAkhir': round(s_ba, 4),
+        'sumBeratPixelBruto': round(s_px, 4),
+        'sumStokGreenBeansBruto': round(s_stok_gb_bruto, 4),
+        'sumBeratGreenBeansDiForm': round(s_gb_form, 4),
+        'totalStokGreenBeansSetelahOrdering': round(tot_gb_stok, 4),
+        'totalStokPixelSetelahOrdering': round(tot_px_stok, 4),
+    }
+    return stok_array, ringkasan
+
+
+def _batch_stok_pool_tipe(produksi_doc, tipe_produk_selected):
+    if tipe_produk_selected == 'Green Beans':
+        return _stok_berat_green_effective_dari_produksi(produksi_doc)
+    return float(produksi_doc.get('beratPixel', 0) or 0)
+
+
+def _batch_stok_tersedia_setelah_ordering(produksi_doc, tipe_produk_selected):
+    """Sisa stok per batch untuk tipe produk (GB pool atau Pixel), setelah hasil ordering."""
+    idp = produksi_doc.get('idProduksi')
+    pool = _batch_stok_pool_tipe(produksi_doc, tipe_produk_selected)
+    if pool <= 0:
+        return 0.0
+    hasil_list = list(db.hasilProduksi.find({'idProduksi': idp, 'tipeProduk': tipe_produk_selected}))
+    total_ord = sum(
+        float(h.get('beratSaatIni', 0) or 0)
+        for h in hasil_list
+        if _is_hasil_from_ordering_flag(h)
+    )
+    return max(0.0, pool - total_ord)
+
+
+def _fifo_allocate_ordering_batches(pemesanan, tipe_produk_selected, jumlah_pesanan):
+    """
+    Memenuhi jumlah pesanan dari batch pengemasan yang cocok (jenis kopi + proses),
+    prioritas tanggal pengemasan lebih awal (FIFO).
+    Mengembalikan daftar (produksi_doc, kg_diambil).
+    """
+    ps_pem = (pemesanan.get('prosesPengolahan') or '').strip()
+    jk_pem = (pemesanan.get('jenisKopi') or '').strip()
+    need = float(jumlah_pesanan)
+    if need <= 0:
+        return []
+
+    produksi_list = list(db.produksi.find({
+        'statusTahapan': {'$regex': 'Pengemasan', '$options': 'i'},
+    }))
+    produksi_list = [
+        p for p in produksi_list
+        if _produksi_masuk_stok_hasil_pengemasan(p)
+        and _stok_gb_pixel_tidak_lebih_dari_berat_akhir(p)
+    ]
+    bahan_cache = {}
+    candidates = []
+    for p in produksi_list:
+        bahan = _bahan_cache_get_for_produksi(p, bahan_cache)
+        jk = (bahan.get('jenisKopi') or '').strip()
+        if jk != jk_pem:
+            continue
+        ps_disp = _proses_pengolahan_tampilan_untuk_agregasi(p, bahan)
+        ps_raw = (p.get('prosesPengolahan') or '').strip()
+        if ps_pem not in (ps_raw, ps_disp):
+            continue
+        avail = _batch_stok_tersedia_setelah_ordering(p, tipe_produk_selected)
+        if avail <= 0:
+            continue
+        candidates.append((p, avail))
+
+    candidates.sort(key=lambda x: (
+        (x[0].get('tanggalPengemasan') or '')[:10],
+        str(x[0].get('idProduksi') or ''),
+    ))
+
+    out = []
+    for p, avail in candidates:
+        if need <= 1e-9:
+            break
+        take = min(need, avail)
+        if take <= 0:
+            continue
+        out.append((p, take))
+        need -= take
+    if need > 1e-6:
+        raise RuntimeError('Alokasi FIFO gagal; stok agregat berubah atau data tidak konsisten')
+    return out
+
+
 @app.route('/api/stok', methods=['GET'])
 def get_stok():
     """
@@ -2193,115 +2534,7 @@ def get_stok():
     try:
         tipe_filter = request.args.get('tipeProduk', '').strip()
         tanggal_filter = request.args.get('tanggalPengemasan', '').strip()
-        
-        produksi_list = list(db.produksi.find({
-            'statusTahapan': {'$regex': 'Pengemasan', '$options': 'i'},
-        }))
-        produksi_list = [
-            p for p in produksi_list
-            if _produksi_masuk_stok_hasil_pengemasan(p)
-            and _stok_gb_pixel_tidak_lebih_dari_berat_akhir(p)
-        ]
-        
-        if tanggal_filter:
-            produksi_list = [p for p in produksi_list if (p.get('tanggalPengemasan') or '')[:10] == tanggal_filter[:10]]
-        
-        stok_map = {}
-        bahan_cache = {}
-        
-        for p in produksi_list:
-            bahan = _bahan_cache_get_for_produksi(p, bahan_cache)
-            jenis_kopi = (bahan.get('jenisKopi') or '').strip()
-            proses_pengolahan = _proses_pengolahan_tampilan_untuk_agregasi(p, bahan)
-            
-            # Aggregate Green Beans: berat akhir − pixel (stok riil)
-            stok_gb_batch = _stok_berat_green_effective_dari_produksi(p)
-            if stok_gb_batch > 0:
-                if not tipe_filter or tipe_filter == 'Green Beans':
-                    key_gb = _stok_key('Green Beans', jenis_kopi, proses_pengolahan)
-                    if key_gb not in stok_map:
-                        stok_map[key_gb] = {
-                            'tipeProduk': 'Green Beans',
-                            'jenisKopi': jenis_kopi,
-                            'prosesPengolahan': proses_pengolahan,
-                            'totalBerat': 0,
-                        }
-                    stok_map[key_gb]['totalBerat'] += stok_gb_batch
-            
-            # Aggregate Pixel (jika ada)
-            berat_pixel = float(p.get('beratPixel', 0) or 0)
-            if berat_pixel > 0:
-                if not tipe_filter or tipe_filter == 'Pixel':
-                    key_px = _stok_key('Pixel', jenis_kopi, proses_pengolahan)
-                    if key_px not in stok_map:
-                        stok_map[key_px] = {
-                            'tipeProduk': 'Pixel',
-                            'jenisKopi': jenis_kopi,
-                            'prosesPengolahan': proses_pengolahan,
-                            'totalBerat': 0,
-                        }
-                    stok_map[key_px]['totalBerat'] += berat_pixel
-        
-        hasil_ordering = list(db.hasilProduksi.find({'isFromOrdering': True}))
-        id_untuk_resolve = set()
-        for p in produksi_list:
-            ip = str(p.get('idProduksi') or '').strip()
-            if ip:
-                id_untuk_resolve.add(ip)
-        for h in hasil_ordering:
-            ip = str(h.get('idProduksi') or '').strip()
-            if ip:
-                id_untuk_resolve.add(ip)
-        produksi_by_id = {}
-        if id_untuk_resolve:
-            for doc in db.produksi.find({'idProduksi': {'$in': list(id_untuk_resolve)}}):
-                produksi_by_id[str(doc.get('idProduksi') or '').strip()] = doc
-
-        for h in hasil_ordering:
-            idp = str(h.get('idProduksi') or '').strip()
-            pdoc = produksi_by_id.get(idp)
-            tipe_p = (h.get('tipeProduk') or '').strip()
-            berat_kurangi = float(h.get('beratSaatIni', 0) or 0)
-            if pdoc:
-                bh = _bahan_cache_get_for_produksi(pdoc, bahan_cache)
-                jk = (bh.get('jenisKopi') or '').strip() or (h.get('jenisKopi') or '').strip()
-                proses_eff = _proses_pengolahan_tampilan_untuk_agregasi(pdoc, bh)
-            else:
-                jk = (h.get('jenisKopi') or '').strip()
-                proses_eff = (h.get('prosesPengolahan') or '').strip()
-            key = _stok_key(tipe_p, jk, proses_eff)
-            if key in stok_map:
-                stok_map[key]['totalBerat'] = max(0, stok_map[key]['totalBerat'] - berat_kurangi)
-            else:
-                print(f"⚠️ [STOK GET] Key ordering tidak ada di stok_map (pengurangan {berat_kurangi} kg dilewati): {key}")
-        
-        stok_array = [v for v in stok_map.values() if v['totalBerat'] > 0]
-        stok_array.sort(key=lambda x: (x['tipeProduk'], x['jenisKopi']))
-
-        s_ba = sum(float(p.get('beratAkhir') or 0) for p in produksi_list)
-        s_px = sum(float(p.get('beratPixel') or 0) for p in produksi_list)
-        s_stok_gb_bruto = sum(_stok_berat_green_effective_dari_produksi(p) for p in produksi_list)
-        s_gb_form = sum(float(p.get('beratGreenBeans') or 0) for p in produksi_list)
-        tot_gb_stok = sum(
-            float(v.get('totalBerat') or 0)
-            for v in stok_array
-            if (v.get('tipeProduk') or '').strip() == 'Green Beans'
-        )
-        tot_px_stok = sum(
-            float(v.get('totalBerat') or 0)
-            for v in stok_array
-            if (v.get('tipeProduk') or '').strip() == 'Pixel'
-        )
-        ringkasan = {
-            'jumlahBatchPengemasan': len(produksi_list),
-            'sumBeratAkhir': round(s_ba, 4),
-            'sumBeratPixelBruto': round(s_px, 4),
-            'sumStokGreenBeansBruto': round(s_stok_gb_bruto, 4),
-            'sumBeratGreenBeansDiForm': round(s_gb_form, 4),
-            'totalStokGreenBeansSetelahOrdering': round(tot_gb_stok, 4),
-            'totalStokPixelSetelahOrdering': round(tot_px_stok, 4),
-        }
-        
+        stok_array, ringkasan = _compute_stok_hasil_aggregate(tipe_filter, tanggal_filter)
         print(f"📊 [STOK GET] Aggregated {len(stok_array)} stok (filter tipe={tipe_filter or 'semua'}, tanggal={tanggal_filter or 'semua'})")
         return jsonify(json_serialize({'rows': stok_array, 'ringkasan': ringkasan})), 200
     except Exception as e:
@@ -3640,8 +3873,16 @@ def create_pemesanan():
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
         
+        tipe_pm = (data.get('tipePemesanan') or '').strip()
+        if tipe_pm not in ('Lokal', 'International', 'E-commerce'):
+            return jsonify({'error': 'tipePemesanan harus Lokal, International, atau E-commerce'}), 400
+
+        status_bayar = (data.get('statusPembayaran') or 'Belum Lunas').strip()
+        if status_bayar not in ('Lunas', 'Belum Lunas', 'Pembayaran Bertahap'):
+            return jsonify({'error': 'statusPembayaran harus Lunas, Belum Lunas, atau Pembayaran Bertahap'}), 400
+        
         # Validate International requires negara
-        if data['tipePemesanan'] == 'International' and not data.get('negara'):
+        if tipe_pm == 'International' and not data.get('negara'):
             return jsonify({'error': 'Negara wajib diisi untuk pemesanan International'}), 400
         
         # Validate harga and jumlah > 0
@@ -3649,12 +3890,16 @@ def create_pemesanan():
             return jsonify({'error': 'Jumlah pesanan harus lebih dari 0'}), 400
         if float(data['hargaPerKg']) <= 0:
             return jsonify({'error': 'Harga per kg harus lebih dari 0'}), 400
+
+        biaya_pajak = float(data.get('biayaPajak') or 0)
+        if biaya_pajak < 0:
+            return jsonify({'error': 'Biaya pajak tidak boleh negatif'}), 400
         
-        # Validate totalHarga calculation
+        # Validate totalHarga = (jumlah × harga/kg) + biaya pajak
         jumlah_pesanan = float(data['jumlahPesananKg'])
         harga_per_kg = float(data['hargaPerKg'])
         total_harga_received = float(data['totalHarga'])
-        calculated_total = jumlah_pesanan * harga_per_kg
+        calculated_total = jumlah_pesanan * harga_per_kg + biaya_pajak
         
         # Allow small floating point differences (0.01)
         if abs(total_harga_received - calculated_total) > 0.01:
@@ -3680,19 +3925,33 @@ def create_pemesanan():
             'id': new_id,
             'idPembelian': data['idPembelian'],
             'namaPembeli': data['namaPembeli'],
-            'tipePemesanan': data['tipePemesanan'],
-            'negara': data.get('negara', '') if data['tipePemesanan'] == 'International' else '',
+            'tipePemesanan': tipe_pm,
+            'negara': data.get('negara', '') if tipe_pm == 'International' else '',
             'tipeProduk': data['tipeProduk'],
             'prosesPengolahan': data['prosesPengolahan'],
             'jenisKopi': data['jenisKopi'],
             'jumlahPesananKg': float(data['jumlahPesananKg']),
             'hargaPerKg': float(data['hargaPerKg']),
+            'biayaPajak': biaya_pajak,
             'totalHarga': float(data['totalHarga']),
             'statusPemesanan': data['statusPemesanan'],
+            'statusPembayaran': status_bayar,
             'tanggalPemesanan': data.get('tanggalPemesanan', datetime.now().strftime('%Y-%m-%d')),
             'createdAt': datetime.now(),
             'updatedAt': datetime.now()
         }
+        catatan_pm = (data.get('catatanPemesanan') or '').strip()
+        if catatan_pm:
+            pemesanan_data['catatanPemesanan'] = catatan_pm
+        im = (data.get('idMasterPembeli') or '').strip()
+        if im:
+            pemesanan_data['idMasterPembeli'] = im
+        kpb = (data.get('kontakPembeli') or '').strip()
+        if kpb:
+            pemesanan_data['kontakPembeli'] = kpb
+        apb = (data.get('alamatPembeli') or '').strip()
+        if apb:
+            pemesanan_data['alamatPembeli'] = apb
         
         print(f"🔵 [PEMESANAN CREATE] Inserting to MongoDB collection 'pemesanan': {pemesanan_data}")
         result = db.pemesanan.insert_one(pemesanan_data)
@@ -3745,14 +4004,48 @@ def update_pemesanan(pemesanan_id):
             return jsonify({'error': 'Negara wajib diisi untuk pemesanan International'}), 400
         
         update_data = {}
-        for field in ['idPembelian', 'namaPembeli', 'tipePemesanan', 'negara', 'tipeProduk', 
-                     'prosesPengolahan', 'jenisKopi', 'jumlahPesananKg', 'hargaPerKg', 
-                     'totalHarga', 'statusPemesanan', 'tanggalPemesanan']:
+        for field in ['idPembelian', 'namaPembeli', 'tipePemesanan', 'negara', 'tipeProduk',
+                     'prosesPengolahan', 'jenisKopi', 'jumlahPesananKg', 'hargaPerKg',
+                     'biayaPajak', 'totalHarga', 'statusPemesanan', 'tanggalPemesanan', 'idMasterPembeli',
+                     'kontakPembeli', 'alamatPembeli', 'statusPembayaran', 'catatanPemesanan']:
             if field in data:
-                if field in ['jumlahPesananKg', 'hargaPerKg', 'totalHarga']:
-                    update_data[field] = float(data[field])
+                if field in ['jumlahPesananKg', 'hargaPerKg', 'totalHarga', 'biayaPajak']:
+                    if field == 'biayaPajak':
+                        update_data[field] = float(data[field] or 0)
+                    else:
+                        update_data[field] = float(data[field])
+                elif field == 'catatanPemesanan':
+                    update_data[field] = (data[field] or '').strip()
                 else:
                     update_data[field] = data[field]
+
+        _total_keys = ('totalHarga', 'jumlahPesananKg', 'hargaPerKg', 'biayaPajak')
+        if any(k in update_data for k in _total_keys):
+            j = float(update_data.get('jumlahPesananKg', pemesanan.get('jumlahPesananKg', 0)))
+            hk = float(update_data.get('hargaPerKg', pemesanan.get('hargaPerKg', 0)))
+            pj = float(update_data.get('biayaPajak', pemesanan.get('biayaPajak', 0)) or 0)
+            th = float(update_data.get('totalHarga', pemesanan.get('totalHarga', 0)))
+            if pj < 0:
+                return jsonify({'error': 'Biaya pajak tidak boleh negatif'}), 400
+            if abs(th - (j * hk + pj)) > 0.01:
+                return jsonify({
+                    'error': 'Total harga tidak sesuai dengan jumlah × harga/kg + biaya pajak',
+                    'expected': j * hk + pj,
+                    'received': th,
+                }), 400
+
+        if 'statusPembayaran' in update_data:
+            sb = (update_data.get('statusPembayaran') or '').strip()
+            if sb not in ('Lunas', 'Belum Lunas', 'Pembayaran Bertahap'):
+                return jsonify({'error': 'statusPembayaran tidak valid'}), 400
+            update_data['statusPembayaran'] = sb
+        
+        if 'tipePemesanan' in update_data:
+            tt = (update_data.get('tipePemesanan') or '').strip()
+            if tt not in ('Lokal', 'International', 'E-commerce'):
+                return jsonify({'error': 'tipePemesanan tidak valid'}), 400
+            if tt != 'International':
+                update_data['negara'] = ''
         
         # Validasi: Status tidak boleh diubah menjadi Complete dari endpoint ini
         # Complete hanya bisa dicapai melalui /api/ordering/proses
@@ -3763,6 +4056,8 @@ def update_pemesanan(pemesanan_id):
                 return jsonify({
                     'error': 'Status Complete hanya bisa dicapai melalui proses ordering. Gunakan endpoint /api/ordering/proses untuk mengurangi stok dan menyelesaikan pemesanan.'
                 }), 400
+            # Pemesanan selesai → pembayaran dianggap lunas
+            update_data['statusPembayaran'] = 'Lunas'
         
         update_data['updatedAt'] = datetime.now()
         
@@ -3876,32 +4171,28 @@ def proses_ordering():
     """
     PROSES ORDERING - SATU-SATUNYA ENDPOINT YANG MENGURANGI STOK
     Endpoint ini adalah titik eksekusi gudang yang mengurangi stok secara nyata.
+    Tanpa idProduksi: stok diambil dari agregat Kelola Stok (tipe + jenis kopi + proses),
+    dialokasikan FIFO ke batch pengemasan. Dengan idProduksi: perilaku lama per batch.
     """
     try:
-        data = request.json
+        data = request.json or {}
         
-        # Validate required fields
-        required_fields = ['idPembelian', 'idProduksi', 'tipeProduk']
-        for field in required_fields:
-            if field not in data:
-                return jsonify({'error': f'Missing required field: {field}'}), 400
+        if 'idPembelian' not in data:
+            return jsonify({'error': 'Missing required field: idPembelian'}), 400
         
-        tipe_produk_selected = data['tipeProduk']
-        if tipe_produk_selected not in ['Green Beans', 'Pixel']:
-            return jsonify({'error': 'Tipe produk harus Green Beans atau Pixel'}), 400
-        
-        # 1. Ambil data pemesanan berdasarkan ID Pembelian
         pemesanan = db.pemesanan.find_one({'idPembelian': data['idPembelian']})
         if not pemesanan:
             return jsonify({'error': 'Pemesanan not found'}), 404
         
-        # Cek apakah pemesanan sudah diproses (sudah ada ordering)
         existing_ordering = db.ordering.find_one({'idPembelian': data['idPembelian']})
         if existing_ordering:
             return jsonify({'error': 'Pemesanan ini sudah diproses sebelumnya'}), 400
         
-        # Validasi tipeProduk dari stok sama dengan tipeProduk dari pemesanan
-        tipe_produk_pemesanan = pemesanan.get('tipeProduk', '')
+        tipe_produk_selected = (data.get('tipeProduk') or pemesanan.get('tipeProduk') or '').strip()
+        if tipe_produk_selected not in ('Green Beans', 'Pixel'):
+            return jsonify({'error': 'Tipe produk harus Green Beans atau Pixel'}), 400
+        
+        tipe_produk_pemesanan = (pemesanan.get('tipeProduk') or '').strip()
         if tipe_produk_pemesanan and tipe_produk_selected != tipe_produk_pemesanan:
             return jsonify({
                 'error': 'Tipe produk tidak sesuai',
@@ -3909,142 +4200,225 @@ def proses_ordering():
                 'tipeProdukPemesanan': tipe_produk_pemesanan
             }), 400
         
-        # 2. Ambil data produksi berdasarkan ID Produksi
-        produksi = db.produksi.find_one({'idProduksi': data['idProduksi']})
-        if not produksi:
-            return jsonify({'error': 'Produksi not found'}), 404
-        
-        # Pool stok: GB = berat akhir − pixel (sama seperti GET /api/stok); Pixel = beratPixel
-        if tipe_produk_selected == 'Green Beans':
-            berat_produk = _stok_berat_green_effective_dari_produksi(produksi)
-        else:
-            berat_produk = float(produksi.get('beratPixel', 0) or 0)
-        
-        if berat_produk <= 0:
-            return jsonify({'error': f'Produksi belum memiliki berat {tipe_produk_selected}'}), 400
-        
-        # 3–4. Bahan pertama + jenis kopi + proses (raw vs tampilan master bahan, selaras /api/stok)
-        ids_prod = _id_bahan_list_from_produksi(produksi)
-        jenis_set = set()
-        bahan = None
-        for bid in ids_prod:
-            bh = db.bahan.find_one({'idBahan': bid})
-            if bh:
-                jenis_set.add((bh.get('jenisKopi') or '').strip())
-                if bahan is None:
-                    bahan = bh
-        if not bahan:
-            return jsonify({'error': 'Bahan tidak ditemukan untuk produksi ini'}), 404
-        if len(jenis_set) > 1:
-            return jsonify({'error': 'Produksi menggabungkan bahan dengan jenis kopi berbeda'}), 400
-        
-        proses_tampilan = _proses_pengolahan_tampilan_untuk_agregasi(produksi, bahan)
-        ps_pem = (pemesanan.get('prosesPengolahan') or '').strip()
-        ps_raw = (produksi.get('prosesPengolahan') or '').strip()
-        if ps_pem not in (ps_raw, proses_tampilan):
-            return jsonify({
-                'error': 'Proses pengolahan tidak sesuai',
-                'prosesProduksi': ps_raw,
-                'prosesTampilan': proses_tampilan,
-                'prosesPemesanan': ps_pem
-            }), 400
-        
-        if bahan.get('jenisKopi') != pemesanan.get('jenisKopi'):
-            return jsonify({
-                'error': 'Jenis kopi tidak sesuai',
-                'jenisKopiProduksi': bahan.get('jenisKopi'),
-                'jenisKopiPemesanan': pemesanan.get('jenisKopi')
-            }), 400
-        
-        # 5. VALIDASI: stok_produksi >= jumlah_pemesanan
         jumlah_pesanan = float(pemesanan['jumlahPesananKg'])
+        tanggal_ordering = data.get('tanggalOrdering', datetime.now().strftime('%Y-%m-%d'))
         
-        # KONSEP: Stok tersedia = berat produk (per tipe) - total hasil produksi dari ordering (per tipe)
-        # (hasil produksi dari ordering mengurangi stok)
-        hasil_produksi_list = list(db.hasilProduksi.find({
-            'idProduksi': data['idProduksi'],
-            'tipeProduk': tipe_produk_selected,
-            'isFromOrdering': True
-        }))
-        total_dari_ordering = sum(
-            float(h.get('beratSaatIni', 0)) 
-            for h in hasil_produksi_list
+        id_produksi_payload = data.get('idProduksi')
+        use_single_batch = id_produksi_payload is not None and str(id_produksi_payload).strip() != ''
+        
+        if use_single_batch:
+            # --- Cabang lama: satu id produksi eksplisit ---
+            produksi = db.produksi.find_one({'idProduksi': id_produksi_payload})
+            if not produksi:
+                return jsonify({'error': 'Produksi not found'}), 400
+            
+            if tipe_produk_selected == 'Green Beans':
+                berat_produk = _stok_berat_green_effective_dari_produksi(produksi)
+            else:
+                berat_produk = float(produksi.get('beratPixel', 0) or 0)
+            
+            if berat_produk <= 0:
+                return jsonify({'error': f'Produksi belum memiliki berat {tipe_produk_selected}'}), 400
+            
+            ids_prod = _id_bahan_list_from_produksi(produksi)
+            jenis_set = set()
+            bahan = None
+            for bid in ids_prod:
+                bh = db.bahan.find_one({'idBahan': bid})
+                if bh:
+                    jenis_set.add((bh.get('jenisKopi') or '').strip())
+                    if bahan is None:
+                        bahan = bh
+            if not bahan:
+                return jsonify({'error': 'Bahan tidak ditemukan untuk produksi ini'}), 404
+            if len(jenis_set) > 1:
+                return jsonify({'error': 'Produksi menggabungkan bahan dengan jenis kopi berbeda'}), 400
+            
+            proses_tampilan = _proses_pengolahan_tampilan_untuk_agregasi(produksi, bahan)
+            ps_pem = (pemesanan.get('prosesPengolahan') or '').strip()
+            ps_raw = (produksi.get('prosesPengolahan') or '').strip()
+            if ps_pem not in (ps_raw, proses_tampilan):
+                return jsonify({
+                    'error': 'Proses pengolahan tidak sesuai',
+                    'prosesProduksi': ps_raw,
+                    'prosesTampilan': proses_tampilan,
+                    'prosesPemesanan': ps_pem
+                }), 400
+            
+            if bahan.get('jenisKopi') != pemesanan.get('jenisKopi'):
+                return jsonify({
+                    'error': 'Jenis kopi tidak sesuai',
+                    'jenisKopiProduksi': bahan.get('jenisKopi'),
+                    'jenisKopiPemesanan': pemesanan.get('jenisKopi')
+                }), 400
+            
+            hasil_produksi_list = list(db.hasilProduksi.find({
+                'idProduksi': id_produksi_payload,
+                'tipeProduk': tipe_produk_selected,
+                'isFromOrdering': True
+            }))
+            total_dari_ordering = sum(float(h.get('beratSaatIni', 0)) for h in hasil_produksi_list)
+            stok_tersedia = max(0, berat_produk - total_dari_ordering)
+            
+            print(f"📦 [ORDERING PROSES] (per-batch) idProduksi={id_produksi_payload}, tipe={tipe_produk_selected}, stok_tersedia={stok_tersedia}, jumlah={jumlah_pesanan}")
+            
+            if stok_tersedia < jumlah_pesanan:
+                return jsonify({
+                    'error': 'Stok tidak mencukupi',
+                    'stokTersedia': stok_tersedia,
+                    'jumlahPesanan': jumlah_pesanan,
+                    'kekurangan': jumlah_pesanan - stok_tersedia
+                }), 400
+            
+            hasil_produksi_id = get_next_id('hasilProduksi')
+            hasil_produksi_data = {
+                'id': hasil_produksi_id,
+                'idProduksi': str(id_produksi_payload).strip(),
+                'idBahan': produksi.get('idBahan'),
+                'tipeProduk': tipe_produk_selected,
+                'kemasan': pemesanan.get('kemasan', ''),
+                'jenisKopi': pemesanan.get('jenisKopi'),
+                'prosesPengolahan': pemesanan.get('prosesPengolahan'),
+                'levelRoasting': pemesanan.get('levelRoasting', ''),
+                'tanggal': tanggal_ordering,
+                'beratSaatIni': jumlah_pesanan,
+                'jumlah': 0,
+                'isFromOrdering': True,
+                'idPembelian': data['idPembelian']
+            }
+            
+            new_id = get_next_id('ordering')
+            ordering_data = {
+                'id': new_id,
+                'idPembelian': data['idPembelian'],
+                'idProduksi': id_produksi_payload,
+                'tipeProduk': tipe_produk_selected,
+                'jumlahPesananKg': jumlah_pesanan,
+                'stokSebelum': stok_tersedia,
+                'stokSesudah': stok_tersedia - jumlah_pesanan,
+                'statusPemesanan': 'Complete',
+                'tanggalOrdering': tanggal_ordering,
+                'createdAt': datetime.now(),
+                'updatedAt': datetime.now()
+            }
+            
+            print(f"🔵 [ORDERING PROSES] Inserting ordering log: {ordering_data}")
+            result_ordering = db.ordering.insert_one(ordering_data)
+            ordering_data['_id'] = result_ordering.inserted_id
+            
+            print(f"🔵 [ORDERING PROSES] Inserting hasilProduksi: {hasil_produksi_data}")
+            result_hasil = db.hasilProduksi.insert_one(hasil_produksi_data)
+            hasil_produksi_data['_id'] = result_hasil.inserted_id
+            
+            db.pemesanan.update_one(
+                {'idPembelian': data['idPembelian']},
+                {'$set': {
+                    'statusPemesanan': 'Complete',
+                    'statusPembayaran': 'Lunas',
+                    'updatedAt': datetime.now()
+                }}
+            )
+            
+            return jsonify({
+                'success': True,
+                'message': 'Ordering berhasil diproses, stok telah dikurangi',
+                'ordering': json_serialize(ordering_data),
+                'stokSebelum': stok_tersedia,
+                'stokSesudah': stok_tersedia - jumlah_pesanan,
+                'jumlahDikurangi': jumlah_pesanan
+            }), 201
+        
+        # --- Cabang baru: agregat Kelola Stok (tanpa pilih id produksi) ---
+        stok_rows, _ = _compute_stok_hasil_aggregate('', '')
+        key_pem = _stok_key(
+            tipe_produk_selected,
+            pemesanan.get('jenisKopi'),
+            pemesanan.get('prosesPengolahan'),
         )
-        stok_tersedia = max(0, berat_produk - total_dari_ordering)
+        stok_tersedia = 0.0
+        for r in stok_rows:
+            rk = _stok_key(r.get('tipeProduk'), r.get('jenisKopi'), r.get('prosesPengolahan'))
+            if rk == key_pem:
+                stok_tersedia = float(r.get('totalBerat', 0) or 0)
+                break
         
-        print(f"📦 [ORDERING PROSES] idProduksi={data['idProduksi']}, tipeProduk={tipe_produk_selected}, berat_produk={berat_produk}, total_dari_ordering={total_dari_ordering}, stok_tersedia={stok_tersedia}, jumlah_pesanan={jumlah_pesanan}")
+        print(f"📦 [ORDERING PROSES] (agregat) key={key_pem}, stok_tersedia={stok_tersedia}, jumlah={jumlah_pesanan}")
         
-        # JIKA stok kurang → return error (400)
         if stok_tersedia < jumlah_pesanan:
             return jsonify({
                 'error': 'Stok tidak mencukupi',
                 'stokTersedia': stok_tersedia,
                 'jumlahPesanan': jumlah_pesanan,
-                'kekurangan': jumlah_pesanan - stok_tersedia
+                'kekurangan': jumlah_pesanan - stok_tersedia,
+                'hint': 'Pastikan kombinasi tipe produk, jenis kopi, dan proses pengolahan sama dengan baris stok di Kelola Stok.'
             }), 400
         
-        # 5a. VALIDASI STOK PRODUKSI SUDAH CUKUP (tidak ada validasi kemasan lagi)
+        try:
+            allocations = _fifo_allocate_ordering_batches(pemesanan, tipe_produk_selected, jumlah_pesanan)
+        except RuntimeError as re:
+            return jsonify({'error': str(re), 'stokTersedia': stok_tersedia}), 400
         
-        # 6. JIKA valid: Kurangi stok by berat (insert hasilProduksi isFromOrdering → stok ter-update)
-        hasil_produksi_id = get_next_id('hasilProduksi')
-        hasil_produksi_data = {
-            'id': hasil_produksi_id,
-            'idProduksi': str(data['idProduksi']).strip(),
-            'idBahan': produksi.get('idBahan'),
-            'tipeProduk': tipe_produk_selected,
-            'kemasan': pemesanan.get('kemasan', ''),
-            'jenisKopi': pemesanan.get('jenisKopi'),
-            'prosesPengolahan': pemesanan.get('prosesPengolahan'),
-            'levelRoasting': pemesanan.get('levelRoasting', ''),
-            'tanggal': data.get('tanggalOrdering', datetime.now().strftime('%Y-%m-%d')),
-            'beratSaatIni': jumlah_pesanan,
-            'jumlah': 0,
-            'isFromOrdering': True,
-            'idPembelian': data['idPembelian']
-        }
+        if not allocations:
+            return jsonify({'error': 'Tidak ada batch pengemasan yang cocok untuk alokasi stok'}), 400
         
-        # 7. Simpan log transaksi ke koleksi ordering
+        id_produksi_gabung = ','.join(str(p.get('idProduksi') or '').strip() for p, _ in allocations)
+        
         new_id = get_next_id('ordering')
         ordering_data = {
             'id': new_id,
             'idPembelian': data['idPembelian'],
-            'idProduksi': data['idProduksi'],
+            'idProduksi': id_produksi_gabung,
             'tipeProduk': tipe_produk_selected,
             'jumlahPesananKg': jumlah_pesanan,
             'stokSebelum': stok_tersedia,
             'stokSesudah': stok_tersedia - jumlah_pesanan,
-            'statusPemesanan': 'Complete',  # Set status menjadi Complete saat diproses
-            'tanggalOrdering': data.get('tanggalOrdering', datetime.now().strftime('%Y-%m-%d')),
+            'statusPemesanan': 'Complete',
+            'tanggalOrdering': tanggal_ordering,
             'createdAt': datetime.now(),
             'updatedAt': datetime.now()
         }
         
-        # Atomic operation: Insert ordering dan hasilProduksi dalam satu transaksi
-        print(f"🔵 [ORDERING PROSES] Inserting ordering log: {ordering_data}")
+        print(f"🔵 [ORDERING PROSES] Inserting ordering (FIFO agregat): {ordering_data}")
         result_ordering = db.ordering.insert_one(ordering_data)
         ordering_data['_id'] = result_ordering.inserted_id
         
-        print(f"🔵 [ORDERING PROSES] Inserting hasilProduksi untuk mengurangi stok: {hasil_produksi_data}")
-        result_hasil = db.hasilProduksi.insert_one(hasil_produksi_data)
-        hasil_produksi_data['_id'] = result_hasil.inserted_id
+        for produksi, kg in allocations:
+            hasil_produksi_id = get_next_id('hasilProduksi')
+            hasil_produksi_data = {
+                'id': hasil_produksi_id,
+                'idProduksi': str(produksi.get('idProduksi') or '').strip(),
+                'idBahan': produksi.get('idBahan'),
+                'tipeProduk': tipe_produk_selected,
+                'kemasan': pemesanan.get('kemasan', ''),
+                'jenisKopi': pemesanan.get('jenisKopi'),
+                'prosesPengolahan': pemesanan.get('prosesPengolahan'),
+                'levelRoasting': pemesanan.get('levelRoasting', ''),
+                'tanggal': tanggal_ordering,
+                'beratSaatIni': float(kg),
+                'jumlah': 0,
+                'isFromOrdering': True,
+                'idPembelian': data['idPembelian']
+            }
+            print(f"🔵 [ORDERING PROSES] Inserting hasilProduksi FIFO: {hasil_produksi_data}")
+            db.hasilProduksi.insert_one(hasil_produksi_data)
         
-        # 8. Update status pemesanan menjadi "Complete"
         db.pemesanan.update_one(
             {'idPembelian': data['idPembelian']},
             {'$set': {
                 'statusPemesanan': 'Complete',
+                'statusPembayaran': 'Lunas',
                 'updatedAt': datetime.now()
             }}
         )
         
-        print(f"✅ [ORDERING PROSES] Stok berhasil dikurangi! Stok sebelum: {stok_tersedia} kg, Stok sesudah: {stok_tersedia - jumlah_pesanan} kg")
         return jsonify({
             'success': True,
-            'message': 'Ordering berhasil diproses, stok telah dikurangi',
+            'message': 'Ordering berhasil diproses, stok telah dikurangi (alokasi otomatis per batch)',
             'ordering': json_serialize(ordering_data),
             'stokSebelum': stok_tersedia,
             'stokSesudah': stok_tersedia - jumlah_pesanan,
-            'jumlahDikurangi': jumlah_pesanan
+            'jumlahDikurangi': jumlah_pesanan,
+            'idProduksiAlokasi': id_produksi_gabung,
         }), 201
         
     except Exception as e:
@@ -4128,12 +4502,15 @@ def update_ordering(ordering_id):
                         print(f"✅ [ORDERING UPDATE] Created hasilProduksi record for Complete status")
             
             # Update pemesanan status
+            pem_set = {
+                'statusPemesanan': new_status,
+                'updatedAt': datetime.now(),
+            }
+            if new_status == 'Complete':
+                pem_set['statusPembayaran'] = 'Lunas'
             db.pemesanan.update_one(
                 {'idPembelian': ordering['idPembelian']},
-                {'$set': {
-                    'statusPemesanan': new_status,
-                    'updatedAt': datetime.now()
-                }}
+                {'$set': pem_set}
             )
             print(f"✅ [ORDERING UPDATE] Updated pemesanan status to: {new_status}")
         
@@ -4154,14 +4531,12 @@ def delete_ordering(ordering_id):
         if not ordering:
             return jsonify({'error': 'Ordering not found'}), 404
         
-        # Find and delete associated hasilProduksi
-        hasil_produksi = db.hasilProduksi.find_one({
+        # Hapus semua hasilProduksi ordering untuk pembelian ini (bisa beberapa batch FIFO)
+        del_res = db.hasilProduksi.delete_many({
             'idPembelian': ordering.get('idPembelian'),
-            'isFromOrdering': True
+            'isFromOrdering': True,
         })
-        
-        if hasil_produksi:
-            db.hasilProduksi.delete_one({'_id': hasil_produksi['_id']})
+        print(f"🗑️ [ORDERING DELETE] Removed {del_res.deleted_count} hasilProduksi (ordering) rows")
         
         # Delete ordering
         db.ordering.delete_one({'_id': ordering['_id']})
@@ -4181,114 +4556,31 @@ def delete_ordering(ordering_id):
 
 @app.route('/api/pemesanan/stok', methods=['GET'])
 def get_stok_for_pemesanan():
-    """Get stok available for pemesanan (produksi with beratGreenBeans dan beratPixel)"""
+    """
+    Stok untuk halaman pemesanan: sama dengan agregasi GET /api/stok (Kelola Stok),
+    per kombinasi tipe produk + jenis kopi + proses pengolahan — bukan per id produksi.
+    """
     try:
         print(f"🔵 [STOK PEMESANAN] GET /api/pemesanan/stok - Request received")
         
-        # Validate database connection
         if db is None:
             print(f"❌ [STOK PEMESANAN] Database connection not available")
             return jsonify({'error': 'Database connection not available', 'success': False}), 500
         
-        # Get all produksi with Pengemasan status
-        try:
-            produksi_list = list(db.produksi.find({
-                'statusTahapan': {'$regex': 'Pengemasan', '$options': 'i'}
-            }))
-            print(f"📊 [STOK PEMESANAN] Found {len(produksi_list)} produksi with Pengemasan status")
-        except Exception as db_error:
-            print(f"❌ [STOK PEMESANAN] Error querying produksi: {str(db_error)}")
-            return jsonify({'error': f'Error querying produksi: {str(db_error)}', 'success': False}), 500
-        
-        # Sama seperti /api/stok: hanya batch pengemasan lengkap & konsisten
-        produksi_list = [
-            p for p in produksi_list
-            if _produksi_masuk_stok_hasil_pengemasan(p)
-            and _stok_gb_pixel_tidak_lebih_dari_berat_akhir(p)
-        ]
-        
-        print(f"📊 [STOK PEMESANAN] Found {len(produksi_list)} produksi eligible (pengemasan + tanggal + GB/Pixel vs akhir)")
-        
-        # Get all hasilProduksi for calculating used stock
-        hasil_produksi_all = list(db.hasilProduksi.find({'isFromOrdering': True}))
-        
-        # Group hasil produksi by idProduksi and tipeProduk
-        hasil_map = {}
-        for h in hasil_produksi_all:
-            id_produksi = str(h.get('idProduksi', '')).strip()
-            tipe_produk = (h.get('tipeProduk', '') or '').strip()
-            key = f"{id_produksi}|{tipe_produk}"
-            if key not in hasil_map:
-                hasil_map[key] = 0
-            hasil_map[key] += float(h.get('beratSaatIni', 0) or 0)
-        
+        rows, _ = _compute_stok_hasil_aggregate('', '')
         stok_list = []
-        bahan_cache = {}
+        for r in rows:
+            tb = float(r.get('totalBerat', 0) or 0)
+            stok_list.append({
+                'tipeProduk': r.get('tipeProduk', ''),
+                'jenisKopi': r.get('jenisKopi', ''),
+                'prosesPengolahan': r.get('prosesPengolahan', ''),
+                'totalBerat': tb,
+                'stokTersedia': tb,
+            })
         
-        for produksi in produksi_list:
-            try:
-                id_produksi = produksi.get('idProduksi')
-                if not id_produksi:
-                    print(f"⚠️ [STOK PEMESANAN] Skipping produksi without idProduksi: {produksi.get('_id')}")
-                    continue
-                
-                id_produksi_str = str(id_produksi).strip()
-                
-                bahan = _bahan_cache_get_for_produksi(produksi, bahan_cache)
-                jenis_kopi = bahan.get('jenisKopi', '')
-                varietas = bahan.get('varietas', '')
-                proses_pengolahan = _proses_pengolahan_tampilan_untuk_agregasi(produksi, bahan)
-                
-                # Green Beans: stok = berat akhir − pixel (sama GET /api/stok)
-                stok_gb_pool = _stok_berat_green_effective_dari_produksi(produksi)
-                if stok_gb_pool > 0:
-                    key_gb = f"{id_produksi_str}|Green Beans"
-                    total_ordering_gb = hasil_map.get(key_gb, 0)
-                    stok_tersedia_gb = max(0.0, stok_gb_pool - total_ordering_gb)
-                    
-                    stok_list.append({
-                        'idProduksi': id_produksi_str,
-                        'tipeProduk': 'Green Beans',
-                        'jenisKopi': jenis_kopi,
-                        'varietas': varietas,
-                        'prosesPengolahan': proses_pengolahan,
-                        'stokTersedia': float(stok_tersedia_gb),
-                        'status': produksi.get('statusTahapan', ''),
-                        'beratAwal': float(stok_gb_pool),
-                        'totalDariOrdering': float(total_ordering_gb),
-                    })
-                    print(f"✅ [STOK PEMESANAN] {id_produksi} Green Beans: pool(akhir−px)={stok_gb_pool}, ordering={total_ordering_gb}, tersedia={stok_tersedia_gb}")
-                
-                # Process Pixel stock (if any)
-                berat_pixel = float(produksi.get('beratPixel', 0) or 0)
-                if berat_pixel > 0:
-                    key_px = f"{id_produksi_str}|Pixel"
-                    total_ordering_px = hasil_map.get(key_px, 0)
-                    stok_tersedia_px = max(0.0, berat_pixel - total_ordering_px)
-                    
-                    stok_list.append({
-                        'idProduksi': id_produksi_str,
-                        'tipeProduk': 'Pixel',
-                        'jenisKopi': jenis_kopi,
-                        'varietas': varietas,
-                        'prosesPengolahan': proses_pengolahan,
-                        'stokTersedia': float(stok_tersedia_px),
-                        'status': produksi.get('statusTahapan', ''),
-                        'beratAwal': float(berat_pixel),
-                        'totalDariOrdering': float(total_ordering_px),
-                    })
-                    print(f"✅ [STOK PEMESANAN] {id_produksi} Pixel: berat={berat_pixel}, ordering={total_ordering_px}, tersedia={stok_tersedia_px}")
-                    
-            except Exception as item_error:
-                print(f"❌ [STOK PEMESANAN] Error processing produksi item: {str(item_error)}")
-                import traceback
-                traceback.print_exc()
-                continue
-        
-        print(f"✅ [STOK PEMESANAN] Returning {len(stok_list)} stok records")
-        
-        response_data = json_serialize(stok_list)
-        return jsonify(response_data), 200
+        print(f"✅ [STOK PEMESANAN] Returning {len(stok_list)} aggregated stok rows (selaras /api/stok)")
+        return jsonify(json_serialize(stok_list)), 200
     except Exception as e:
         print(f"❌ [STOK PEMESANAN] ERROR: {str(e)}")
         import traceback

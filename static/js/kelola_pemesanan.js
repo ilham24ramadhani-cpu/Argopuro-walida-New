@@ -6,16 +6,18 @@ let stokProduksiData = []; // Data stok produksi
 let ordering = [];
 let currentEditId = null;
 let currentDeleteId = null;
+let pembeliMasterList = [];
+let currentPembeliEditId = null;
 
 // Wait for API to be ready (event-based + polling fallback)
 async function waitForAPI() {
-  if (window.API && window.API.Pemesanan) return true;
+  if (window.API && window.API.Pemesanan && window.API.Pembeli) return true;
   return new Promise((resolve) => {
     let resolved = false;
     const timeout = setTimeout(() => {
       if (!resolved) {
         resolved = true;
-        resolve(!!(window.API && window.API.Pemesanan));
+        resolve(!!(window.API && window.API.Pemesanan && window.API.Pembeli));
       }
     }, 5000);
     const eventHandler = () => {
@@ -23,14 +25,14 @@ async function waitForAPI() {
         resolved = true;
         clearTimeout(timeout);
         window.removeEventListener("APIReady", eventHandler);
-        resolve(!!(window.API && window.API.Pemesanan));
+        resolve(!!(window.API && window.API.Pemesanan && window.API.Pembeli));
       }
     };
     window.addEventListener("APIReady", eventHandler);
     let pollCount = 0;
     const pollInterval = setInterval(() => {
       pollCount++;
-      if (window.API && window.API.Pemesanan) {
+      if (window.API && window.API.Pemesanan && window.API.Pembeli) {
         if (!resolved) {
           resolved = true;
           clearTimeout(timeout);
@@ -50,10 +52,10 @@ async function loadPemesananData() {
   await loadPemesanan();
 }
 
-// Load stok data untuk pemesanan (hanya fetch & return data, tanpa sentuh DOM)
+// Load stok agregat (sama dengan Kelola Stok: /api/stok)
 async function loadStokData() {
   console.log(
-    "🔄 [LOAD STOK DATA] Loading stok data for pemesanan ordering...",
+    "🔄 [LOAD STOK DATA] Loading stok agregat (selaras Kelola Stok)...",
   );
 
   if (!window.API) {
@@ -61,26 +63,74 @@ async function loadStokData() {
     throw new Error("window.API tidak tersedia");
   }
 
-  if (!window.API.Pemesanan) {
-    console.error("❌ [LOAD STOK DATA] window.API.Pemesanan tidak tersedia");
-    throw new Error("API.Pemesanan tidak tersedia");
+  if (!window.API.Stok || !window.API.Stok.getAll) {
+    console.error("❌ [LOAD STOK DATA] window.API.Stok.getAll tidak tersedia");
+    throw new Error("API.Stok.getAll tidak tersedia");
   }
 
-  if (!window.API.Pemesanan.getStok) {
-    console.error(
-      "❌ [LOAD STOK DATA] window.API.Pemesanan.getStok tidak tersedia",
-    );
-    throw new Error("API.Pemesanan.getStok tidak tersedia");
-  }
-
-  console.log("🔵 [LOAD STOK DATA] Calling API.Pemesanan.getStok()...");
-  const response = await window.API.Pemesanan.getStok();
-  let data = Array.isArray(response) ? response : [];
+  const res = await window.API.Stok.getAll({});
+  const rows = Array.isArray(res.rows) ? res.rows : [];
+  stokData = rows.map((r) => ({
+    tipeProduk: r.tipeProduk,
+    jenisKopi: r.jenisKopi,
+    prosesPengolahan: r.prosesPengolahan,
+    totalBerat: parseFloat(r.totalBerat) || 0,
+    stokTersedia: parseFloat(r.totalBerat) || 0,
+  }));
 
   console.log(
-    `✅ [LOAD STOK DATA] Loaded ${data.length} stok records for ordering`,
+    `✅ [LOAD STOK DATA] Loaded ${stokData.length} baris stok agregat`,
   );
-  return data;
+  return stokData;
+}
+
+function findStokRowForPemesanan(p) {
+  if (!p || !Array.isArray(stokData)) return null;
+  const tipe = (p.tipeProduk || "").trim();
+  const jk = (p.jenisKopi || "").trim();
+  const proses = (p.prosesPengolahan || "").trim();
+  return stokData.find(
+    (s) =>
+      (s.tipeProduk || "").trim() === tipe &&
+      (s.jenisKopi || "").trim() === jk &&
+      (s.prosesPengolahan || "").trim() === proses,
+  );
+}
+
+function showAggregatedStokForPemesanan(p) {
+  const row = findStokRowForPemesanan(p);
+  const stok = row
+    ? parseFloat(row.stokTersedia ?? row.totalBerat ?? 0) || 0
+    : 0;
+  const displayStokTersedia = document.getElementById("displayStokTersedia");
+  const displayProduksiProses = document.getElementById(
+    "displayProduksiProses",
+  );
+  const displayProduksiJenisKopi = document.getElementById(
+    "displayProduksiJenisKopi",
+  );
+  const stokInfoDisplay = document.getElementById("stokInfoDisplay");
+  const hintEl = document.getElementById("displayStokAgregatHint");
+
+  if (displayStokTersedia) {
+    displayStokTersedia.textContent = stok.toLocaleString("id-ID", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  if (displayProduksiProses) {
+    displayProduksiProses.textContent = p.prosesPengolahan || "-";
+  }
+  if (displayProduksiJenisKopi) {
+    displayProduksiJenisKopi.textContent = p.jenisKopi || "-";
+  }
+  if (hintEl) {
+    hintEl.textContent = row
+      ? "Stok dihitung per kombinasi tipe produk, jenis kopi, dan proses (sama dengan halaman Kelola Stok)."
+      : "Tidak ada baris stok yang cocok dengan pemesanan ini. Periksa proses pengolahan dan jenis kopi agar sama dengan data produksi.";
+    hintEl.className = row ? "small text-muted mb-0" : "small text-warning mb-0";
+  }
+  if (stokInfoDisplay) stokInfoDisplay.style.display = "block";
 }
 
 // Load ordering data
@@ -128,17 +178,245 @@ function toggleNegaraField() {
   }
 }
 
-// Calculate total harga
+// Calculate total harga (subtotal + biaya pajak)
 function calculateTotalHarga() {
   const jumlah = parseFloat(
     document.getElementById("jumlahPesananKg").value || 0,
   );
   const harga = parseFloat(document.getElementById("hargaPerKg").value || 0);
-  const total = jumlah * harga;
+  const pajakRaw = parseFloat(
+    document.getElementById("biayaPajak")?.value || 0,
+  );
+  const pajak = Number.isFinite(pajakRaw) ? Math.max(0, pajakRaw) : 0;
+  const total = jumlah * harga + pajak;
 
   document.getElementById("totalHarga").value = total
     .toLocaleString("id-ID")
     .replace(/\./g, ",");
+}
+
+// ==================== MASTER PEMBELI (tab Data Pembeli) ====================
+
+function escapeHtmlAttr(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+async function loadPembeliMasterList() {
+  if (!window.API?.Pembeli?.getAll) return [];
+  pembeliMasterList = await window.API.Pembeli.getAll();
+  if (!Array.isArray(pembeliMasterList)) pembeliMasterList = [];
+  return pembeliMasterList;
+}
+
+async function refreshSelectMasterPembeli() {
+  await loadPembeliMasterList();
+  const sel = document.getElementById("selectMasterPembeli");
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Manual / tanpa master —</option>';
+  pembeliMasterList.forEach((b) => {
+    const opt = document.createElement("option");
+    opt.value = (b.idPembeli || "").trim();
+    opt.textContent = `${b.idPembeli || "-"} — ${b.nama || "-"}`;
+    sel.appendChild(opt);
+  });
+  if (cur && Array.from(sel.options).some((o) => o.value === cur)) {
+    sel.value = cur;
+  }
+}
+
+function mapTipePembeliKePemesanan(tipe) {
+  if (tipe === "ecommerce") return "E-commerce";
+  if (tipe === "International") return "International";
+  return "Lokal";
+}
+
+function onSelectMasterPembeliChange() {
+  const sel = document.getElementById("selectMasterPembeli");
+  const id = sel?.value?.trim();
+  const hid = document.getElementById("idMasterPembeli");
+  if (!id) {
+    if (hid) hid.value = "";
+    return;
+  }
+  const b = pembeliMasterList.find((x) => (x.idPembeli || "").trim() === id);
+  if (!b) return;
+  if (hid) hid.value = b.idPembeli || "";
+  const n = document.getElementById("namaPembeli");
+  const k = document.getElementById("kontakPembeli");
+  const a = document.getElementById("alamatPembeli");
+  const t = document.getElementById("tipePemesanan");
+  if (n) n.value = b.nama || "";
+  if (k) k.value = b.kontak || "";
+  if (a) a.value = b.alamat || "";
+  if (t) {
+    t.value = mapTipePembeliKePemesanan(b.tipePembeli || "");
+    toggleNegaraField();
+  }
+}
+
+function labelTipePembeli(t) {
+  if (t === "ecommerce") return "E-commerce";
+  return t || "-";
+}
+
+function applyFilterPembeliMaster() {
+  const tbody = document.getElementById("tablePembeliMaster");
+  if (!tbody) return;
+  const q = (document.getElementById("searchPembeliMaster")?.value || "")
+    .toLowerCase()
+    .trim();
+  let rows = pembeliMasterList;
+  if (q) {
+    rows = rows.filter(
+      (b) =>
+        (b.idPembeli && String(b.idPembeli).toLowerCase().includes(q)) ||
+        (b.nama && String(b.nama).toLowerCase().includes(q)) ||
+        (b.kontak && String(b.kontak).toLowerCase().includes(q)) ||
+        (b.alamat && String(b.alamat).toLowerCase().includes(q)),
+    );
+  }
+  if (!rows.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="7" class="text-center py-4 text-muted">Tidak ada data pembeli</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows
+    .map(
+      (b, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><strong>${escapeHtmlAttr(b.idPembeli)}</strong></td>
+      <td>${escapeHtmlAttr(b.nama)}</td>
+      <td>${escapeHtmlAttr(b.kontak)}</td>
+      <td>${escapeHtmlAttr(b.alamat)}</td>
+      <td><span class="badge bg-secondary">${escapeHtmlAttr(labelTipePembeli(b.tipePembeli))}</span></td>
+      <td class="text-center">
+        <button type="button" class="btn btn-sm btn-warning me-1" data-pembeli-edit="${escapeHtmlAttr(b._id)}" title="Edit"><i class="bi bi-pencil"></i></button>
+        <button type="button" class="btn btn-sm btn-danger" data-pembeli-del="${escapeHtmlAttr(b._id)}" title="Hapus"><i class="bi bi-trash"></i></button>
+      </td>
+    </tr>`,
+    )
+    .join("");
+  tbody.querySelectorAll("[data-pembeli-edit]").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      editPembeliMaster(btn.getAttribute("data-pembeli-edit")),
+    );
+  });
+  tbody.querySelectorAll("[data-pembeli-del]").forEach((btn) => {
+    btn.addEventListener("click", () =>
+      deletePembeliMaster(btn.getAttribute("data-pembeli-del")),
+    );
+  });
+}
+
+async function loadPembeliMasterTable() {
+  try {
+    await loadPembeliMasterList();
+    applyFilterPembeliMaster();
+  } catch (e) {
+    console.error(e);
+    const tbody = document.getElementById("tablePembeliMaster");
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4">Gagal memuat: ${escapeHtmlAttr(e.message)}</td></tr>`;
+    }
+  }
+}
+
+function openModalPembeli(mode) {
+  const label = document.getElementById("modalPembeliLabel");
+  const form = document.getElementById("formPembeli");
+  if (mode === "add") {
+    if (label) label.textContent = "Tambah Pembeli";
+    if (form) form.reset();
+    const mid = document.getElementById("pembeliMongoId");
+    if (mid) mid.value = "";
+    const idf = document.getElementById("idPembeliMaster");
+    if (idf) {
+      idf.value = "";
+      idf.readOnly = false;
+    }
+    currentPembeliEditId = null;
+  }
+}
+
+async function editPembeliMaster(mongoId) {
+  await loadPembeliMasterList();
+  const b = pembeliMasterList.find((x) => String(x._id) === String(mongoId));
+  if (!b) {
+    alert("Data tidak ditemukan");
+    return;
+  }
+  currentPembeliEditId = mongoId;
+  openModalPembeli("edit");
+  if (document.getElementById("modalPembeliLabel")) {
+    document.getElementById("modalPembeliLabel").textContent = "Edit Pembeli";
+  }
+  document.getElementById("pembeliMongoId").value = mongoId;
+  document.getElementById("idPembeliMaster").value = b.idPembeli || "";
+  document.getElementById("idPembeliMaster").readOnly = true;
+  document.getElementById("namaPembeliMaster").value = b.nama || "";
+  document.getElementById("kontakPembeliMaster").value = b.kontak || "";
+  document.getElementById("alamatPembeliMaster").value = b.alamat || "";
+  document.getElementById("tipePembeliMaster").value = b.tipePembeli || "";
+  const m = new bootstrap.Modal(document.getElementById("modalPembeli"));
+  m.show();
+}
+
+async function savePembeliMaster() {
+  const form = document.getElementById("formPembeli");
+  if (!form.checkValidity()) {
+    form.reportValidity();
+    return;
+  }
+  const payload = {
+    nama: document.getElementById("namaPembeliMaster").value.trim(),
+    kontak: document.getElementById("kontakPembeliMaster").value.trim(),
+    alamat: document.getElementById("alamatPembeliMaster").value.trim(),
+    tipePembeli: document.getElementById("tipePembeliMaster").value,
+  };
+  const idManual = document.getElementById("idPembeliMaster").value.trim();
+  if (idManual) payload.idPembeli = idManual;
+  try {
+    const mid = document.getElementById("pembeliMongoId").value;
+    if (mid) {
+      await window.API.Pembeli.update(mid, payload);
+    } else {
+      await window.API.Pembeli.create(payload);
+    }
+    bootstrap.Modal.getInstance(document.getElementById("modalPembeli"))?.hide();
+    await loadPembeliMasterTable();
+    await refreshSelectMasterPembeli();
+    if (window.showNotification) {
+      window.showNotification(
+        "update",
+        "Pemesanan",
+        "success",
+        "Data pembeli berhasil disimpan",
+      );
+    } else {
+      alert("Data pembeli berhasil disimpan");
+    }
+  } catch (e) {
+    console.error(e);
+    const msg = e.data?.error || e.message || "Gagal menyimpan";
+    alert(msg);
+  }
+}
+
+async function deletePembeliMaster(mongoId) {
+  if (!confirm("Hapus pembeli ini?")) return;
+  try {
+    await window.API.Pembeli.delete(mongoId);
+    await loadPembeliMasterTable();
+    await refreshSelectMasterPembeli();
+  } catch (e) {
+    alert(e.data?.error || e.message || "Gagal menghapus");
+  }
 }
 
 // Load Master Data options
@@ -202,240 +480,41 @@ async function loadMasterDataOptions() {
 
 // ==================== STOK PRODUKSI (READ-ONLY) ====================
 
-// Load stok produksi data
+// Load stok produksi (sumber data = GET /api/stok, sama dengan Kelola Stok)
 async function loadStokProduksi() {
   try {
-    console.log("🔄 [STOK PRODUKSI] Loading stok produksi data...");
+    console.log("🔄 [STOK PRODUKSI] Loading stok hasil produksi (agregat)...");
 
     if (!window.API) {
-      console.error("❌ [STOK PRODUKSI] window.API tidak tersedia");
       throw new Error("window.API tidak tersedia");
     }
 
-    // Coba API.Pemesanan.getStok dulu
-    if (window.API.Pemesanan && window.API.Pemesanan.getStok) {
-      try {
-        const stokFromApi = await window.API.Pemesanan.getStok();
-        const list = Array.isArray(stokFromApi) ? stokFromApi : [];
-        stokProduksiData = list.map(function(s) {
-          return {
-            idProduksi: s.idProduksi || "-",
-            tipeProduk: s.tipeProduk || "-",
-            jenisKopi: s.jenisKopi || "-",
-            varietas: s.varietas || "-",
-            prosesPengolahan: s.prosesPengolahan || "-",
-            stokTersedia: parseFloat(s.stokTersedia) || 0,
-            statusStok: (parseFloat(s.stokTersedia) || 0) > 0 ? "Cukup" : "Habis"
-          };
-        });
-        console.log("✅ [STOK PRODUKSI] Loaded " + stokProduksiData.length + " stok from /api/pemesanan/stok");
-        displayStokProduksi();
-        return;
-      } catch (apiErr) {
-        console.warn("⚠️ [STOK PRODUKSI] Fallback ke perhitungan lokal:", apiErr.message);
-      }
-    }
-
-    if (!window.API.Produksi || !window.API.HasilProduksi || !window.API.Bahan) {
-      throw new Error("API Produksi/HasilProduksi/Bahan tidak tersedia");
-    }
-
-    const produksi = await window.API.Produksi.getAll();
-    const hasilProduksi = await window.API.HasilProduksi.getAll();
-    const bahan = await window.API.Bahan.getAll();
-
-    // Debug: Log hasil produksi dengan isFromOrdering untuk verifikasi
-    const hasilOrderingCount = hasilProduksi.filter((h) => {
-      const isFromOrdering = h.isFromOrdering;
-      return (
-        isFromOrdering === true ||
-        isFromOrdering === "true" ||
-        isFromOrdering === 1
-      );
-    }).length;
-    console.log(
-      `📦 [STOK PRODUKSI] Total hasilProduksi: ${hasilProduksi.length}, dengan isFromOrdering: ${hasilOrderingCount}`,
-    );
-
-    if (hasilOrderingCount > 0) {
-      const sampleOrdering = hasilProduksi.find((h) => {
-        const isFromOrdering = h.isFromOrdering;
-        return (
-          isFromOrdering === true ||
-          isFromOrdering === "true" ||
-          isFromOrdering === 1
-        );
-      });
-      if (sampleOrdering) {
-        console.log("🔍 [STOK PRODUKSI] Sample hasilProduksi dari ordering:", {
-          id: sampleOrdering.id || sampleOrdering._id,
-          idProduksi: sampleOrdering.idProduksi,
-          isFromOrdering: sampleOrdering.isFromOrdering,
-          isFromOrderingType: typeof sampleOrdering.isFromOrdering,
-          beratSaatIni: sampleOrdering.beratSaatIni,
-        });
-      }
-    }
-
-    // Filter produksi yang sudah Pengemasan dan punya berat akhir
-    const produksiPengemasan = produksi.filter((p) => {
-      const statusTahapan = (p.statusTahapan || "").toString().trim();
-      const hasStatusPengemasan =
-        statusTahapan === "Pengemasan" || statusTahapan.includes("Pengemasan");
-      const beratAkhir = parseFloat(p.beratAkhir) || 0;
-      return hasStatusPengemasan && beratAkhir > 0;
-    });
-
-    console.log(
-      `✅ Found ${produksiPengemasan.length} produksi with Pengemasan status`,
-    );
-    console.log(`📦 Total hasilProduksi: ${hasilProduksi.length}`);
-    console.log(`🌱 Total bahan: ${bahan.length}`);
-
-    // Debug: Log sample data untuk troubleshooting
-    if (produksiPengemasan.length > 0) {
-      console.log("🔍 Sample produksi data:", {
-        idProduksi: produksiPengemasan[0].idProduksi,
-        idProduksiType: typeof produksiPengemasan[0].idProduksi,
-        beratAkhir: produksiPengemasan[0].beratAkhir,
-        statusTahapan: produksiPengemasan[0].statusTahapan,
-      });
-    }
-    if (hasilProduksi.length > 0) {
-      console.log("🔍 Sample hasilProduksi data:", {
-        idProduksi: hasilProduksi[0].idProduksi,
-        idProduksiType: typeof hasilProduksi[0].idProduksi,
-        beratSaatIni: hasilProduksi[0].beratSaatIni,
-      });
-    }
-
-    // Calculate stok tersedia untuk setiap produksi
-    stokProduksiData = produksiPengemasan.map((p) => {
-      // Normalize idProduksi untuk matching (handle string/number mismatch)
-      const idProduksiNormalized = String(p.idProduksi || "").trim();
-
-      // Get bahan data untuk jenis kopi dan varietas
-      const bahanData = bahan.find((b) => b.idBahan === p.idBahan);
-
-      // Get hasil produksi - use flexible matching
-      const matchedHasilProduksi = hasilProduksi.filter((h) => {
-        const hIdProduksi = String(h.idProduksi || "").trim();
-        return (
-          hIdProduksi === idProduksiNormalized ||
-          h.idProduksi === p.idProduksi ||
-          String(h.idProduksi) === String(p.idProduksi)
-        );
-      });
-
-      // KONSEP: Stok tersedia = berat akhir - total hasil produksi dari ordering
-      // (hasil produksi dari ordering mengurangi stok)
-      const beratAkhir = parseFloat(p.beratAkhir) || 0;
-
-      // Hitung total hasil produksi dari ordering (yang mengurangi stok)
-      // Pastikan filter bekerja dengan benar (handle boolean true, string "true", dll)
-      const hasilOrdering = matchedHasilProduksi.filter((h) => {
-        const isFromOrdering = h.isFromOrdering;
-        // Handle berbagai format: boolean true, string "true", dll
-        return (
-          isFromOrdering === true ||
-          isFromOrdering === "true" ||
-          isFromOrdering === 1
-        );
-      });
-
-      const totalDariOrdering = hasilOrdering.reduce(
-        (sum, h) => sum + (parseFloat(h.beratSaatIni) || 0),
-        0,
-      );
-
-      // Stok tersedia = berat akhir - total dari ordering
-      const stokTersedia = Math.max(0, beratAkhir - totalDariOrdering);
-
-      // Debug logging untuk troubleshooting
-      if (p.idProduksi === "PRD002" || stokProduksiData.length <= 2) {
-        console.log(`🔍 [STOK PRODUKSI DETAIL] ${p.idProduksi}:`, {
-          beratAkhir,
-          matchedHasilProduksiCount: matchedHasilProduksi.length,
-          hasilOrderingCount: hasilOrdering.length,
-          hasilOrderingDetail: hasilOrdering.map((h) => ({
-            id: h.id || h._id,
-            idProduksi: h.idProduksi,
-            isFromOrdering: h.isFromOrdering,
-            isFromOrderingType: typeof h.isFromOrdering,
-            beratSaatIni: h.beratSaatIni,
-          })),
-          totalDariOrdering,
-          stokTersedia,
-        });
-      }
-
-      // Debug logging untuk troubleshooting (hanya untuk beberapa record pertama)
-      if (stokProduksiData.length <= 5 || stokTersedia <= 0) {
-        const totalDariOrdering = matchedHasilProduksi
-          .filter((h) => h.isFromOrdering === true)
-          .reduce((sum, h) => sum + (parseFloat(h.beratSaatIni) || 0), 0);
-
-        console.log(`📊 [STOK PRODUKSI] ${p.idProduksi}:`, {
-          beratAkhir: beratAkhir,
-          totalDariOrdering: totalDariOrdering,
-          stokTersedia: stokTersedia, // Stok tersedia = berat akhir - total dari ordering
-          jumlahHasilProduksi: matchedHasilProduksi.length,
-          perhitungan: {
-            formula: "stokTersedia = beratAkhir - totalDariOrdering",
-            calculation: `${beratAkhir} - ${totalDariOrdering} = ${stokTersedia} kg`,
-          },
-        });
-      }
-
+    await loadStokData();
+    stokProduksiData = (stokData || []).map((s) => {
+      const w = parseFloat(s.stokTersedia ?? s.totalBerat) || 0;
       return {
-        idProduksi: p.idProduksi,
-        jenisKopi: bahanData?.jenisKopi || "-",
-        varietas: bahanData?.varietas || p.varietas || "-",
-        prosesPengolahan: p.prosesPengolahan || "-",
-        stokTersedia: stokTersedia, // Stok tersedia = berat akhir - total dari ordering
-        statusStok: stokTersedia > 0 ? "Cukup" : "Habis",
+        tipeProduk: s.tipeProduk || "-",
+        jenisKopi: s.jenisKopi || "-",
+        prosesPengolahan: s.prosesPengolahan || "-",
+        stokTersedia: w,
+        statusStok: w > 0 ? "Cukup" : "Habis",
       };
     });
 
     console.log(
-      `✅ Processed ${stokProduksiData.length} stok produksi records`,
+      `✅ [STOK PRODUKSI] ${stokProduksiData.length} baris (agregat, selaras Kelola Stok)`,
     );
-
-    // Debug: Log summary untuk troubleshooting
-    const totalStokTersedia = stokProduksiData.reduce(
-      (sum, s) => sum + s.stokTersedia,
-      0,
-    );
-    const stokCukup = stokProduksiData.filter(
-      (s) => s.statusStok === "Cukup",
-    ).length;
-    const stokHabis = stokProduksiData.filter(
-      (s) => s.statusStok === "Habis",
-    ).length;
-    console.log(`📊 Summary Stok Produksi:`, {
-      totalRecords: stokProduksiData.length,
-      totalStokTersedia: totalStokTersedia.toFixed(2) + " kg",
-      stokCukup: stokCukup,
-      stokHabis: stokHabis,
-    });
-
     displayStokProduksi();
   } catch (error) {
     console.error("❌ [STOK PRODUKSI] Error loading stok produksi:", error);
-    console.error("❌ [STOK PRODUKSI] Error details:", {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
-    });
     stokProduksiData = [];
     displayStokProduksi();
 
-    // Show error in table
     const tableBody = document.getElementById("tableStokProduksi");
     if (tableBody) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="8" class="text-center py-4 text-danger">
+          <td colspan="6" class="text-center py-4 text-danger">
             <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
             Error memuat data stok produksi: ${error.message || "Unknown error"}
             <br><small>Periksa console untuk detail lebih lanjut</small>
@@ -455,10 +534,10 @@ function displayStokProduksi() {
     if (stokProduksiData.length === 0) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="8" class="text-center py-4 text-muted">
+          <td colspan="6" class="text-center py-4 text-muted">
             <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-            Tidak ada data stok produksi
-            <br><small>Data akan muncul setelah ada produksi yang masuk tahap Pengemasan dengan berat akhir</small>
+            Tidak ada data stok hasil produksi
+            <br><small>Selaras Kelola Stok: batch pengemasan dengan tanggal pengemasan dan berat akhir</small>
           </td>
         </tr>
       `;
@@ -470,10 +549,8 @@ function displayStokProduksi() {
         (s, index) => `
       <tr>
         <td>${index + 1}</td>
-        <td><strong>${s.idProduksi || "-"}</strong></td>
         <td><span class="badge ${s.tipeProduk === 'Green Beans' ? 'bg-success' : 'bg-info'}">${s.tipeProduk || "-"}</span></td>
         <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => 'bg-secondary'))(s.jenisKopi)}">${s.jenisKopi || "-"}</span></td>
-        <td>${s.varietas || "-"}</td>
         <td>${s.prosesPengolahan || "-"}</td>
         <td class="text-end"><strong>${parseFloat(
           s.stokTersedia || 0,
@@ -496,7 +573,7 @@ function displayStokProduksi() {
     console.error("❌ Error displaying stok produksi:", error);
     tableBody.innerHTML = `
       <tr>
-        <td colspan="8" class="text-center py-4 text-danger">
+        <td colspan="6" class="text-center py-4 text-danger">
           <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
           Error menampilkan data: ${error.message}
         </td>
@@ -586,7 +663,11 @@ function applyFilterPemesanan() {
         <td>${p.namaPembeli || "-"}</td>
         <td>
           <span class="badge ${
-            p.tipePemesanan === "International" ? "bg-warning" : "bg-primary"
+            p.tipePemesanan === "International"
+              ? "bg-warning text-dark"
+              : p.tipePemesanan === "E-commerce"
+                ? "bg-info text-dark"
+                : "bg-primary"
           }">
             ${p.tipePemesanan || "-"}
           </span>
@@ -595,6 +676,17 @@ function applyFilterPemesanan() {
         <td>${p.tipeProduk || "-"}</td>
         <td>${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg</td>
         <td>Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}</td>
+        <td>
+          <span class="badge ${
+            (p.statusPembayaran || "Belum Lunas") === "Lunas"
+              ? "bg-success"
+              : (p.statusPembayaran || "") === "Pembayaran Bertahap"
+                ? "bg-info text-dark"
+                : "bg-warning text-dark"
+          }">
+            ${p.statusPembayaran || "Belum Lunas"}
+          </span>
+        </td>
         <td>
           <span class="badge ${
             p.statusPemesanan === "Complete" ? "bg-success" : "bg-warning"
@@ -664,17 +756,14 @@ async function openInvoice(idPembelian) {
 }
 
 // Open modal ordering for specific pemesanan
-function openModalOrderingForPemesanan(idPembelian) {
-  // Open modal ordering
-  openModalOrdering();
+async function openModalOrderingForPemesanan(idPembelian) {
+  await openModalOrdering();
 
-  // Set idPembelian if available
   const idPembelianSelect = document.getElementById("idPembelianOrdering");
   if (idPembelianSelect) {
     idPembelianSelect.value = idPembelian;
-    // Trigger change event to load pemesanan data
     if (typeof loadPemesananDataForOrdering === "function") {
-      loadPemesananDataForOrdering();
+      await loadPemesananDataForOrdering();
     }
   }
 }
@@ -731,10 +820,32 @@ function openModal(mode = "add") {
     // Reset negara field
     toggleNegaraField();
 
+    const idMaster = document.getElementById("idMasterPembeli");
+    if (idMaster) idMaster.value = "";
+    const selMp = document.getElementById("selectMasterPembeli");
+    if (selMp) selMp.value = "";
+    const kpb = document.getElementById("kontakPembeli");
+    const apb = document.getElementById("alamatPembeli");
+    if (kpb) kpb.value = "";
+    if (apb) apb.value = "";
+    refreshSelectMasterPembeli();
+    const spBayar = document.getElementById("statusPembayaran");
+    if (spBayar) spBayar.value = "Belum Lunas";
+    const catPm = document.getElementById("catatanPemesanan");
+    if (catPm) catPm.value = "";
+    const bp = document.getElementById("biayaPajak");
+    if (bp) bp.value = "0";
+    calculateTotalHarga();
+
+    const btnCetak = document.getElementById("btnSimpanCetakInvoice");
+    if (btnCetak) btnCetak.style.display = "";
+
     // Load master data options
     loadMasterDataOptions();
   } else {
     modalLabel.textContent = "Edit Pemesanan";
+    const btnCetak = document.getElementById("btnSimpanCetakInvoice");
+    if (btnCetak) btnCetak.style.display = "none";
     loadMasterDataOptions();
   }
 }
@@ -775,6 +886,17 @@ async function editPemesanan(id) {
     document.getElementById("namaPembeli").value = p.namaPembeli || "";
     document.getElementById("tipePemesanan").value = p.tipePemesanan || "";
     document.getElementById("negara").value = p.negara || "";
+    const kEl = document.getElementById("kontakPembeli");
+    const aEl = document.getElementById("alamatPembeli");
+    if (kEl) kEl.value = p.kontakPembeli || "";
+    if (aEl) aEl.value = p.alamatPembeli || "";
+    const im = document.getElementById("idMasterPembeli");
+    if (im) im.value = p.idMasterPembeli || "";
+    await refreshSelectMasterPembeli();
+    const smp = document.getElementById("selectMasterPembeli");
+    if (smp && p.idMasterPembeli) {
+      smp.value = p.idMasterPembeli;
+    }
     document.getElementById("tipeProduk").value = p.tipeProduk || "";
     document.getElementById("prosesPengolahan").value =
       p.prosesPengolahan || "";
@@ -782,11 +904,15 @@ async function editPemesanan(id) {
     // Kemasan tidak lagi digunakan
     document.getElementById("jumlahPesananKg").value = p.jumlahPesananKg || "";
     document.getElementById("hargaPerKg").value = p.hargaPerKg || "";
-    document.getElementById("totalHarga").value = (p.totalHarga || 0)
-      .toLocaleString("id-ID")
-      .replace(/\./g, ",");
+    const bpEl = document.getElementById("biayaPajak");
+    if (bpEl) bpEl.value = p.biayaPajak != null ? p.biayaPajak : "0";
+    calculateTotalHarga();
     document.getElementById("statusPemesanan").value =
       p.statusPemesanan || "Ordering";
+    const spb = document.getElementById("statusPembayaran");
+    if (spb) spb.value = p.statusPembayaran || "Belum Lunas";
+    const cpn = document.getElementById("catatanPemesanan");
+    if (cpn) cpn.value = p.catatanPemesanan || "";
     document.getElementById("tanggalPemesanan").value =
       p.tanggalPemesanan || "";
 
@@ -831,8 +957,8 @@ async function editPemesanan(id) {
   }
 }
 
-// Save pemesanan (add/edit)
-async function savePemesanan() {
+// Save pemesanan (add/edit). cetakInvoice: hanya untuk mode tambah.
+async function savePemesanan(cetakInvoice) {
   const form = document.getElementById("formPemesanan");
   if (!form.checkValidity()) {
     form.reportValidity();
@@ -844,6 +970,15 @@ async function savePemesanan() {
   const namaPembeli = document.getElementById("namaPembeli").value;
   const tipePemesanan = document.getElementById("tipePemesanan").value;
   const negara = document.getElementById("negara").value;
+  const idMasterPembeli = (
+    document.getElementById("idMasterPembeli")?.value || ""
+  ).trim();
+  const kontakPembeli = (
+    document.getElementById("kontakPembeli")?.value || ""
+  ).trim();
+  const alamatPembeli = (
+    document.getElementById("alamatPembeli")?.value || ""
+  ).trim();
   const tipeProduk = document.getElementById("tipeProduk").value;
   const prosesPengolahan = document.getElementById("prosesPengolahan").value;
   const jenisKopi = document.getElementById("jenisKopi").value;
@@ -855,12 +990,19 @@ async function savePemesanan() {
   const hargaPerKg = parseFloat(
     document.getElementById("hargaPerKg").value || 0,
   );
+  let biayaPajak = parseFloat(
+    document.getElementById("biayaPajak")?.value || 0,
+  );
+  if (!Number.isFinite(biayaPajak) || biayaPajak < 0) biayaPajak = 0;
 
-  // Calculate total harga directly from jumlah and harga (don't parse from formatted input)
-  // This avoids parsing issues with locale-formatted strings
-  const totalHarga = jumlahPesananKg * hargaPerKg;
+  // Total = subtotal + pajak (sama dengan validasi backend)
+  const totalHarga = jumlahPesananKg * hargaPerKg + biayaPajak;
 
   const statusPemesanan = document.getElementById("statusPemesanan").value;
+  const statusPembayaran = document.getElementById("statusPembayaran")?.value || "Belum Lunas";
+  const catatanPemesanan = (
+    document.getElementById("catatanPemesanan")?.value || ""
+  ).trim();
   const tanggalPemesanan = document.getElementById("tanggalPemesanan").value;
 
   // Log for debugging
@@ -901,10 +1043,16 @@ async function savePemesanan() {
       jenisKopi,
       jumlahPesananKg,
       hargaPerKg,
+      biayaPajak,
       totalHarga,
       statusPemesanan,
+      statusPembayaran,
+      catatanPemesanan,
       tanggalPemesanan,
     };
+    if (idMasterPembeli) pemesananData.idMasterPembeli = idMasterPembeli;
+    if (kontakPembeli) pemesananData.kontakPembeli = kontakPembeli;
+    if (alamatPembeli) pemesananData.alamatPembeli = alamatPembeli;
 
     if (pemesananId) {
       // Edit mode - Update via API
@@ -931,17 +1079,30 @@ async function savePemesanan() {
     } else {
       // Add mode - Create via API
       console.log("🔄 Creating new pemesanan");
-      await window.API.Pemesanan.create(pemesananData);
-      
-      // Tampilkan notifikasi create
+      const created = await window.API.Pemesanan.create(pemesananData);
+      const newId =
+        created?.idPembelian || idPembelian;
+
       if (window.showNotification) {
-        window.showNotification('create', 'Pemesanan', 'success');
+        window.showNotification("create", "Pemesanan", "success");
       } else {
         alert("Data pemesanan berhasil ditambahkan!");
       }
+
+      const modal = bootstrap.Modal.getInstance(
+        document.getElementById("modalPemesanan"),
+      );
+      modal?.hide();
+
+      await loadPemesanan();
+
+      if (cetakInvoice && newId) {
+        await generateInvoicePDF(newId);
+      }
+      return;
     }
 
-    // Reload data
+    // Reload data (edit)
     await loadPemesanan();
 
     // Close modal
@@ -949,11 +1110,6 @@ async function savePemesanan() {
       document.getElementById("modalPemesanan"),
     );
     modal.hide();
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving pemesanan:", error);
     // Tampilkan notifikasi error
@@ -1070,28 +1226,22 @@ async function deletePemesanan(id) {
 
 // Open modal ordering
 async function openModalOrdering() {
-  // Reset form dan tampilan
   const form = document.getElementById("formOrdering");
   if (form) form.reset();
   const pembelianSelect = document.getElementById("idPembelianOrdering");
-  const produksiSelect = document.getElementById("idProduksiOrdering");
   if (pembelianSelect) pembelianSelect.value = "";
-  if (produksiSelect) produksiSelect.value = "";
   const pemesananDisplay = document.getElementById("pemesananDataDisplay");
   const stokDisplay = document.getElementById("stokInfoDisplay");
   if (pemesananDisplay) pemesananDisplay.style.display = "none";
   if (stokDisplay) stokDisplay.style.display = "none";
 
-  // Set tanggal hari ini
   const today = new Date().toISOString().split("T")[0];
   const tanggalInput = document.getElementById("tanggalOrdering");
   if (tanggalInput) tanggalInput.value = today;
 
-  // Muat data secara berurutan tanpa saling memanggil
   try {
     await loadPemesananOptionsForOrdering();
-    const stokList = await loadStokData(); // hanya fetch & return data
-    await loadStokOptionsForOrdering(stokList); // render dropdown sekali
+    await loadStokData();
   } catch (error) {
     console.error("❌ [OPEN MODAL ORDERING] Error loading data:", error);
   }
@@ -1142,6 +1292,19 @@ async function loadPemesananDataForOrdering() {
     // Display pemesanan data
     document.getElementById("displayNamaPembeli").textContent =
       p.namaPembeli || "-";
+    const dk = document.getElementById("displayKontakPembeliOrdering");
+    const da = document.getElementById("displayAlamatPembeliOrdering");
+    if (dk) dk.textContent = p.kontakPembeli || "-";
+    if (da) da.textContent = p.alamatPembeli || "-";
+    const wIm = document.getElementById("wrapIdMasterPembeli");
+    const dIm = document.getElementById("displayIdMasterPembeliOrdering");
+    if (p.idMasterPembeli) {
+      if (wIm) wIm.style.display = "block";
+      if (dIm) dIm.textContent = p.idMasterPembeli;
+    } else {
+      if (wIm) wIm.style.display = "none";
+      if (dIm) dIm.textContent = "-";
+    }
     document.getElementById("displayTipePemesanan").textContent =
       p.tipePemesanan || "-";
     document.getElementById("displayTipeProduk").textContent =
@@ -1156,209 +1319,27 @@ async function loadPemesananDataForOrdering() {
     document.getElementById("displayTotalHarga").textContent = `Rp ${(
       p.totalHarga || 0
     ).toLocaleString("id-ID")}`;
+    const dsp = document.getElementById("displayStatusPembayaranOrdering");
+    if (dsp) dsp.textContent = p.statusPembayaran || "Belum Lunas";
+    const dct = document.getElementById("displayCatatanPemesananOrdering");
+    if (dct)
+      dct.textContent =
+        (p.catatanPemesanan && String(p.catatanPemesanan).trim()) || "—";
 
     document.getElementById("pemesananDataDisplay").style.display = "block";
 
-    // Store pemesanan data globally for validation
     window.currentPemesananData = p;
+
+    try {
+      await loadStokData();
+      showAggregatedStokForPemesanan(p);
+    } catch (e) {
+      console.warn("⚠️ Gagal memuat stok agregat untuk pemesanan:", e);
+    }
   } catch (error) {
     console.error("❌ Error loading pemesanan data:", error);
     alert("Error memuat data pemesanan");
   }
-}
-
-// Load stok options for ordering
-async function loadStokOptionsForOrdering(dataFromApi) {
-  try {
-    console.log("🔄 [LOAD STOK OPTIONS] Loading stok options for ordering...");
-    const select = document.getElementById("idProduksiOrdering");
-    // Simpan pilihan sebelumnya agar tidak hilang saat re-render
-    const previousValue = select ? select.value : "";
-    if (!select) {
-      console.warn("⚠️ [LOAD STOK OPTIONS] Select element not found");
-      return;
-    }
-
-    // Gunakan data dari parameter jika ada, jika tidak gunakan cache global
-    if (Array.isArray(dataFromApi)) {
-      stokData = dataFromApi;
-    }
-
-    select.innerHTML = '<option value="">Pilih ID Produksi</option>';
-
-    if (!Array.isArray(stokData) || stokData.length === 0) {
-      console.warn("⚠️ [LOAD STOK OPTIONS] stokData is empty or not an array");
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = "Tidak ada stok tersedia";
-      option.disabled = true;
-      select.appendChild(option);
-      return;
-    }
-
-    console.log(
-      `✅ [LOAD STOK OPTIONS] Loading ${stokData.length} stok options`,
-    );
-
-    stokData.forEach((s, index) => {
-      const option = document.createElement("option");
-      const idProduksi = s.idProduksi || s.id || "-";
-      const tipeProduk = s.tipeProduk || "-";
-      const jenisKopi = s.jenisKopi || "-";
-      const stokTersedia = parseFloat(s.stokTersedia || 0);
-
-      // Use unique value combining idProduksi and tipeProduk
-      option.value = `${idProduksi}|${tipeProduk}`;
-      option.textContent = `${idProduksi} - ${tipeProduk} - ${jenisKopi} (Stok: ${stokTersedia.toLocaleString(
-        "id-ID",
-        {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        },
-      )} kg)`;
-
-      // Store data in dataset for easy access
-      option.dataset.stokTersedia = stokTersedia;
-      option.dataset.prosesPengolahan = s.prosesPengolahan || "-";
-      option.dataset.jenisKopi = jenisKopi;
-      option.dataset.tipeProduk = tipeProduk;
-      option.dataset.idProduksi = idProduksi;
-
-      select.appendChild(option);
-    });
-
-    // Kembalikan pilihan sebelumnya jika masih ada di opsi
-    if (previousValue) {
-      const hasPrevious = Array.from(select.options).some(
-        (opt) => opt.value === previousValue,
-      );
-      if (hasPrevious) {
-        select.value = previousValue;
-        // Trigger update info stok agar validasi HTML tidak menganggap kosong
-        loadProduksiStok();
-      }
-    }
-
-    console.log(
-      `✅ [LOAD STOK OPTIONS] Successfully loaded ${stokData.length} options`,
-    );
-  } catch (error) {
-    console.error(
-      "❌ [LOAD STOK OPTIONS] Error loading stok options for ordering:",
-      error,
-    );
-    console.error("❌ [LOAD STOK OPTIONS] Error details:", {
-      message: error.message,
-      stack: error.stack,
-    });
-  }
-}
-
-// Load produksi stok info when ID Produksi selected
-function loadProduksiStok() {
-  console.log("🔄 [LOAD PRODUKSI STOK] Loading produksi stok info...");
-
-  const combinedValue = document.getElementById("idProduksiOrdering").value;
-  if (!combinedValue) {
-    console.log("⚠️ [LOAD PRODUKSI STOK] No ID Produksi selected");
-    document.getElementById("stokInfoDisplay").style.display = "none";
-    return;
-  }
-
-  // Parse idProduksi and tipeProduk from combined value
-  const [idProduksi, tipeProduk] = combinedValue.split("|");
-
-  console.log(`🔍 [LOAD PRODUKSI STOK] Selected: ${idProduksi} - ${tipeProduk}`);
-
-  // Try to get from option dataset first
-  const select = document.getElementById("idProduksiOrdering");
-  const selectedOption = select.options[select.selectedIndex];
-
-  let stokTersedia = 0;
-  let prosesPengolahan = "-";
-  let jenisKopi = "-";
-  let displayTipeProduk = tipeProduk || "-";
-
-  if (
-    selectedOption &&
-    selectedOption.dataset &&
-    selectedOption.dataset.stokTersedia
-  ) {
-    // Get from dataset (preferred method)
-    stokTersedia = parseFloat(selectedOption.dataset.stokTersedia || 0);
-    prosesPengolahan = selectedOption.dataset.prosesPengolahan || "-";
-    jenisKopi = selectedOption.dataset.jenisKopi || "-";
-    displayTipeProduk = selectedOption.dataset.tipeProduk || tipeProduk || "-";
-    console.log(`✅ [LOAD PRODUKSI STOK] Found data from dataset:`, {
-      stokTersedia,
-      prosesPengolahan,
-      jenisKopi,
-      tipeProduk: displayTipeProduk,
-    });
-  } else {
-    // Fallback: search in stokData array
-    console.log(
-      "⚠️ [LOAD PRODUKSI STOK] Dataset not found, searching in stokData array...",
-    );
-    const stokItem = stokData.find((s) => {
-      const sId = String(s.idProduksi || s.id || "").trim();
-      const sTipe = (s.tipeProduk || "").trim();
-      return sId === idProduksi && sTipe === tipeProduk;
-    });
-
-    if (stokItem) {
-      stokTersedia = parseFloat(stokItem.stokTersedia || 0);
-      prosesPengolahan = stokItem.prosesPengolahan || "-";
-      jenisKopi = stokItem.jenisKopi || "-";
-      displayTipeProduk = stokItem.tipeProduk || "-";
-      console.log(`✅ [LOAD PRODUKSI STOK] Found data from stokData array:`, {
-        stokTersedia,
-        prosesPengolahan,
-        jenisKopi,
-        tipeProduk: displayTipeProduk,
-      });
-    } else {
-      console.warn(
-        `⚠️ [LOAD PRODUKSI STOK] Stok data not found for: ${idProduksi} - ${tipeProduk}`,
-      );
-      console.log("📊 [LOAD PRODUKSI STOK] Available stokData:", stokData);
-    }
-  }
-
-  // Display the data
-  const displayStokTersedia = document.getElementById("displayStokTersedia");
-  const displayProduksiProses = document.getElementById(
-    "displayProduksiProses",
-  );
-  const displayProduksiJenisKopi = document.getElementById(
-    "displayProduksiJenisKopi",
-  );
-  const stokInfoDisplay = document.getElementById("stokInfoDisplay");
-
-  if (displayStokTersedia) {
-    displayStokTersedia.textContent = stokTersedia.toLocaleString("id-ID", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-
-  if (displayProduksiProses) {
-    displayProduksiProses.textContent = prosesPengolahan;
-  }
-
-  if (displayProduksiJenisKopi) {
-    displayProduksiJenisKopi.textContent = jenisKopi;
-  }
-
-  if (stokInfoDisplay) {
-    stokInfoDisplay.style.display = "block";
-  }
-
-  console.log(`✅ [LOAD PRODUKSI STOK] Stok info displayed:`, {
-    stokTersedia: `${stokTersedia.toLocaleString("id-ID")} kg`,
-    prosesPengolahan,
-    jenisKopi,
-  });
 }
 
 // Save ordering
@@ -1370,58 +1351,44 @@ async function saveOrdering() {
   }
 
   const idPembelian = document.getElementById("idPembelianOrdering").value;
-  const idProduksiValue = document.getElementById("idProduksiOrdering").value;
-  const statusPemesanan = document.getElementById(
-    "statusPemesananOrdering",
-  ).value;
   const tanggalOrdering = document.getElementById("tanggalOrdering").value;
 
-  if (!idPembelian || !idProduksiValue) {
-    alert("ID Pembelian dan ID Produksi wajib dipilih!");
+  if (!idPembelian) {
+    alert("ID Pembelian wajib dipilih!");
     return;
   }
 
-  // Parse idProduksi and tipeProduk from combined value
-  const [idProduksi, tipeProdukFromSelect] = idProduksiValue.split("|");
-  const tipeProduk = tipeProdukFromSelect || "";
-
-  // Get pemesanan data
   const pemesananData = window.currentPemesananData;
   if (!pemesananData) {
-    alert("Data pemesanan tidak ditemukan!");
+    alert("Pilih ID Pembelian terlebih dahulu agar data pemesanan termuat.");
     return;
   }
 
-  // Get stok data
-  const select = document.getElementById("idProduksiOrdering");
-  const selectedOption = select.options[select.selectedIndex];
-
-  // Get stok tersedia from dataset or fallback to stokData array
-  let stokTersedia = 0;
-  if (
-    selectedOption &&
-    selectedOption.dataset &&
-    selectedOption.dataset.stokTersedia
-  ) {
-    stokTersedia = parseFloat(selectedOption.dataset.stokTersedia || 0);
-  } else {
-    // Fallback: search in stokData array
-    const stokItem = stokData.find((s) => {
-      const sId = String(s.idProduksi || s.id || "").trim();
-      const sTipe = (s.tipeProduk || "").trim();
-      return sId === idProduksi && sTipe === tipeProduk;
-    });
-    if (stokItem) {
-      stokTersedia = parseFloat(stokItem.stokTersedia || 0);
+  let stokRow = findStokRowForPemesanan(pemesananData);
+  if (!stokRow) {
+    try {
+      await loadStokData();
+      stokRow = findStokRowForPemesanan(pemesananData);
+    } catch (_) {
+      /* noop */
     }
   }
 
+  const stokTersedia = stokRow
+    ? parseFloat(stokRow.stokTersedia ?? stokRow.totalBerat ?? 0) || 0
+    : 0;
   const jumlahPesanan = parseFloat(pemesananData.jumlahPesananKg || 0);
 
-  // Validasi stok
+  if (!stokRow) {
+    alert(
+      "Tidak ada stok hasil produksi yang cocok dengan pemesanan ini.\nPastikan kombinasi tipe produk, jenis kopi, dan proses pengolahan sama dengan baris di Kelola Stok.",
+    );
+    return;
+  }
+
   if (stokTersedia < jumlahPesanan) {
     alert(
-      `Stok tidak mencukupi!\n\nStok tersedia: ${stokTersedia.toLocaleString(
+      `Stok tidak mencukupi!\n\nStok tersedia (agregat): ${stokTersedia.toLocaleString(
         "id-ID",
       )} kg\nJumlah pesanan: ${jumlahPesanan.toLocaleString(
         "id-ID",
@@ -1432,43 +1399,14 @@ async function saveOrdering() {
     return;
   }
 
-  // Validasi proses pengolahan
-  const prosesProduksi = selectedOption.dataset.prosesPengolahan || "";
-  if (prosesProduksi !== pemesananData.prosesPengolahan) {
-    alert(
-      `Proses pengolahan tidak sesuai!\n\nProses Produksi: ${prosesProduksi}\nProses Pemesanan: ${pemesananData.prosesPengolahan}`,
-    );
-    return;
-  }
-
-  // Validasi jenis kopi
-  const jenisKopiProduksi = selectedOption.dataset.jenisKopi || "";
-  if (jenisKopiProduksi !== pemesananData.jenisKopi) {
-    alert(
-      `Jenis kopi tidak sesuai!\n\nJenis Kopi Produksi: ${jenisKopiProduksi}\nJenis Kopi Pemesanan: ${pemesananData.jenisKopi}`,
-    );
-    return;
-  }
-
-  // Validasi tipe produk
-  const tipeProdukPemesanan = pemesananData.tipeProduk || "";
-  if (tipeProduk && tipeProdukPemesanan && tipeProduk !== tipeProdukPemesanan) {
-    alert(
-      `Tipe produk tidak sesuai!\n\nTipe Produk Stok: ${tipeProduk}\nTipe Produk Pemesanan: ${tipeProdukPemesanan}`,
-    );
-    return;
-  }
-
   try {
     const orderingData = {
       idPembelian,
-      idProduksi,
-      tipeProduk,
-      statusPemesanan,
       tanggalOrdering,
+      tipeProduk: pemesananData.tipeProduk,
     };
 
-    console.log("🔄 Memproses ordering (mengurangi stok):", orderingData);
+    console.log("🔄 Memproses ordering (stok agregat, tanpa id produksi):", orderingData);
     const result = await window.API.Ordering.proses(orderingData);
     console.log("✅ [ORDERING PROSES] Response:", result);
 
@@ -1562,6 +1500,302 @@ async function saveOrdering() {
   }
 }
 
+/** Logo + kop surat Argopuro Walida untuk PDF invoice */
+async function fetchArgopuroLogoForPdf() {
+  try {
+    const url = `${window.location.origin}/brand-assets/logo.png`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = reject;
+      r.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.warn("Logo tidak dimuat:", e);
+    return null;
+  }
+}
+
+function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl) {
+  const nama = "Argopuro Walida";
+  const kontak = "0812-3362-4910";
+  const alamat =
+    "Ds. Tlogosari Rt 06/Rw 01, Kecamatan Sumbermalang, Kabupaten Situbondo";
+  let y = 12;
+  const tx = logoDataUrl ? 54 : 20;
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, "PNG", 18, y, 28, 28);
+    } catch (e) {
+      console.warn("addImage logo:", e);
+    }
+  }
+  doc.setTextColor(25, 90, 40);
+  doc.setFontSize(15);
+  doc.setFont(undefined, "bold");
+  doc.text(nama, tx, y + 8);
+  doc.setTextColor(55, 55, 55);
+  doc.setFontSize(9);
+  doc.setFont(undefined, "normal");
+  doc.text(`Kontak: ${kontak}`, tx, y + 15);
+  const addrLines = doc.splitTextToSize(alamat, 132);
+  let ay = y + 21;
+  addrLines.forEach((ln) => {
+    doc.text(ln, tx, ay);
+    ay += 4.5;
+  });
+  doc.setTextColor(0, 0, 0);
+  const barY = Math.max(y + 32, ay + 3);
+  doc.setDrawColor(46, 125, 50);
+  doc.setLineWidth(0.35);
+  doc.line(18, barY, 192, barY);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.1);
+  doc.setFontSize(16);
+  doc.setFont(undefined, "bold");
+  doc.text("INVOICE PEMESANAN", 105, barY + 9, { align: "center" });
+  doc.setFontSize(8);
+  doc.setFont(undefined, "normal");
+  doc.text(
+    "Dokumen pembelian resmi — mohon periksa rincian berikut.",
+    105,
+    barY + 15,
+    { align: "center" },
+  );
+  return barY + 22;
+}
+
+/** Angka dengan pemisah ribuan Indonesia, tanpa prefiks Rp/kg */
+function pdfFmtIdNumber(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return "0";
+  return v.toLocaleString("id-ID");
+}
+
+/** Warna badge status pembayaran: teks putih tebal di atas bg */
+function pdfPaymentBadgeColors(status) {
+  const s = (status || "Belum Lunas").trim();
+  if (s === "Lunas") return { rgb: [25, 135, 84] };
+  const low = s.toLowerCase();
+  if (
+    s === "Pembayaran Bertahap" ||
+    low === "pembayaran bertahap"
+  ) {
+    /* Kuning tua agar teks putih tetap terbaca */
+    return { rgb: [212, 160, 23] };
+  }
+  return { rgb: [220, 53, 69] };
+}
+
+/** Warna badge status pemesanan (invoice) */
+function pdfOrderStatusBadgeColors(status) {
+  const s = (status || "").trim();
+  if (s === "Complete") return { rgb: [25, 135, 84] };
+  if (s === "Ordering") return { rgb: [212, 160, 23] };
+  return { rgb: [108, 117, 125] };
+}
+
+function pdfDrawColoredBadge(doc, x, yBaseline, label, colorFn) {
+  const text = String(label || "—");
+  doc.setFontSize(8);
+  doc.setFont(undefined, "bold");
+  const w = doc.getTextWidth(text);
+  const padX = 2.2;
+  const padY = 1.2;
+  const h = 4.8;
+  const x0 = x;
+  const y0 = yBaseline - h + padY;
+  const { rgb } = colorFn(text);
+  doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+  doc.roundedRect(x0, y0, w + padX * 2, h, 0.8, 0.8, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.text(text, x0 + padX, yBaseline);
+  doc.setTextColor(0, 0, 0);
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(9);
+}
+
+function pdfDrawPaymentBadge(doc, x, yBaseline, label) {
+  pdfDrawColoredBadge(doc, x, yBaseline, label, pdfPaymentBadgeColors);
+}
+
+function pdfDrawOrderStatusBadge(doc, x, yBaseline, label) {
+  pdfDrawColoredBadge(doc, x, yBaseline, label, pdfOrderStatusBadgeColors);
+}
+
+function pdfDrawInvoiceBody(doc, p, y) {
+  const LX = 20;
+  const VX = 58;
+  const bayarLabel = (p.statusPembayaran || "Belum Lunas").trim();
+  const orderLabel = (p.statusPemesanan || "—").trim();
+  doc.setFontSize(10);
+  doc.setFillColor(240, 248, 242);
+  doc.roundedRect(LX, y - 2, 170, 40, 1, 1, "F");
+  doc.setTextColor(0, 0, 0);
+  doc.setFont(undefined, "bold");
+  doc.text("Ringkasan dokumen", LX + 3, y + 5);
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(9);
+  doc.text(`ID Pembelian: ${p.idPembelian || "-"}`, LX + 3, y + 11);
+  doc.setTextColor(55, 55, 55);
+  doc.text(
+    `Tanggal pemesanan: ${formatDate(p.tanggalPemesanan || new Date().toISOString())}`,
+    LX + 3,
+    y + 17,
+  );
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(8.5);
+  doc.setFont(undefined, "normal");
+  doc.setTextColor(60, 60, 60);
+  doc.text("Status pemesanan", LX + 3, y + 24);
+  const osw = doc.getTextWidth("Status pemesanan");
+  doc.setTextColor(0, 0, 0);
+  pdfDrawOrderStatusBadge(doc, LX + 3 + osw + 2, y + 24, orderLabel);
+  doc.setFontSize(8.5);
+  doc.setTextColor(60, 60, 60);
+  doc.text("Status pembayaran", LX + 3, y + 31);
+  const spw = doc.getTextWidth("Status pembayaran");
+  doc.setTextColor(0, 0, 0);
+  pdfDrawPaymentBadge(doc, LX + 3 + spw + 2, y + 31, bayarLabel);
+  y += 46;
+
+  doc.setFontSize(11);
+  doc.setFont(undefined, "bold");
+  doc.text("PEMBELI", LX, y);
+  y += 6;
+  doc.setLineWidth(0.15);
+  doc.line(LX, y, 190, y);
+  y += 8;
+  doc.setFontSize(10);
+  doc.setFont(undefined, "bold");
+  doc.text("Nama", LX, y);
+  doc.setFont(undefined, "normal");
+  doc.text(p.namaPembeli || "-", VX, y);
+  y += 7;
+  doc.setFont(undefined, "bold");
+  doc.text("Kontak", LX, y);
+  doc.setFont(undefined, "normal");
+  doc.text(String(p.kontakPembeli || "-"), VX, y);
+  y += 7;
+  doc.setFont(undefined, "bold");
+  doc.text("Alamat", LX, y);
+  doc.setFont(undefined, "normal");
+  const alLines = doc.splitTextToSize(String(p.alamatPembeli || "-"), 120);
+  alLines.forEach((ln) => {
+    doc.text(ln, VX, y);
+    y += 5;
+  });
+  y += 2;
+  if (p.idMasterPembeli) {
+    doc.setFont(undefined, "bold");
+    doc.text("ID master", LX, y);
+    doc.setFont(undefined, "normal");
+    doc.text(String(p.idMasterPembeli), VX, y);
+    y += 7;
+  }
+  doc.setFont(undefined, "bold");
+  doc.text("Tipe", LX, y);
+  doc.setFont(undefined, "normal");
+  doc.text(p.tipePemesanan || "-", VX, y);
+  y += 7;
+  if (p.tipePemesanan === "International" && p.negara) {
+    doc.setFont(undefined, "bold");
+    doc.text("Negara", LX, y);
+    doc.setFont(undefined, "normal");
+    doc.text(p.negara || "-", VX, y);
+    y += 7;
+  }
+  y += 6;
+
+  const catatan = (p.catatanPemesanan && String(p.catatanPemesanan).trim()) || "";
+  if (catatan) {
+    doc.setFontSize(11);
+    doc.setFont(undefined, "bold");
+    doc.text("CATATAN", LX, y);
+    y += 6;
+    doc.setLineWidth(0.15);
+    doc.line(LX, y, 190, y);
+    y += 8;
+    doc.setFontSize(9);
+    doc.setFont(undefined, "normal");
+    doc.splitTextToSize(catatan, 170).forEach((ln) => {
+      doc.text(ln, LX, y);
+      y += 4.5;
+    });
+    y += 6;
+  }
+
+  const C_QTY = 118;
+  const C_HARGA = 150;
+  const C_SUB = 188;
+
+  doc.setFontSize(11);
+  doc.setFont(undefined, "bold");
+  doc.text("RINCIAN PRODUK & HARGA", LX, y);
+  y += 6;
+  doc.setLineWidth(0.2);
+  doc.line(LX, y, 190, y);
+  y += 7;
+  doc.setFontSize(8.5);
+  doc.setFont(undefined, "bold");
+  doc.setTextColor(55, 55, 55);
+  doc.text("Deskripsi", LX, y);
+  doc.text("Qty (kg)", C_QTY, y, { align: "right" });
+  doc.text("Harga/kg (Rp)", C_HARGA, y, { align: "right" });
+  doc.text("Subtotal (Rp)", C_SUB, y, { align: "right" });
+  doc.setTextColor(0, 0, 0);
+  y += 4;
+  doc.setLineWidth(0.15);
+  doc.line(LX, y, 190, y);
+  y += 6;
+
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(9);
+  const desk = `${p.tipeProduk || "-"} · ${p.jenisKopi || "-"} · ${p.prosesPengolahan || "-"}`;
+  const dLines = doc.splitTextToSize(desk, 78);
+  const yStartBlock = y;
+  dLines.forEach((ln) => {
+    doc.text(ln, LX, y);
+    y += 4.3;
+  });
+  const jumlahKg = parseFloat(p.jumlahPesananKg) || 0;
+  const hargaKg = parseFloat(p.hargaPerKg) || 0;
+  const subtotalBaris = jumlahKg * hargaKg;
+  doc.text(pdfFmtIdNumber(jumlahKg), C_QTY, yStartBlock, { align: "right" });
+  doc.text(pdfFmtIdNumber(hargaKg), C_HARGA, yStartBlock, { align: "right" });
+  doc.text(pdfFmtIdNumber(subtotalBaris), C_SUB, yStartBlock, {
+    align: "right",
+  });
+  y = Math.max(y, yStartBlock + 8);
+  y += 2;
+  doc.line(LX, y, 190, y);
+  y += 6;
+
+  const pajakInv = Math.max(0, parseFloat(p.biayaPajak) || 0);
+  doc.setFont(undefined, "bold");
+  doc.text("Pajak (Rp)", LX, y);
+  doc.setFont(undefined, "normal");
+  doc.text(pdfFmtIdNumber(pajakInv), C_SUB, y, { align: "right" });
+  y += 7;
+  doc.line(LX, y, 190, y);
+  y += 8;
+  doc.setFontSize(11);
+  doc.setFont(undefined, "bold");
+  doc.text("Total pembayaran (Rp)", LX, y);
+  doc.text(
+    pdfFmtIdNumber(p.totalHarga || 0),
+    C_SUB,
+    y,
+    { align: "right" },
+  );
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(9);
+  return y + 8;
+}
+
 // Generate Invoice PDF
 async function generateInvoicePDF(idPembelian) {
   try {
@@ -1594,135 +1828,14 @@ async function generateInvoicePDF(idPembelian) {
     }
 
     const { jsPDF: jsPDFLib } = window.jspdf;
+    const logoDataUrl = await fetchArgopuroLogoForPdf();
     const doc = new jsPDFLib();
+    let yCur = pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl);
+    yCur = pdfDrawInvoiceBody(doc, p, yCur);
 
-    // Header
-    doc.setFontSize(20);
-    doc.setFont(undefined, "bold");
-    doc.text("INVOICE PEMESANAN", 105, 20, { align: "center" });
-    doc.setFontSize(14);
-    doc.setFont(undefined, "normal");
-    doc.text("Argopuro Walida", 105, 30, { align: "center" });
-    doc.text("Sistem Manajemen Produksi Kopi", 105, 37, { align: "center" });
-    doc.line(20, 42, 190, 42);
-
-    // Invoice Info
-    let y = 55;
-    doc.setFontSize(11);
-    doc.setFont(undefined, "bold");
-    doc.text("ID Pembelian:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.idPembelian || "-", 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Tanggal:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(formatDate(p.tanggalPemesanan || new Date().toISOString()), 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Status:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.statusPemesanan || "-", 60, y);
-    y += 15;
-
-    // Pembeli Info
-    doc.setFontSize(12);
-    doc.setFont(undefined, "bold");
-    doc.text("DATA PEMBELI", 20, y);
-    y += 8;
-    doc.line(20, y, 190, y);
-    y += 10;
-    doc.setFontSize(11);
-
-    doc.setFont(undefined, "bold");
-    doc.text("Nama Pembeli:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.namaPembeli || "-", 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Tipe Pemesanan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.tipePemesanan || "-", 60, y);
-    y += 8;
-
-    if (p.tipePemesanan === "International" && p.negara) {
-      doc.setFont(undefined, "bold");
-      doc.text("Negara:", 20, y);
-      doc.setFont(undefined, "normal");
-      doc.text(p.negara || "-", 60, y);
-      y += 8;
-    }
-
-    y += 10;
-
-    // Produk Info
-    doc.setFontSize(12);
-    doc.setFont(undefined, "bold");
-    doc.text("DATA PRODUK", 20, y);
-    y += 8;
-    doc.line(20, y, 190, y);
-    y += 10;
-    doc.setFontSize(11);
-
-    doc.setFont(undefined, "bold");
-    doc.text("Tipe Produk:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.tipeProduk || "-", 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Jenis Kopi:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.jenisKopi || "-", 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Proses Pengolahan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(p.prosesPengolahan || "-", 60, y);
-    y += 8;
-
-    // Kemasan tidak lagi digunakan
-
-    // Harga Info
-    doc.setFontSize(12);
-    doc.setFont(undefined, "bold");
-    doc.text("RINCIAN HARGA", 20, y);
-    y += 8;
-    doc.line(20, y, 190, y);
-    y += 10;
-    doc.setFontSize(11);
-
-    doc.setFont(undefined, "bold");
-    doc.text("Jumlah Pesanan:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(`${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg`, 60, y);
-    y += 8;
-
-    doc.setFont(undefined, "bold");
-    doc.text("Harga per Kg:", 20, y);
-    doc.setFont(undefined, "normal");
-    doc.text(`Rp ${(p.hargaPerKg || 0).toLocaleString("id-ID")}`, 60, y);
-    y += 8;
-
-    doc.line(20, y, 190, y);
-    y += 10;
-
-    doc.setFontSize(14);
-    doc.setFont(undefined, "bold");
-    doc.text("TOTAL HARGA:", 20, y);
-    doc.text(`Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}`, 60, y);
-
-    // Generate PDF as base64 first (without QR Code)
     let pdfBase64 = doc.output("datauristring");
-
-    // Upload PDF to backend FIRST to get the correct URL
     console.log("📤 Uploading Invoice PDF to backend...");
 
-    // Extract base64 data (remove data: prefix if exists)
     let pdfBase64Data = pdfBase64;
     if (pdfBase64Data.includes(",")) {
       pdfBase64Data = pdfBase64Data.split(",")[1];
@@ -1741,250 +1854,16 @@ async function generateInvoicePDF(idPembelian) {
       throw new Error("Failed to upload PDF");
     }
 
-    console.log("✅ Invoice PDF uploaded successfully!");
-    console.log("✅ Final PDF URL:", uploadResult.fullUrl);
+    const pdfUrl = uploadResult.fullUrl || uploadResult.url;
+    console.log("✅ Invoice PDF uploaded:", pdfUrl);
 
-    // Now generate PDF with QR Code using the correct URL
-    const finalPdfUrl = uploadResult.fullUrl || uploadResult.url;
-
-    // Validate URL
-    if (!finalPdfUrl || !finalPdfUrl.startsWith("http")) {
-      throw new Error("Invalid PDF URL from backend");
+    if (pdfUrl && pdfUrl.startsWith("http")) {
+      window.open(pdfUrl, "_blank");
     }
 
-    // Create new PDF document with QR Code
-    const docWithQR = new jsPDFLib();
-
-    // Copy all content from first PDF (re-generate)
-    docWithQR.setFontSize(20);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("INVOICE PEMESANAN", 105, 20, { align: "center" });
-    docWithQR.setFontSize(14);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text("Argopuro Walida", 105, 30, { align: "center" });
-    docWithQR.text("Sistem Manajemen Produksi Kopi", 105, 37, {
-      align: "center",
-    });
-    docWithQR.line(20, 42, 190, 42);
-
-    // Re-add all content (same as before)
-    let yQR = 55;
-    docWithQR.setFontSize(11);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("ID Pembelian:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.idPembelian || "-", 60, yQR);
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Tanggal:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(
-      formatDate(p.tanggalPemesanan || new Date().toISOString()),
-      60,
-      yQR,
+    alert(
+      `Invoice PDF berhasil dibuat.${pdfUrl ? `\n\n${pdfUrl}` : ""}`,
     );
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Status:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.statusPemesanan || "-", 60, yQR);
-    yQR += 15;
-
-    // Pembeli Info
-    docWithQR.setFontSize(12);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("DATA PEMBELI", 20, yQR);
-    yQR += 8;
-    docWithQR.line(20, yQR, 190, yQR);
-    yQR += 10;
-    docWithQR.setFontSize(11);
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Nama Pembeli:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.namaPembeli || "-", 60, yQR);
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Tipe Pemesanan:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.tipePemesanan || "-", 60, yQR);
-    yQR += 8;
-
-    if (p.tipePemesanan === "International" && p.negara) {
-      docWithQR.setFont(undefined, "bold");
-      docWithQR.text("Negara:", 20, yQR);
-      docWithQR.setFont(undefined, "normal");
-      docWithQR.text(p.negara || "-", 60, yQR);
-      yQR += 8;
-    }
-
-    yQR += 10;
-
-    // Produk Info
-    docWithQR.setFontSize(12);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("DATA PRODUK", 20, yQR);
-    yQR += 8;
-    docWithQR.line(20, yQR, 190, yQR);
-    yQR += 10;
-    docWithQR.setFontSize(11);
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Tipe Produk:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.tipeProduk || "-", 60, yQR);
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Jenis Kopi:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.jenisKopi || "-", 60, yQR);
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Proses Pengolahan:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(p.prosesPengolahan || "-", 60, yQR);
-    yQR += 8;
-
-    // Kemasan tidak lagi digunakan
-
-    // Harga Info
-    docWithQR.setFontSize(12);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("RINCIAN HARGA", 20, yQR);
-    yQR += 8;
-    docWithQR.line(20, yQR, 190, yQR);
-    yQR += 10;
-    docWithQR.setFontSize(11);
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Jumlah Pesanan:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(
-      `${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg`,
-      60,
-      yQR,
-    );
-    yQR += 8;
-
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("Harga per Kg:", 20, yQR);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text(
-      `Rp ${(p.hargaPerKg || 0).toLocaleString("id-ID")}`,
-      60,
-      yQR,
-    );
-    yQR += 8;
-
-    docWithQR.line(20, yQR, 190, yQR);
-    yQR += 10;
-
-    docWithQR.setFontSize(14);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("TOTAL HARGA:", 20, yQR);
-    docWithQR.text(
-      `Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}`,
-      60,
-      yQR,
-    );
-
-    // QR Code dengan URL yang benar
-    yQR += 25;
-    try {
-      // Wait for QRCode library
-      let QRCodeLib = null;
-      let retries = 0;
-      while (!QRCodeLib && retries < 50) {
-        if (window.QRCode) {
-          QRCodeLib = window.QRCode;
-        } else if (typeof QRCode !== "undefined") {
-          QRCodeLib = QRCode;
-        } else if (window.qrcode) {
-          QRCodeLib = window.qrcode;
-        }
-        if (!QRCodeLib) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          retries++;
-        }
-      }
-
-      if (QRCodeLib) {
-        console.log("🔲 Generating QR Code with URL:", finalPdfUrl);
-        const canvas = document.createElement("canvas");
-        await new Promise((resolve, reject) => {
-          QRCodeLib.toCanvas(
-            canvas,
-            finalPdfUrl,
-            {
-              width: 150,
-              margin: 2,
-              errorCorrectionLevel: "H",
-              color: {
-                dark: "#000000",
-                light: "#FFFFFF",
-              },
-            },
-            (error) => {
-              if (error) {
-                console.error("QR Code generation error:", error);
-                reject(error);
-              } else {
-                console.log("✅ QR Code generated successfully");
-                resolve();
-              }
-            },
-          );
-        });
-
-        const qrImg = canvas.toDataURL("image/png", 1.0);
-        docWithQR.addImage(qrImg, "PNG", 20, yQR, 40, 40);
-        docWithQR.setFontSize(9);
-        docWithQR.setFont(undefined, "normal");
-        docWithQR.text("Scan untuk melihat invoice", 70, yQR + 20);
-      } else {
-        console.warn("⚠️ QRCode library not available");
-        docWithQR.setFontSize(10);
-        docWithQR.text("QR Code tidak dapat dibuat", 20, yQR);
-      }
-    } catch (error) {
-      console.error("❌ Error generating QR Code:", error);
-      docWithQR.setFontSize(10);
-      docWithQR.text("QR Code tidak dapat dibuat", 20, yQR);
-    }
-
-    // Generate final PDF with QR Code
-    const finalPdfBase64 = docWithQR.output("datauristring");
-
-    // Upload final PDF with QR Code
-    let finalPdfBase64Data = finalPdfBase64;
-    if (finalPdfBase64Data.includes(",")) {
-      finalPdfBase64Data = finalPdfBase64Data.split(",")[1];
-    }
-
-    const finalUploadResult = await window.API.Laporan.uploadPdf(
-      `data:application/pdf;base64,${finalPdfBase64Data}`,
-      "invoice-pemesanan",
-      p.idPembelian,
-    );
-
-    if (finalUploadResult && finalUploadResult.success) {
-      console.log("✅ Final Invoice PDF with QR Code uploaded!");
-      console.log("✅ Final PDF URL:", finalUploadResult.fullUrl);
-
-      // Open PDF in new window
-      window.open(finalUploadResult.fullUrl, "_blank");
-
-      alert(
-        `Invoice PDF berhasil di-generate!\n\nURL: ${finalUploadResult.fullUrl}\n\nQR Code dapat di-scan untuk membuka invoice.`,
-      );
-    } else {
-      throw new Error("Failed to upload final PDF");
-    }
   } catch (error) {
     console.error("❌ Error generating invoice PDF:", error);
     alert(`Error generating invoice PDF: ${error.message || "Unknown error"}`);
@@ -2019,8 +1898,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   // Wait for API to be ready (event-based + polling)
   const apiReady = await waitForAPI();
-  if (!apiReady || !window.API || !window.API.Pemesanan) {
-    console.error("❌ API.Pemesanan not available");
+  if (!apiReady || !window.API || !window.API.Pemesanan || !window.API.Stok || !window.API.Pembeli) {
+    console.error("❌ API.Pemesanan, Stok, atau Pembeli tidak tersedia");
     alert("API tidak tersedia. Pastikan backend aktif.");
     return;
   }
@@ -2029,11 +1908,11 @@ document.addEventListener("DOMContentLoaded", async function () {
   console.log("🚀 [INIT] Starting data load...");
   await loadPemesanan(); // Load pemesanan data
   console.log("🚀 [INIT] Pemesanan data loaded, loading stok produksi...");
-  await loadStokProduksi(); // Load stok produksi (tab aktif pertama)
-  console.log("🚀 [INIT] Stok produksi loaded, loading other data...");
-  await loadStokData(); // Load stok hanya untuk ordering dropdown
+  await loadStokProduksi(); // memuat /api/stok (sama dengan Kelola Stok)
+  console.log("🚀 [INIT] Stok produksi loaded, loading ordering...");
   await loadOrderingData();
   console.log("✅ [INIT] All data loaded successfully");
+  await refreshSelectMasterPembeli();
 
   // Listen for tab change to load stok produksi
   const stokProduksiTab = document.getElementById("stok-produksi-tab");
@@ -2049,6 +1928,13 @@ document.addEventListener("DOMContentLoaded", async function () {
     dataPemesananTab.addEventListener("shown.bs.tab", function () {
       console.log("🔄 Tab Data Pemesanan activated, loading data...");
       loadPemesanan();
+    });
+  }
+
+  const dataPembeliTab = document.getElementById("data-pembeli-tab");
+  if (dataPembeliTab) {
+    dataPembeliTab.addEventListener("shown.bs.tab", function () {
+      loadPembeliMasterTable();
     });
   }
 
@@ -2085,7 +1971,10 @@ document.addEventListener("DOMContentLoaded", async function () {
   window.calculateTotalHarga = calculateTotalHarga;
   // loadKemasanOptions dihapus - kemasan tidak lagi digunakan
   window.loadPemesananDataForOrdering = loadPemesananDataForOrdering;
-  window.loadProduksiStok = loadProduksiStok;
+  window.applyFilterPembeliMaster = applyFilterPembeliMaster;
+  window.openModalPembeli = openModalPembeli;
+  window.savePembeliMaster = savePembeliMaster;
+  window.onSelectMasterPembeliChange = onSelectMasterPembeliChange;
 
   console.log("✅ Kelola Pemesanan page initialized");
 });
