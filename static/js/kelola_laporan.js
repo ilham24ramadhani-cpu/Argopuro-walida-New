@@ -1404,6 +1404,8 @@ const LAPORAN_REKAP_CONFIG = {
   },
   pemesanan: {
     title: "Laporan Rekap Pemesanan",
+    extraSummaryHeading: "Total keseluruhan (filter saat ini)",
+    extraSummaryWrapClass: "summary rekap-pemesanan-totals",
     columns: [
       { label: "ID Pembelian", value: (item) => item.idPembelian || "-" },
       {
@@ -1413,23 +1415,6 @@ const LAPORAN_REKAP_CONFIG = {
       { label: "Nama Pembeli", value: (item) => item.namaPembeli || "-" },
       { label: "Tipe pemesanan", value: (item) => item.tipePemesanan || "-" },
       { label: "Negara", value: (item) => item.negara || "-" },
-      {
-        label: "Kontak pembeli",
-        value: (item) =>
-          (item.kontakPembeli && String(item.kontakPembeli).trim()) || "-",
-      },
-      {
-        label: "Alamat pembeli",
-        value: (item) =>
-          (item.alamatPembeli && String(item.alamatPembeli).trim()) || "-",
-      },
-      {
-        label: "ID master pembeli",
-        value: (item) =>
-          item.idMasterPembeli != null && item.idMasterPembeli !== ""
-            ? String(item.idMasterPembeli)
-            : "-",
-      },
       { label: "Tipe produk", value: (item) => item.tipeProduk || "-" },
       { label: "Jenis kopi", value: (item) => item.jenisKopi || "-" },
       {
@@ -1488,21 +1473,6 @@ const LAPORAN_REKAP_CONFIG = {
     dateGetter: (item) => item.tanggalPemesanan,
     extraSummary: (items) => {
       if (!items.length) return [];
-      const byProses = new Map();
-      items.forEach((p) => {
-        const raw = (p.prosesPengolahan && String(p.prosesPengolahan).trim()) || "";
-        const key = raw || "(Tanpa proses pengolahan)";
-        const cur = byProses.get(key) || { kg: 0, n: 0 };
-        cur.kg += safeNumber(p.jumlahPesananKg);
-        cur.n += 1;
-        byProses.set(key, cur);
-      });
-      const perProses = [...byProses.entries()]
-        .sort((a, b) => a[0].localeCompare(b[0], "id"))
-        .map(([nama, { kg, n }]) => ({
-          label: `Σ kg per proses «${nama}»`,
-          value: `${formatKgValue(kg)} · ${n} pesanan`,
-        }));
       const totalKg = items.reduce(
         (sum, p) => sum + safeNumber(p.jumlahPesananKg),
         0
@@ -1512,13 +1482,12 @@ const LAPORAN_REKAP_CONFIG = {
         0
       );
       return [
-        ...perProses,
         {
-          label: "Total jumlah pesanan (kg) — keseluruhan",
+          label: "Total jumlah pesanan (kg)",
           value: formatKgValue(totalKg),
         },
         {
-          label: "Total harga (Rp) — keseluruhan",
+          label: "Total harga (Rp)",
           value: formatCurrencyNumeric(totalHarga),
         },
       ];
@@ -2123,17 +2092,18 @@ function htmlRekapPemesananAggPerProses(items) {
       (r) =>
         `<tr>
       <td>${escapeHtmlLaporan(r.nama)}</td>
-      <td style="text-align: right">${r.n}</td>
-      <td style="text-align: right">${fmtKg(r.kg)}</td>
+      <td>${r.n}</td>
+      <td>${fmtKg(r.kg)}</td>
     </tr>`
     )
     .join("");
   const totalN = rows.reduce((s, r) => s + r.n, 0);
   const totalKg = rows.reduce((s, r) => s + r.kg, 0);
   return `
-      <div class="summary rekap-pemesanan-proses" style="margin-top: 24px">
+      <div class="summary rekap-pemesanan-proses-wrap">
+        <div class="inner">
         <h2>Ringkasan per proses pengolahan</h2>
-        <p class="meta" style="margin: 0 0 12px 0; color: #6b7280; font-size: 12px">
+        <p class="meta">
           <strong>Jumlah pesanan</strong> = banyaknya baris pemesanan pada filter ini.
           <strong>Total kg</strong> = penjumlahan kolom jumlah (kg) untuk proses pengolahan yang sama.
         </p>
@@ -2141,19 +2111,20 @@ function htmlRekapPemesananAggPerProses(items) {
           <thead>
             <tr>
               <th>Proses pengolahan</th>
-              <th style="text-align: right">Jumlah pesanan</th>
-              <th style="text-align: right">Total kg</th>
+              <th>Jumlah pesanan</th>
+              <th>Total kg</th>
             </tr>
           </thead>
           <tbody>
             ${body}
             <tr>
               <td><strong>Total</strong></td>
-              <td style="text-align: right"><strong>${totalN}</strong></td>
-              <td style="text-align: right"><strong>${fmtKg(totalKg)}</strong></td>
+              <td><strong>${totalN}</strong></td>
+              <td><strong>${fmtKg(totalKg)}</strong></td>
             </tr>
           </tbody>
         </table>
+        </div>
       </div>`;
 }
 
@@ -2367,12 +2338,17 @@ function buildRekapReportFragments(config, data) {
       : "";
   const extraSummaryHtml =
     typeof config.extraSummary === "function"
-      ? `
-        <div class="summary">
-          <h2>Ringkasan Tambahan</h2>
+      ? (() => {
+          const rows = config.extraSummary(data);
+          if (!rows || !rows.length) return "";
+          const wrapClass = config.extraSummaryWrapClass || "summary";
+          const h2 =
+            config.extraSummaryHeading || "Ringkasan Tambahan";
+          return `
+        <div class="${wrapClass}">
+          <h2>${h2}</h2>
           <ul>
-            ${config
-              .extraSummary(data)
+            ${rows
               .map(
                 (item) =>
                   `<li><strong>${item.label}:</strong> ${item.value}</li>`
@@ -2380,7 +2356,8 @@ function buildRekapReportFragments(config, data) {
               .join("")}
           </ul>
         </div>
-      `
+      `;
+        })()
       : "";
   return { columnsHeader, rowsHtml, summaryHtml, extraSummaryHtml };
 }
@@ -2393,6 +2370,167 @@ const REKAP_EXCEL_BORDER = {
 function rekapExcelBorderAll(cell) {
   const b = REKAP_EXCEL_BORDER;
   cell.border = { top: b, left: b, bottom: b, right: b };
+}
+
+/** Gaya tambahan untuk rekap pemesanan (tabel utama, sub-ringkasan, total). */
+function getRekapPemesananSkinCss() {
+  return `
+          .rekap-cat-pemesanan table.rekap-pemesanan-main {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+            border-radius: 8px;
+            overflow: hidden;
+          }
+          .rekap-cat-pemesanan table.rekap-pemesanan-main th,
+          .rekap-cat-pemesanan table.rekap-pemesanan-main td {
+            border: 1px solid #d1d5db;
+            padding: 9px 8px;
+            vertical-align: middle;
+          }
+          .rekap-cat-pemesanan table.rekap-pemesanan-main thead th {
+            background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%);
+            font-weight: 600;
+            white-space: nowrap;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            border-bottom: 2px solid #cbd5e1;
+          }
+          .rekap-cat-pemesanan table.rekap-pemesanan-main tbody tr:nth-child(even) td {
+            background-color: #fafafa;
+          }
+          .rekap-cat-pemesanan table.rekap-pemesanan-main tbody tr:hover td {
+            background-color: #f1f5f9 !important;
+          }
+          .rekap-cat-pemesanan table.rekap-pemesanan-main th:nth-child(1),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main td:nth-child(1) {
+            text-align: center;
+            width: 2.75rem;
+          }
+          .rekap-cat-pemesanan table.rekap-pemesanan-main th:nth-child(10),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main td:nth-child(10),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main th:nth-child(11),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main td:nth-child(11),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main th:nth-child(12),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main td:nth-child(12),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main th:nth-child(13),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main td:nth-child(13),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main th:nth-child(14),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main td:nth-child(14) {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+          }
+          .rekap-cat-pemesanan table.rekap-pemesanan-main th:nth-child(15),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main td:nth-child(15),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main th:nth-child(16),
+          .rekap-cat-pemesanan table.rekap-pemesanan-main td:nth-child(16) {
+            text-align: center;
+            white-space: nowrap;
+          }
+          .rekap-cat-pemesanan table.rekap-pemesanan-main td:nth-child(4) {
+            max-width: 11rem;
+            word-wrap: break-word;
+          }
+          .rekap-cat-pemesanan table.rekap-pemesanan-main td:nth-child(9) {
+            max-width: 13rem;
+            font-size: 10px;
+            line-height: 1.35;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap {
+            margin-top: 28px;
+            padding: 0;
+            border: none;
+            background: transparent;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap .inner {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+            background: #fff;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap h2 {
+            margin: 0;
+            padding: 12px 16px;
+            font-size: 13px;
+            background: #0f172a;
+            color: #f8fafc;
+            letter-spacing: 0.02em;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap .meta {
+            padding: 10px 16px;
+            margin: 0;
+            background: #f8fafc;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 11px;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            margin: 0;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap th,
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap td {
+            border: 1px solid #e2e8f0;
+            padding: 8px 10px;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap thead th {
+            background: #f1f5f9;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.03em;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap tbody tr:nth-child(even) td {
+            background: #fafafa;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap td:nth-child(2),
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap td:nth-child(3),
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap th:nth-child(2),
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap th:nth-child(3) {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-proses-wrap tr:last-child td {
+            background: #fffbeb;
+            font-weight: 600;
+            border-top: 2px solid #fcd34d;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-totals {
+            margin-top: 22px;
+            padding: 14px 16px;
+            background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-totals h2 {
+            margin: 0 0 10px 0;
+            font-size: 13px;
+            color: #0f172a;
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 8px;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-totals ul {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 20px;
+            margin: 0;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-totals li {
+            padding: 10px 12px;
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            margin: 0;
+            font-size: 12px;
+          }
+          .rekap-cat-pemesanan .summary.rekap-pemesanan-totals li strong {
+            color: #334155;
+          }
+  `;
 }
 
 /**
@@ -2412,6 +2550,13 @@ async function exportRekapView(category) {
   const { config, data, filterInfo, generatedAt } = ctx;
   const { columnsHeader, rowsHtml, summaryHtml, extraSummaryHtml } =
     buildRekapReportFragments(config, data);
+
+  const pemesananSkin =
+    category === "pemesanan" ? getRekapPemesananSkinCss() : "";
+  const bodyClass =
+    category === "pemesanan" ? "rekap-cat-pemesanan" : "";
+  const mainTableClassPemesanan =
+    category === "pemesanan" ? ' class="rekap-pemesanan-main"' : "";
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -2485,12 +2630,13 @@ async function exportRekapView(category) {
             font-size: 11px;
             color: #6b7280;
           }
+          ${pemesananSkin}
         </style>
       </head>
-      <body>
+      <body class="${bodyClass}">
         <h1>${config.title}</h1>
         <div class="meta">${filterInfo} • Total data: ${data.length}</div>
-        <table>
+        <table${mainTableClassPemesanan}>
           <thead>
             <tr>
               <th>No</th>
@@ -2540,6 +2686,13 @@ async function exportRekapPdf(category) {
   const { config, data, filterInfo, generatedAt } = ctx;
   const { columnsHeader, rowsHtml, summaryHtml, extraSummaryHtml } =
     buildRekapReportFragments(config, data);
+
+  const pemesananSkinPdf =
+    category === "pemesanan" ? getRekapPemesananSkinCss() : "";
+  const bodyClassPdf =
+    category === "pemesanan" ? "rekap-cat-pemesanan" : "";
+  const dataTableClassPdf =
+    category === "pemesanan" ? "data-table rekap-pemesanan-main" : "data-table";
 
   const infoRowsHtml = `
     <table class="info-table" aria-label="Informasi laporan">
@@ -2669,9 +2822,10 @@ async function exportRekapPdf(category) {
             .no-print { display: none !important; }
             body { margin: 12mm; }
           }
+          ${pemesananSkinPdf}
         </style>
       </head>
-      <body>
+      <body class="${bodyClassPdf}">
         <div class="no-print">
           <strong>Cetak atau simpan sebagai PDF</strong>
           Gunakan menu browser: <kbd>Ctrl+P</kbd> (Windows) atau <kbd>Cmd+P</kbd> (Mac), lalu pilih &quot;Simpan sebagai PDF&quot; sebagai printer.
@@ -2680,7 +2834,7 @@ async function exportRekapPdf(category) {
         <div class="brand">Argopuro Walida</div>
         <h1>${config.title}</h1>
         ${infoRowsHtml}
-        <table class="data-table">
+        <table class="${dataTableClassPdf}">
           <thead>
             <tr>
               <th>No</th>
