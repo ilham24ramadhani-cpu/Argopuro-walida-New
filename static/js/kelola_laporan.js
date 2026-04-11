@@ -1402,6 +1402,95 @@ const LAPORAN_REKAP_CONFIG = {
       ];
     },
   },
+  pemesanan: {
+    title: "Laporan Rekap Pemesanan",
+    columns: [
+      { label: "ID Pembelian", value: (item) => item.idPembelian || "-" },
+      { label: "Nama Pembeli", value: (item) => item.namaPembeli || "-" },
+      { label: "Tipe", value: (item) => item.tipePemesanan || "-" },
+      { label: "Negara", value: (item) => item.negara || "-" },
+      { label: "Produk", value: (item) => item.tipeProduk || "-" },
+      {
+        label: "Jumlah (kg)",
+        value: (item) =>
+          safeNumber(item.jumlahPesananKg)
+            ? formatKgValue(safeNumber(item.jumlahPesananKg))
+            : "-",
+      },
+      {
+        label: "Total Harga (Rp)",
+        value: (item) =>
+          item.totalHarga != null && item.totalHarga !== ""
+            ? formatCurrencyNumeric(safeNumber(item.totalHarga))
+            : "-",
+      },
+      { label: "Status", value: (item) => item.statusPemesanan || "-" },
+      {
+        label: "Tanggal",
+        value: (item) => formatDate(item.tanggalPemesanan),
+      },
+    ],
+    filterKey: "pemesanan",
+    dataset: () => pemesanan,
+    dateGetter: (item) => item.tanggalPemesanan,
+    extraSummary: (items) => {
+      if (!items.length) return [];
+      const totalKg = items.reduce(
+        (sum, p) => sum + safeNumber(p.jumlahPesananKg),
+        0
+      );
+      const totalHarga = items.reduce(
+        (sum, p) => sum + safeNumber(p.totalHarga),
+        0
+      );
+      return [
+        { label: "Total jumlah pesanan (kg)", value: formatKgValue(totalKg) },
+        {
+          label: "Total harga (Rp)",
+          value: formatCurrencyNumeric(totalHarga),
+        },
+      ];
+    },
+  },
+  pemasok: {
+    title: "Laporan Rekap Pemasok",
+    columns: [
+      { label: "ID Pemasok", value: (item) => item.idPemasok || "-" },
+      { label: "Nama", value: (item) => item.nama || "-" },
+      { label: "Alamat", value: (item) => item.alamat || "-" },
+      { label: "Kontak", value: (item) => item.kontak || "-" },
+      {
+        label: "Nama Perkebunan",
+        value: (item) => item.namaPerkebunan || "-",
+      },
+      {
+        label: "Status",
+        value: (item) =>
+          item.status === "Utama"
+            ? "Utama"
+            : item.status === "Cadangan"
+              ? "Cadangan"
+              : item.status || "-",
+      },
+    ],
+    filterKey: "pemasok",
+    dataset: () => pemasok,
+    dateGetter: () => null,
+    extraSummary: (items) => {
+      if (!items.length) return [];
+      let utama = 0;
+      let cadangan = 0;
+      items.forEach((x) => {
+        if (x.status === "Utama") utama++;
+        else if (x.status === "Cadangan") cadangan++;
+      });
+      return [
+        { label: "Jumlah pemasok", value: String(items.length) },
+        { label: "Status Utama", value: String(utama) },
+        { label: "Status Cadangan", value: String(cadangan) },
+      ];
+    },
+  },
 };
 
 // Fungsi aggregateStok dihapus karena sekarang menggunakan API Stok.getAll()
@@ -1838,6 +1927,10 @@ function getFilteredDataForCategory(category) {
     case "stok":
       // Gunakan cached stok array dari displayStok() atau fallback ke empty array
       return window.cachedStokArray || [];
+    case "pemesanan":
+      return getPemesananFilteredForLaporan();
+    case "pemasok":
+      return Array.isArray(pemasok) ? [...pemasok] : [];
     default:
       return [];
   }
@@ -1928,6 +2021,22 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
 }
 
 function getFilterDescription(category) {
+  if (category === "pemesanan") {
+    const parts = [];
+    const elT = document.getElementById("pemesananFilterTanggal");
+    const elS = document.getElementById("pemesananFilterStatus");
+    const elTip = document.getElementById("pemesananFilterTipe");
+    const ft = elT && elT.value;
+    const fs = elS && elS.value;
+    const ftip = elTip && elTip.value;
+    if (ft) parts.push(`Tanggal: ${formatDate(ft)}`);
+    if (fs) parts.push(`Status: ${fs}`);
+    if (ftip) parts.push(`Tipe: ${ftip}`);
+    return parts.length ? parts.join(" | ") : "Filter: semua pemesanan";
+  }
+  if (category === "pemasok") {
+    return "Data: semua pemasok terdaftar";
+  }
   const filter = tableFilters[category];
   let timePart = "Periode: Semua";
   if (filter && filter.mode !== "all" && filter.value) {
@@ -1965,10 +2074,15 @@ const REKAP_CATEGORY_FILE_SLUG = {
   sanitasi: "sanitasi",
   keuangan: "pengeluaran",
   stok: "stok",
+  pemesanan: "pemesanan",
+  pemasok: "pemasok",
 };
 
 /** Muat data rekap sesuai filter. error: 'no_config' | 'no_data' jika gagal. */
 async function loadRekapExportContext(category) {
+  if (category === "pemesanan" || category === "pemasok") {
+    await loadAllReportData();
+  }
   const config = LAPORAN_REKAP_CONFIG[category];
   if (!config) return { error: "no_config" };
 
@@ -5444,6 +5558,27 @@ document.addEventListener("DOMContentLoaded", function () {
 
 // ==================== LAPORAN PEMESANAN ====================
 
+/** Filter pemesanan dari kontrol tab laporan (sama untuk tabel & rekap). */
+function getPemesananFilteredForLaporan() {
+  if (!Array.isArray(pemesanan)) return [];
+  const filterTanggal = document.getElementById("pemesananFilterTanggal")
+    ? document.getElementById("pemesananFilterTanggal").value
+    : "";
+  const filterStatus = document.getElementById("pemesananFilterStatus")
+    ? document.getElementById("pemesananFilterStatus").value
+    : "";
+  const filterTipe = document.getElementById("pemesananFilterTipe")
+    ? document.getElementById("pemesananFilterTipe").value
+    : "";
+  return pemesanan.filter((p) => {
+    const matchTanggal =
+      !filterTanggal || p.tanggalPemesanan === filterTanggal;
+    const matchStatus = !filterStatus || p.statusPemesanan === filterStatus;
+    const matchTipe = !filterTipe || p.tipePemesanan === filterTipe;
+    return matchTanggal && matchStatus && matchTipe;
+  });
+}
+
 // Load dan display pemesanan data untuk laporan
 async function loadPemesananLaporan() {
   try {
@@ -5465,24 +5600,7 @@ function displayPemesananLaporan() {
   if (!tableBody) return;
 
   try {
-    const filterTanggal = document.getElementById("pemesananFilterTanggal")
-      ? document.getElementById("pemesananFilterTanggal").value
-      : "";
-    const filterStatus = document.getElementById("pemesananFilterStatus")
-      ? document.getElementById("pemesananFilterStatus").value
-      : "";
-    const filterTipe = document.getElementById("pemesananFilterTipe")
-      ? document.getElementById("pemesananFilterTipe").value
-      : "";
-
-    let filteredPemesanan = pemesanan.filter((p) => {
-      const matchTanggal =
-        !filterTanggal || p.tanggalPemesanan === filterTanggal;
-      const matchStatus = !filterStatus || p.statusPemesanan === filterStatus;
-      const matchTipe = !filterTipe || p.tipePemesanan === filterTipe;
-
-      return matchTanggal && matchStatus && matchTipe;
-    });
+    const filteredPemesanan = getPemesananFilteredForLaporan();
 
     if (filteredPemesanan.length === 0) {
       tableBody.innerHTML = `
@@ -5546,112 +5664,6 @@ function displayPemesananLaporan() {
         </td>
       </tr>
     `;
-  }
-}
-
-// Export rekap pemesanan
-async function exportRekapPemesanan() {
-  try {
-    await loadAllReportData();
-
-    if (!window.jspdf) {
-      alert("Library jsPDF belum dimuat. Silakan refresh halaman.");
-      return;
-    }
-
-    const { jsPDF: jsPDFLib } = window.jspdf;
-    const doc = new jsPDFLib();
-
-    // Header
-    doc.setFontSize(20);
-    doc.setFont(undefined, "bold");
-    doc.text("LAPORAN PEMESANAN", 105, 20, { align: "center" });
-    doc.setFontSize(14);
-    doc.setFont(undefined, "normal");
-    doc.text("Argopuro Walida", 105, 30, { align: "center" });
-    doc.text("Sistem Manajemen Produksi Kopi", 105, 37, { align: "center" });
-    doc.line(20, 42, 190, 42);
-
-    const filterTanggal = document.getElementById("pemesananFilterTanggal")
-      ? document.getElementById("pemesananFilterTanggal").value
-      : "";
-    const filterStatus = document.getElementById("pemesananFilterStatus")
-      ? document.getElementById("pemesananFilterStatus").value
-      : "";
-    const filterTipe = document.getElementById("pemesananFilterTipe")
-      ? document.getElementById("pemesananFilterTipe").value
-      : "";
-
-    let y = 48;
-    const filterPairs = [];
-    if (filterTanggal) filterPairs.push(["Tanggal", filterTanggal]);
-    if (filterStatus) filterPairs.push(["Status", filterStatus]);
-    if (filterTipe) filterPairs.push(["Tipe pemesanan", filterTipe]);
-    if (filterPairs.length > 0) {
-      y = pdfRenderKeyValueTable(doc, y, filterPairs, { title: "Filter" });
-    }
-
-    const filteredPemesanan = pemesanan.filter((p) => {
-      const matchTanggal =
-        !filterTanggal || p.tanggalPemesanan === filterTanggal;
-      const matchStatus = !filterStatus || p.statusPemesanan === filterStatus;
-      const matchTipe = !filterTipe || p.tipePemesanan === filterTipe;
-      return matchTanggal && matchStatus && matchTipe;
-    });
-
-    const pemMatrix = [
-      [
-        "No",
-        "ID Pembelian",
-        "Nama Pembeli",
-        "Tipe",
-        "Jumlah (kg)",
-        "Total Harga (Rp)",
-        "Status",
-      ],
-      ...filteredPemesanan.map((p, index) => [
-        String(index + 1),
-        p.idPembelian || "—",
-        p.namaPembeli || "—",
-        p.tipePemesanan || "—",
-        (p.jumlahPesananKg || 0).toLocaleString("id-ID"),
-        (p.totalHarga || 0).toLocaleString("id-ID"),
-        p.statusPemesanan || "—",
-      ]),
-    ];
-    y = pdfRenderTableFromMatrix(doc, y, pemMatrix, [8, 32, 36, 22, 22, 28, 22]);
-
-    const totalJumlah = filteredPemesanan.reduce(
-      (sum, p) => sum + (parseFloat(p.jumlahPesananKg) || 0),
-      0
-    );
-    const totalHarga = filteredPemesanan.reduce(
-      (sum, p) => sum + (parseFloat(p.totalHarga) || 0),
-      0
-    );
-    if (y > 220) {
-      doc.addPage();
-      y = 20;
-    }
-    y += 4;
-    y = pdfRenderKeyValueTable(
-      doc,
-      y,
-      [
-        ["Total jumlah pesanan (kg)", totalJumlah.toLocaleString("id-ID")],
-        ["Total harga (Rp)", totalHarga.toLocaleString("id-ID")],
-      ],
-      { title: "Ringkasan" }
-    );
-
-    // Save PDF
-    const filename = `laporan_pemesanan_${
-      new Date().toISOString().split("T")[0]
-    }.pdf`;
-    doc.save(filename);
-  } catch (error) {
-    console.error("❌ Error exporting pemesanan rekap:", error);
-    alert(`Error exporting rekap: ${error.message || "Unknown error"}`);
   }
 }
 

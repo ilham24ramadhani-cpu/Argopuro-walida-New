@@ -1004,6 +1004,61 @@
               role="tabpanel"
               aria-labelledby="pemasok-tab"
             >
+              <div class="row gy-3 gx-3 align-items-end mb-3 filter-bar">
+                <div class="col-md-9"></div>
+                <div class="col-md-3">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Export rekap</label
+                  >
+                  <div class="btn-group w-100">
+                    <button
+                      class="btn btn-primary btn-sm dropdown-toggle w-100"
+                      type="button"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      aria-label="Export rekap pemasok"
+                    >
+                      <i class="bi bi-download me-1"></i>Export
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapView('pemasok')"
+                        >
+                          <i class="bi bi-eye text-primary me-2"></i>
+                          Lihat rekap
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapPdf('pemasok')"
+                        >
+                          <i
+                            class="bi bi-file-earmark-pdf text-danger me-2"
+                          ></i
+                          >PDF (cetak / simpan)
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapExcel('pemasok')"
+                        >
+                          <i
+                            class="bi bi-file-earmark-spreadsheet text-success me-2"
+                          ></i
+                          >Excel (.xlsx)
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
               <div class="card shadow-sm">
                 <div class="card-body">
                   <div class="table-responsive">
@@ -1339,15 +1394,55 @@
                 </div>
                 <div class="col-md-3">
                   <label class="form-label small text-muted mb-1 invisible"
-                    >Export</label
+                    >Export rekap</label
                   >
-                  <button
-                    class="btn btn-primary btn-sm w-100"
-                    type="button"
-                    onclick="exportRekapPemesanan()"
-                  >
-                    <i class="bi bi-file-earmark-arrow-down me-1"></i>Export PDF
-                  </button>
+                  <div class="btn-group w-100">
+                    <button
+                      class="btn btn-primary btn-sm dropdown-toggle w-100"
+                      type="button"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      aria-label="Export rekap pemesanan"
+                    >
+                      <i class="bi bi-download me-1"></i>Export
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapView('pemesanan')"
+                        >
+                          <i class="bi bi-eye text-primary me-2"></i>
+                          Lihat rekap
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapPdf('pemesanan')"
+                        >
+                          <i
+                            class="bi bi-file-earmark-pdf text-danger me-2"
+                          ></i
+                          >PDF (cetak / simpan)
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapExcel('pemesanan')"
+                        >
+                          <i
+                            class="bi bi-file-earmark-spreadsheet text-success me-2"
+                          ></i
+                          >Excel (.xlsx)
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </div>
               <div class="card shadow-sm">
