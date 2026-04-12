@@ -1164,28 +1164,29 @@ const LAPORAN_REKAP_CONFIG = {
         0
       );
 
-      // Hitung proses pengolahan yang paling sering dan paling sedikit
-      const prosesCount = {};
+      // Agregat Σ berat awal per proses (= bahan masuk ke produksi per baris rekap)
+      const prosesBeratAwal = {};
       const bahanMapSummary = getBahanMapForLaporan();
       items.forEach((entry) => {
         const proses =
           getProsesPengolahanTampilanLaporan(entry, bahanMapSummary) || "-";
-        prosesCount[proses] = (prosesCount[proses] || 0) + 1;
+        const kg = safeNumber(entry.beratAwal);
+        prosesBeratAwal[proses] = (prosesBeratAwal[proses] || 0) + kg;
       });
 
-      let prosesPalingSering = null;
+      let prosesPalingBanyak = null;
       let prosesPalingSedikit = null;
-      let maxCount = 0;
-      let minCount = Infinity;
+      let maxKg = -Infinity;
+      let minKg = Infinity;
 
-      Object.keys(prosesCount).forEach((proses) => {
-        const count = prosesCount[proses];
-        if (count > maxCount) {
-          maxCount = count;
-          prosesPalingSering = proses;
+      Object.keys(prosesBeratAwal).forEach((proses) => {
+        const kg = prosesBeratAwal[proses];
+        if (kg > maxKg) {
+          maxKg = kg;
+          prosesPalingBanyak = proses;
         }
-        if (count < minCount) {
-          minCount = count;
+        if (kg < minKg) {
+          minKg = kg;
           prosesPalingSedikit = proses;
         }
       });
@@ -1200,15 +1201,15 @@ const LAPORAN_REKAP_CONFIG = {
           value: formatKgValue(totalBeratAkhir),
         },
         {
-          label: "Proses Pengolahan Paling Sering Diproduksi",
-          value: prosesPalingSering
-            ? `${prosesPalingSering} (${maxCount} kali)`
+          label: "Proses pengolahan paling banyak (berdasarkan bahan masuk)",
+          value: prosesPalingBanyak
+            ? `${prosesPalingBanyak} — Σ ${formatKgValue(maxKg)} berat awal`
             : "-",
         },
         {
-          label: "Proses Pengolahan Paling Sedikit Diproduksi",
+          label: "Proses pengolahan paling sedikit (berdasarkan bahan masuk)",
           value: prosesPalingSedikit
-            ? `${prosesPalingSedikit} (${minCount} kali)`
+            ? `${prosesPalingSedikit} — Σ ${formatKgValue(minKg)} berat awal`
             : "-",
         },
       ];
