@@ -8,6 +8,9 @@ let currentEditId = null;
 let currentDeleteId = null;
 let pembeliMasterList = [];
 let currentPembeliEditId = null;
+/** Opsi master untuk baris kloter (diisi loadMasterDataOptions) */
+let masterProsesNames = [];
+let masterJenisKopiNames = [];
 
 // Wait for API to be ready (event-based + polling fallback)
 async function waitForAPI() {
@@ -98,10 +101,16 @@ function findStokRowForPemesanan(p) {
 }
 
 function showAggregatedStokForPemesanan(p) {
-  const row = findStokRowForPemesanan(p);
-  const stok = row
-    ? parseFloat(row.stokTersedia ?? row.totalBerat ?? 0) || 0
-    : 0;
+  const lines = getPemesananKloterLinesFromDoc(p);
+  const multi =
+    lines.length > 1 ||
+    new Set(
+      lines.map(
+        (L) =>
+          `${(L.tipeProduk || "").trim()}|${(L.jenisKopi || "").trim()}|${(L.prosesPengolahan || "").trim()}`,
+      ),
+    ).size > 1;
+
   const displayStokTersedia = document.getElementById("displayStokTersedia");
   const displayProduksiProses = document.getElementById(
     "displayProduksiProses",
@@ -111,6 +120,25 @@ function showAggregatedStokForPemesanan(p) {
   );
   const stokInfoDisplay = document.getElementById("stokInfoDisplay");
   const hintEl = document.getElementById("displayStokAgregatHint");
+
+  if (multi) {
+    if (displayStokTersedia) displayStokTersedia.textContent = "—";
+    if (displayProduksiProses) displayProduksiProses.textContent = "Campuran";
+    if (displayProduksiJenisKopi)
+      displayProduksiJenisKopi.textContent = "Campuran";
+    if (hintEl) {
+      hintEl.textContent =
+        "Beberapa kloter: stok dicek per kombinasi tipe, jenis kopi, dan proses saat Anda menekan Proses Ordering (validasi di server).";
+      hintEl.className = "small text-muted mb-0";
+    }
+    if (stokInfoDisplay) stokInfoDisplay.style.display = "block";
+    return;
+  }
+
+  const row = findStokRowForPemesanan(p);
+  const stok = row
+    ? parseFloat(row.stokTersedia ?? row.totalBerat ?? 0) || 0
+    : 0;
 
   if (displayStokTersedia) {
     displayStokTersedia.textContent = stok.toLocaleString("id-ID", {
@@ -178,12 +206,197 @@ function toggleNegaraField() {
   }
 }
 
-// Calculate total harga (subtotal + pajak + pengiriman)
-function calculateTotalHarga() {
-  const jumlah = parseFloat(
-    document.getElementById("jumlahPesananKg").value || 0,
+/** Baca kloter dari dokumen API (kloter → items → satu baris root). */
+function getPemesananKloterLinesFromDoc(p) {
+  if (!p) return [];
+  const rows = p.kloter || p.items;
+  if (Array.isArray(rows) && rows.length > 0) {
+    return rows.map((r) => ({
+      tipeProduk: r.tipeProduk || "",
+      jenisKopi: r.jenisKopi || "",
+      prosesPengolahan: r.prosesPengolahan || "",
+      beratKg:
+        r.beratKg != null && r.beratKg !== ""
+          ? r.beratKg
+          : r.jumlahPesananKg != null
+            ? r.jumlahPesananKg
+            : "",
+      hargaPerKg: r.hargaPerKg != null ? r.hargaPerKg : "",
+    }));
+  }
+  return [
+    {
+      tipeProduk: p.tipeProduk || "",
+      jenisKopi: p.jenisKopi || "",
+      prosesPengolahan: p.prosesPengolahan || "",
+      beratKg: p.jumlahPesananKg != null ? p.jumlahPesananKg : "",
+      hargaPerKg: p.hargaPerKg != null ? p.hargaPerKg : "",
+    },
+  ];
+}
+
+function totalBeratKloterFromDoc(p) {
+  const lines = getPemesananKloterLinesFromDoc(p);
+  let s = 0;
+  lines.forEach((L) => {
+    const w = parseFloat(L.beratKg);
+    if (Number.isFinite(w)) s += w;
+  });
+  return s || parseFloat(p.jumlahPesananKg) || 0;
+}
+
+function ringkasProdukUntukTabel(p) {
+  const lines = getPemesananKloterLinesFromDoc(p);
+  if (lines.length > 1) {
+    const t0 = (lines[0].tipeProduk || "").trim();
+    return `${lines.length} kloter${t0 ? ` · ${t0}…` : ""}`;
+  }
+  if (lines.length === 1) {
+    const L = lines[0];
+    const bits = [L.tipeProduk, L.jenisKopi, L.prosesPengolahan].filter(
+      Boolean,
+    );
+    return bits.join(" · ") || p.tipeProduk || "—";
+  }
+  return p.tipeProduk || "—";
+}
+
+function buildTipeProdukOptionsHtml(selected) {
+  const opts = ["Green Beans", "Pixel"].map(
+    (nama) =>
+      `<option value="${escapeHtmlAttr(nama)}"${selected === nama ? " selected" : ""}>${escapeHtmlAttr(nama)}</option>`,
   );
-  const harga = parseFloat(document.getElementById("hargaPerKg").value || 0);
+  return `<option value="">Pilih</option>${opts.join("")}`;
+}
+
+function buildJenisKopiOptionsHtml(selected) {
+  let html = '<option value="">Pilih</option>';
+  masterJenisKopiNames.forEach((nama) => {
+    html += `<option value="${escapeHtmlAttr(nama)}"${selected === nama ? " selected" : ""}>${escapeHtmlAttr(nama)}</option>`;
+  });
+  return html;
+}
+
+function buildProsesOptionsHtml(selected) {
+  let html = '<option value="">Pilih</option>';
+  masterProsesNames.forEach((nama) => {
+    html += `<option value="${escapeHtmlAttr(nama)}"${selected === nama ? " selected" : ""}>${escapeHtmlAttr(nama)}</option>`;
+  });
+  return html;
+}
+
+function updateKloterRowSubtotal(tr) {
+  const b = parseFloat(tr.querySelector(".kloter-berat")?.value || 0);
+  const h = parseFloat(tr.querySelector(".kloter-harga")?.value || 0);
+  const sub = Number.isFinite(b) && Number.isFinite(h) ? b * h : 0;
+  const span = tr.querySelector(".kloter-subtotal");
+  if (span) {
+    span.textContent =
+      sub > 0
+        ? `Rp ${sub.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`
+        : "—";
+    span.dataset.subnilai = String(sub);
+  }
+}
+
+function syncKloterRemoveButtons() {
+  const tb = document.getElementById("tbodyKloterPemesanan");
+  if (!tb) return;
+  const rows = tb.querySelectorAll("tr.kloter-row");
+  rows.forEach((tr) => {
+    const btn = tr.querySelector("button[data-remove-kloter]");
+    if (btn) btn.disabled = rows.length <= 1;
+  });
+}
+
+function addKloterRow(initial = {}) {
+  const tb = document.getElementById("tbodyKloterPemesanan");
+  if (!tb) return;
+  const tipe = (initial.tipeProduk || "").trim();
+  const jk = (initial.jenisKopi || "").trim();
+  const pr = (initial.prosesPengolahan || "").trim();
+  const berat =
+    initial.beratKg !== "" && initial.beratKg != null ? initial.beratKg : "";
+  const hp =
+    initial.hargaPerKg !== "" && initial.hargaPerKg != null
+      ? initial.hargaPerKg
+      : "";
+  const tr = document.createElement("tr");
+  tr.className = "kloter-row";
+  tr.innerHTML = `
+    <td><select class="form-select form-select-sm kloter-tipe" required>${buildTipeProdukOptionsHtml(tipe)}</select></td>
+    <td><select class="form-select form-select-sm kloter-jenis" required>${buildJenisKopiOptionsHtml(jk)}</select></td>
+    <td><select class="form-select form-select-sm kloter-proses" required>${buildProsesOptionsHtml(pr)}</select></td>
+    <td><input type="number" class="form-control form-control-sm kloter-berat text-end" placeholder="0" min="0" step="0.01" value="${berat === "" ? "" : escapeHtmlAttr(String(berat))}" required /></td>
+    <td><input type="number" class="form-control form-control-sm kloter-harga text-end" placeholder="0" min="0" step="1000" value="${hp === "" ? "" : escapeHtmlAttr(String(hp))}" required /></td>
+    <td class="text-end"><span class="kloter-subtotal small text-muted" data-subnilai="0">—</span></td>
+    <td class="text-center p-0 align-middle"><button type="button" class="btn btn-sm btn-outline-danger border-0" data-remove-kloter="1" onclick="removeKloterRow(this)" title="Hapus kloter"><i class="bi bi-x-lg"></i></button></td>
+  `;
+  tb.appendChild(tr);
+  tr.querySelectorAll("select, input").forEach((el) => {
+    el.addEventListener("change", () => calculateTotalHarga());
+    el.addEventListener("input", () => calculateTotalHarga());
+  });
+  updateKloterRowSubtotal(tr);
+  syncKloterRemoveButtons();
+}
+
+function addKloterRowClick() {
+  addKloterRow({});
+  calculateTotalHarga();
+}
+
+function removeKloterRow(btn) {
+  const tr = btn.closest("tr");
+  const tb = document.getElementById("tbodyKloterPemesanan");
+  if (!tr || !tb) return;
+  if (tb.querySelectorAll("tr.kloter-row").length <= 1) return;
+  tr.remove();
+  syncKloterRemoveButtons();
+  calculateTotalHarga();
+}
+
+function renderKloterTable(rows) {
+  const tb = document.getElementById("tbodyKloterPemesanan");
+  if (!tb) return;
+  tb.innerHTML = "";
+  const list = Array.isArray(rows) && rows.length ? rows : [{}];
+  list.forEach((r) => addKloterRow(r));
+  calculateTotalHarga();
+}
+
+function collectKloterFromForm() {
+  const tb = document.getElementById("tbodyKloterPemesanan");
+  if (!tb) return [];
+  const out = [];
+  tb.querySelectorAll("tr.kloter-row").forEach((tr) => {
+    const tipe = (tr.querySelector(".kloter-tipe")?.value || "").trim();
+    const jk = (tr.querySelector(".kloter-jenis")?.value || "").trim();
+    const pr = (tr.querySelector(".kloter-proses")?.value || "").trim();
+    const berat = parseFloat(tr.querySelector(".kloter-berat")?.value || 0);
+    const hp = parseFloat(tr.querySelector(".kloter-harga")?.value || 0);
+    out.push({
+      tipeProduk: tipe,
+      jenisKopi: jk,
+      prosesPengolahan: pr,
+      beratKg: berat,
+      hargaPerKg: hp,
+    });
+  });
+  return out;
+}
+
+// Calculate total harga (Σ subtotal kloter + pajak + pengiriman)
+function calculateTotalHarga() {
+  const tb = document.getElementById("tbodyKloterPemesanan");
+  let subtotalBarang = 0;
+  if (tb) {
+    tb.querySelectorAll("tr.kloter-row").forEach((tr) => {
+      updateKloterRowSubtotal(tr);
+      const v = parseFloat(tr.querySelector(".kloter-subtotal")?.dataset.subnilai || 0);
+      if (Number.isFinite(v)) subtotalBarang += v;
+    });
+  }
   const pajakRaw = parseFloat(
     document.getElementById("biayaPajak")?.value || 0,
   );
@@ -192,11 +405,12 @@ function calculateTotalHarga() {
   );
   const pajak = Number.isFinite(pajakRaw) ? Math.max(0, pajakRaw) : 0;
   const kirim = Number.isFinite(kirimRaw) ? Math.max(0, kirimRaw) : 0;
-  const total = jumlah * harga + pajak + kirim;
+  const total = subtotalBarang + pajak + kirim;
 
-  document.getElementById("totalHarga").value = total
-    .toLocaleString("id-ID")
-    .replace(/\./g, ",");
+  const th = document.getElementById("totalHarga");
+  if (th) {
+    th.value = total.toLocaleString("id-ID").replace(/\./g, ",");
+  }
 }
 
 // ==================== MASTER PEMBELI (tab Data Pembeli) ====================
@@ -431,46 +645,15 @@ async function loadMasterDataOptions() {
       return;
     }
 
-    // Load Tipe Produk (standar: Green Beans dan Pixel)
-    const tipeProdukList = ['Green Beans', 'Pixel'];
-    const tipeProdukSelect = document.getElementById("tipeProduk");
-    if (tipeProdukSelect) {
-      tipeProdukSelect.innerHTML =
-        '<option value="">Pilih Tipe Produk</option>';
-      tipeProdukList.forEach((nama) => {
-        const option = document.createElement("option");
-        option.value = nama;
-        option.textContent = nama;
-        tipeProdukSelect.appendChild(option);
-      });
-    }
-
-    // Load Proses Pengolahan
     const proses = await window.API.MasterData.proses.getAll();
-    const prosesSelect = document.getElementById("prosesPengolahan");
-    if (prosesSelect) {
-      prosesSelect.innerHTML =
-        '<option value="">Pilih Proses Pengolahan</option>';
-      proses.forEach((p) => {
-        const option = document.createElement("option");
-        option.value = p.namaProses || p.nama;
-        option.textContent = p.namaProses || p.nama;
-        prosesSelect.appendChild(option);
-      });
-    }
+    masterProsesNames = (proses || [])
+      .map((p) => (p.namaProses || p.nama || "").trim())
+      .filter(Boolean);
 
-    // Load Jenis Kopi
     const jenisKopi = await window.API.MasterData.jenisKopi.getAll();
-    const jenisKopiSelect = document.getElementById("jenisKopi");
-    if (jenisKopiSelect) {
-      jenisKopiSelect.innerHTML = '<option value="">Pilih Jenis Kopi</option>';
-      jenisKopi.forEach((j) => {
-        const option = document.createElement("option");
-        option.value = j.namaJenisKopi || j.nama;
-        option.textContent = j.namaJenisKopi || j.nama;
-        jenisKopiSelect.appendChild(option);
-      });
-    }
+    masterJenisKopiNames = (jenisKopi || [])
+      .map((j) => (j.namaJenisKopi || j.nama || "").trim())
+      .filter(Boolean);
 
     // Kemasan tidak lagi digunakan di pemesanan
   } catch (error) {
@@ -677,8 +860,8 @@ function applyFilterPemesanan() {
           </span>
         </td>
         <td>${p.negara || "-"}</td>
-        <td>${p.tipeProduk || "-"}</td>
-        <td>${(p.jumlahPesananKg || 0).toLocaleString("id-ID")} kg</td>
+        <td>${escapeHtmlAttr(ringkasProdukUntukTabel(p))}</td>
+        <td>${totalBeratKloterFromDoc(p).toLocaleString("id-ID")} kg</td>
         <td>Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}</td>
         <td>
           <span class="badge ${
@@ -783,7 +966,7 @@ function filterPemesananTable() {
 }
 
 // Open modal for add/edit pemesanan
-function openModal(mode = "add") {
+async function openModal(mode = "add") {
   currentEditId = null;
   const modal = document.getElementById("modalPemesanan");
   const modalLabel = document.getElementById("modalPemesananLabel");
@@ -841,18 +1024,17 @@ function openModal(mode = "add") {
     if (bp) bp.value = "0";
     const bpg = document.getElementById("biayaPengiriman");
     if (bpg) bpg.value = "0";
-    calculateTotalHarga();
 
     const btnCetak = document.getElementById("btnSimpanCetakInvoice");
     if (btnCetak) btnCetak.style.display = "";
 
-    // Load master data options
-    loadMasterDataOptions();
+    await loadMasterDataOptions();
+    renderKloterTable([{}]);
   } else {
     modalLabel.textContent = "Edit Pemesanan";
     const btnCetak = document.getElementById("btnSimpanCetakInvoice");
     if (btnCetak) btnCetak.style.display = "none";
-    loadMasterDataOptions();
+    await loadMasterDataOptions();
   }
 }
 
@@ -903,13 +1085,8 @@ async function editPemesanan(id) {
     if (smp && p.idMasterPembeli) {
       smp.value = p.idMasterPembeli;
     }
-    document.getElementById("tipeProduk").value = p.tipeProduk || "";
-    document.getElementById("prosesPengolahan").value =
-      p.prosesPengolahan || "";
-    document.getElementById("jenisKopi").value = p.jenisKopi || "";
-    // Kemasan tidak lagi digunakan
-    document.getElementById("jumlahPesananKg").value = p.jumlahPesananKg || "";
-    document.getElementById("hargaPerKg").value = p.hargaPerKg || "";
+    await loadMasterDataOptions();
+    renderKloterTable(getPemesananKloterLinesFromDoc(p));
     const bpEl = document.getElementById("biayaPajak");
     if (bpEl) bpEl.value = p.biayaPajak != null ? p.biayaPajak : "0";
     const bpgEl = document.getElementById("biayaPengiriman");
@@ -944,16 +1121,6 @@ async function editPemesanan(id) {
     }
 
     toggleNegaraField();
-    await loadMasterDataOptions();
-
-    // Set values after options loaded
-    setTimeout(() => {
-      document.getElementById("tipeProduk").value = p.tipeProduk || "";
-      document.getElementById("prosesPengolahan").value =
-        p.prosesPengolahan || "";
-      document.getElementById("jenisKopi").value = p.jenisKopi || "";
-      // Kemasan tidak lagi digunakan
-    }, 500);
 
     const modal = new bootstrap.Modal(
       document.getElementById("modalPemesanan"),
@@ -968,8 +1135,10 @@ async function editPemesanan(id) {
 // Save pemesanan (add/edit). cetakInvoice: hanya untuk mode tambah.
 async function savePemesanan(cetakInvoice) {
   const form = document.getElementById("formPemesanan");
-  if (!form.checkValidity()) {
-    form.reportValidity();
+  const tanggalEl = document.getElementById("tanggalPemesanan");
+  if (tanggalEl && !tanggalEl.value) {
+    alert("Tanggal pemesanan wajib diisi.");
+    tanggalEl.focus();
     return;
   }
 
@@ -987,17 +1156,34 @@ async function savePemesanan(cetakInvoice) {
   const alamatPembeli = (
     document.getElementById("alamatPembeli")?.value || ""
   ).trim();
-  const tipeProduk = document.getElementById("tipeProduk").value;
-  const prosesPengolahan = document.getElementById("prosesPengolahan").value;
-  const jenisKopi = document.getElementById("jenisKopi").value;
 
-  // Parse jumlah dan harga
-  const jumlahPesananKg = parseFloat(
-    document.getElementById("jumlahPesananKg").value || 0,
-  );
-  const hargaPerKg = parseFloat(
-    document.getElementById("hargaPerKg").value || 0,
-  );
+  const kloterRaw = collectKloterFromForm();
+  for (let i = 0; i < kloterRaw.length; i++) {
+    const k = kloterRaw[i];
+    if (!k.tipeProduk || !k.jenisKopi || !k.prosesPengolahan) {
+      alert(
+        `Kloter ${i + 1}: pilih tipe produk, jenis kopi, dan proses pengolahan.`,
+      );
+      return;
+    }
+    if (k.beratKg <= 0 || !Number.isFinite(k.beratKg)) {
+      alert(`Kloter ${i + 1}: berat (kg) harus lebih dari 0.`);
+      return;
+    }
+    if (k.hargaPerKg <= 0 || !Number.isFinite(k.hargaPerKg)) {
+      alert(`Kloter ${i + 1}: harga per kg harus lebih dari 0.`);
+      return;
+    }
+  }
+
+  const kloterPayload = kloterRaw.map((k) => ({
+    tipeProduk: k.tipeProduk,
+    jenisKopi: k.jenisKopi,
+    prosesPengolahan: k.prosesPengolahan,
+    beratKg: k.beratKg,
+    hargaPerKg: k.hargaPerKg,
+  }));
+
   let biayaPajak = parseFloat(
     document.getElementById("biayaPajak")?.value || 0,
   );
@@ -1009,9 +1195,11 @@ async function savePemesanan(cetakInvoice) {
     biayaPengiriman = 0;
   }
 
-  // Total = subtotal + pajak + pengiriman (sama dengan validasi backend)
-  const totalHarga =
-    jumlahPesananKg * hargaPerKg + biayaPajak + biayaPengiriman;
+  const subtotalBarang = kloterPayload.reduce(
+    (s, k) => s + k.beratKg * k.hargaPerKg,
+    0,
+  );
+  const totalHarga = subtotalBarang + biayaPajak + biayaPengiriman;
 
   const statusPemesanan = document.getElementById("statusPemesanan").value;
   const statusPembayaran = document.getElementById("statusPembayaran")?.value || "Belum Lunas";
@@ -1020,30 +1208,20 @@ async function savePemesanan(cetakInvoice) {
   ).trim();
   const tanggalPemesanan = document.getElementById("tanggalPemesanan").value;
 
-  // Log for debugging
-  console.log("💰 Total Harga Calculation:", {
-    jumlahPesananKg,
-    hargaPerKg,
-    calculatedTotal: totalHarga,
-    formattedDisplay: document.getElementById("totalHarga").value,
+  console.log("💰 Total (kloter):", {
+    nKloter: kloterPayload.length,
+    subtotalBarang,
+    totalHarga,
   });
 
-  // Validasi
   if (tipePemesanan === "International" && !negara.trim()) {
     alert("Negara wajib diisi untuk pemesanan International!");
     document.getElementById("negara").focus();
     return;
   }
 
-  if (jumlahPesananKg <= 0) {
-    alert("Jumlah pesanan harus lebih dari 0!");
-    document.getElementById("jumlahPesananKg").focus();
-    return;
-  }
-
-  if (hargaPerKg <= 0) {
-    alert("Harga per kg harus lebih dari 0!");
-    document.getElementById("hargaPerKg").focus();
+  if (!namaPembeli.trim()) {
+    alert("Nama pembeli wajib diisi.");
     return;
   }
 
@@ -1053,11 +1231,7 @@ async function savePemesanan(cetakInvoice) {
       namaPembeli,
       tipePemesanan,
       negara: tipePemesanan === "International" ? negara : "",
-      tipeProduk,
-      prosesPengolahan,
-      jenisKopi,
-      jumlahPesananKg,
-      hargaPerKg,
+      kloter: kloterPayload,
       biayaPajak,
       biayaPengiriman,
       totalHarga,
@@ -1279,7 +1453,7 @@ async function loadPemesananOptionsForOrdering() {
     pemesananOrdering.forEach((p) => {
       const option = document.createElement("option");
       option.value = p.idPembelian;
-      option.textContent = `${p.idPembelian} - ${p.namaPembeli} (${p.jumlahPesananKg} kg)`;
+      option.textContent = `${p.idPembelian} - ${p.namaPembeli} (${totalBeratKloterFromDoc(p)} kg)`;
       select.appendChild(option);
     });
   } catch (error) {
@@ -1323,15 +1497,25 @@ async function loadPemesananDataForOrdering() {
     }
     document.getElementById("displayTipePemesanan").textContent =
       p.tipePemesanan || "-";
-    document.getElementById("displayTipeProduk").textContent =
-      p.tipeProduk || "-";
-    document.getElementById("displayProsesPengolahan").textContent =
-      p.prosesPengolahan || "-";
-    document.getElementById("displayJenisKopi").textContent =
-      p.jenisKopi || "-";
-    document.getElementById("displayJumlahPesanan").textContent = (
-      p.jumlahPesananKg || 0
-    ).toLocaleString("id-ID");
+    const linesOrd = getPemesananKloterLinesFromDoc(p);
+    const tbOrd = document.getElementById("tbodyOrderingKloterPreview");
+    if (tbOrd) {
+      tbOrd.innerHTML = linesOrd
+        .map((L) => {
+          const w = parseFloat(L.beratKg) || 0;
+          const hp = parseFloat(L.hargaPerKg) || 0;
+          return `<tr>
+            <td>${escapeHtmlAttr(L.tipeProduk || "—")}</td>
+            <td>${escapeHtmlAttr(L.jenisKopi || "—")}</td>
+            <td>${escapeHtmlAttr(L.prosesPengolahan || "—")}</td>
+            <td class="text-end">${w.toLocaleString("id-ID")}</td>
+            <td class="text-end">${hp.toLocaleString("id-ID")}</td>
+          </tr>`;
+        })
+        .join("");
+    }
+    document.getElementById("displayJumlahPesanan").textContent =
+      totalBeratKloterFromDoc(p).toLocaleString("id-ID");
     document.getElementById("displayTotalHarga").textContent = `Rp ${(
       p.totalHarga || 0
     ).toLocaleString("id-ID")}`;
@@ -1380,46 +1564,87 @@ async function saveOrdering() {
     return;
   }
 
-  let stokRow = findStokRowForPemesanan(pemesananData);
-  if (!stokRow) {
+  const linesCheck = getPemesananKloterLinesFromDoc(pemesananData);
+  const multiStok =
+    linesCheck.length > 1 ||
+    new Set(
+      linesCheck.map(
+        (L) =>
+          `${(L.tipeProduk || "").trim()}|${(L.jenisKopi || "").trim()}|${(L.prosesPengolahan || "").trim()}`,
+      ),
+    ).size > 1;
+
+  if (!multiStok) {
+    let stokRow = findStokRowForPemesanan(pemesananData);
+    if (!stokRow) {
+      try {
+        await loadStokData();
+        stokRow = findStokRowForPemesanan(pemesananData);
+      } catch (_) {
+        /* noop */
+      }
+    }
+    const stokTersedia = stokRow
+      ? parseFloat(stokRow.stokTersedia ?? stokRow.totalBerat ?? 0) || 0
+      : 0;
+    const jumlahPesanan = totalBeratKloterFromDoc(pemesananData);
+
+    if (!stokRow) {
+      alert(
+        "Tidak ada stok hasil produksi yang cocok dengan pemesanan ini.\nPastikan kombinasi tipe produk, jenis kopi, dan proses pengolahan sama dengan baris di Kelola Stok.",
+      );
+      return;
+    }
+
+    if (stokTersedia < jumlahPesanan) {
+      alert(
+        `Stok tidak mencukupi!\n\nStok tersedia (agregat): ${stokTersedia.toLocaleString(
+          "id-ID",
+        )} kg\nJumlah pesanan: ${jumlahPesanan.toLocaleString(
+          "id-ID",
+        )} kg\nKekurangan: ${(jumlahPesanan - stokTersedia).toLocaleString(
+          "id-ID",
+        )} kg`,
+      );
+      return;
+    }
+  } else {
     try {
       await loadStokData();
-      stokRow = findStokRowForPemesanan(pemesananData);
     } catch (_) {
       /* noop */
     }
-  }
-
-  const stokTersedia = stokRow
-    ? parseFloat(stokRow.stokTersedia ?? stokRow.totalBerat ?? 0) || 0
-    : 0;
-  const jumlahPesanan = parseFloat(pemesananData.jumlahPesananKg || 0);
-
-  if (!stokRow) {
-    alert(
-      "Tidak ada stok hasil produksi yang cocok dengan pemesanan ini.\nPastikan kombinasi tipe produk, jenis kopi, dan proses pengolahan sama dengan baris di Kelola Stok.",
-    );
-    return;
-  }
-
-  if (stokTersedia < jumlahPesanan) {
-    alert(
-      `Stok tidak mencukupi!\n\nStok tersedia (agregat): ${stokTersedia.toLocaleString(
-        "id-ID",
-      )} kg\nJumlah pesanan: ${jumlahPesanan.toLocaleString(
-        "id-ID",
-      )} kg\nKekurangan: ${(jumlahPesanan - stokTersedia).toLocaleString(
-        "id-ID",
-      )} kg`,
-    );
-    return;
+    for (let i = 0; i < linesCheck.length; i++) {
+      const L = linesCheck[i];
+      const pseudo = {
+        tipeProduk: L.tipeProduk,
+        jenisKopi: L.jenisKopi,
+        prosesPengolahan: L.prosesPengolahan,
+      };
+      const stokRow = findStokRowForPemesanan(pseudo);
+      const need = parseFloat(L.beratKg) || 0;
+      const ada = stokRow
+        ? parseFloat(stokRow.stokTersedia ?? stokRow.totalBerat ?? 0) || 0
+        : 0;
+      if (!stokRow || ada < need - 1e-9) {
+        alert(
+          `Kloter ${i + 1} (${L.tipeProduk || "-"} · ${L.jenisKopi || "-"} · ${L.prosesPengolahan || "-"}): stok tidak mencukupi atau kombinasi tidak ada di Kelola Stok.\nTersedia: ${ada.toLocaleString("id-ID")} kg, dibutuhkan: ${need.toLocaleString("id-ID")} kg`,
+        );
+        return;
+      }
+    }
   }
 
   try {
+    const linesForTipe = getPemesananKloterLinesFromDoc(pemesananData);
+    const tipeReq =
+      (linesForTipe[0] && linesForTipe[0].tipeProduk) ||
+      pemesananData.tipeProduk ||
+      "";
     const orderingData = {
       idPembelian,
       tanggalOrdering,
-      tipeProduk: pemesananData.tipeProduk,
+      tipeProduk: tipeReq,
     };
 
     console.log("🔄 Memproses ordering (stok agregat, tanpa id produksi):", orderingData);
@@ -1770,23 +1995,26 @@ function pdfDrawInvoiceBody(doc, p, y) {
 
   doc.setFont(undefined, "normal");
   doc.setFontSize(9);
-  const desk = `${p.tipeProduk || "-"} · ${p.jenisKopi || "-"} · ${p.prosesPengolahan || "-"}`;
-  const dLines = doc.splitTextToSize(desk, 78);
-  const yStartBlock = y;
-  dLines.forEach((ln) => {
-    doc.text(ln, LX, y);
-    y += 4.3;
+  const invLines = getPemesananKloterLinesFromDoc(p);
+  invLines.forEach((row) => {
+    const desk = `${row.tipeProduk || "-"} · ${row.jenisKopi || "-"} · ${row.prosesPengolahan || "-"}`;
+    const dLines = doc.splitTextToSize(desk, 78);
+    const yStartBlock = y;
+    dLines.forEach((ln) => {
+      doc.text(ln, LX, y);
+      y += 4.3;
+    });
+    const jumlahKg = parseFloat(row.beratKg) || 0;
+    const hargaKg = parseFloat(row.hargaPerKg) || 0;
+    const subtotalBaris = jumlahKg * hargaKg;
+    doc.text(pdfFmtIdNumber(jumlahKg), C_QTY, yStartBlock, { align: "right" });
+    doc.text(pdfFmtIdNumber(hargaKg), C_HARGA, yStartBlock, { align: "right" });
+    doc.text(pdfFmtIdNumber(subtotalBaris), C_SUB, yStartBlock, {
+      align: "right",
+    });
+    y = Math.max(y, yStartBlock + 8);
+    y += 2;
   });
-  const jumlahKg = parseFloat(p.jumlahPesananKg) || 0;
-  const hargaKg = parseFloat(p.hargaPerKg) || 0;
-  const subtotalBaris = jumlahKg * hargaKg;
-  doc.text(pdfFmtIdNumber(jumlahKg), C_QTY, yStartBlock, { align: "right" });
-  doc.text(pdfFmtIdNumber(hargaKg), C_HARGA, yStartBlock, { align: "right" });
-  doc.text(pdfFmtIdNumber(subtotalBaris), C_SUB, yStartBlock, {
-    align: "right",
-  });
-  y = Math.max(y, yStartBlock + 8);
-  y += 2;
   doc.line(LX, y, 190, y);
   y += 6;
 

@@ -3818,56 +3818,104 @@ def list_laporan_pdf():
 
 # ==================== PEMESANAN ENDPOINTS ====================
 
-def _normalize_pemesanan_items_from_body(data):
+def _berat_kg_dari_baris_pemesanan(it):
+    """Ambil berat (kg) dari kloter/barisan: beratKg, berat, atau jumlahPesananKg."""
+    if not isinstance(it, dict):
+        return 0.0
+    for key in ('beratKg', 'berat', 'jumlahPesananKg'):
+        if key not in it or it[key] is None:
+            continue
+        try:
+            return float(it[key])
+        except (TypeError, ValueError):
+            continue
+    return 0.0
+
+
+def _normalize_pemesanan_kloter_from_body(data):
     """
-    Normalisasi array items dari JSON.
-    Setiap baris: tipeProduk, jenisKopi, prosesPengolahan, jumlahPesananKg, hargaPerKg.
-    Mengembalikan (list_dict_atau_None, pesan_error_atau_None).
+    Normalisasi array `kloter` (model utama) atau `items` (kompatibel lama).
+    Tiap kloter: tipeProduk, jenisKopi, prosesPengolahan, beratKg, hargaPerKg,
+    subtotal; jumlahPesananKg disamakan dengan beratKg untuk alur stok/ordering.
+    Mengembalikan (list_atau_None, pesan_error_atau_None).
     """
-    raw = data.get('items')
-    if not isinstance(raw, list):
-        return None, None
-    if len(raw) == 0:
+    raw = None
+    kloter_in = data.get('kloter')
+    if isinstance(kloter_in, list) and len(kloter_in) > 0:
+        raw = kloter_in
+    else:
+        items_in = data.get('items')
+        if isinstance(items_in, list) and len(items_in) > 0:
+            raw = items_in
+    if raw is None:
         return None, None
     out = []
     for idx, it in enumerate(raw):
         if not isinstance(it, dict):
-            return None, f'Baris {idx + 1}: format tidak valid'
+            return None, f'Kloter {idx + 1}: format tidak valid'
         tp = (it.get('tipeProduk') or '').strip()
         jk = (it.get('jenisKopi') or '').strip()
         pr = (it.get('prosesPengolahan') or '').strip()
+        jm = _berat_kg_dari_baris_pemesanan(it)
         try:
-            jm = float(it.get('jumlahPesananKg') or 0)
             hp = float(it.get('hargaPerKg') or 0)
         except (TypeError, ValueError):
-            return None, f'Baris {idx + 1}: jumlah atau harga tidak valid'
+            return None, f'Kloter {idx + 1}: harga tidak valid'
         if tp not in ('Green Beans', 'Pixel'):
-            return None, f'Baris {idx + 1}: tipeProduk harus Green Beans atau Pixel'
+            return None, f'Kloter {idx + 1}: tipeProduk harus Green Beans atau Pixel'
         if not jk or not pr:
-            return None, f'Baris {idx + 1}: jenis kopi dan proses pengolahan wajib diisi'
+            return None, f'Kloter {idx + 1}: jenis kopi dan proses pengolahan wajib diisi'
         if jm <= 0 or hp <= 0:
-            return None, f'Baris {idx + 1}: jumlah (kg) dan harga per kg harus lebih dari 0'
+            return None, f'Kloter {idx + 1}: berat (kg) dan harga per kg harus lebih dari 0'
         sub = round(jm * hp, 2)
         out.append({
             'tipeProduk': tp,
             'jenisKopi': jk,
             'prosesPengolahan': pr,
-            'jumlahPesananKg': jm,
+            'beratKg': jm,
             'hargaPerKg': hp,
             'subtotal': sub,
+            'jumlahPesananKg': jm,
         })
     if not out:
-        return None, 'Tidak ada baris barang yang valid'
+        return None, 'Tidak ada kloter yang valid'
     return out, None
 
 
 def pemesanan_items_from_doc(doc):
-    """Baca barang dari dokumen: field items[] atau bentuk lama satu baris."""
+    """Baca baris barang untuk stok/ordering: kloter[] → items[] → bentuk tunggal root."""
     if not doc:
         return []
-    raw = doc.get('items')
-    if isinstance(raw, list) and len(raw) > 0:
-        return raw
+    raw = None
+    kl = doc.get('kloter')
+    if isinstance(kl, list) and len(kl) > 0:
+        raw = kl
+    else:
+        it = doc.get('items')
+        if isinstance(it, list) and len(it) > 0:
+            raw = it
+    if raw:
+        lines = []
+        for row in raw:
+            if not isinstance(row, dict):
+                continue
+            jm = _berat_kg_dari_baris_pemesanan(row)
+            try:
+                hp = float(row.get('hargaPerKg') or 0)
+            except (TypeError, ValueError):
+                hp = 0.0
+            if jm <= 0 or hp <= 0:
+                continue
+            lines.append({
+                'tipeProduk': (row.get('tipeProduk') or '').strip(),
+                'jenisKopi': (row.get('jenisKopi') or '').strip(),
+                'prosesPengolahan': (row.get('prosesPengolahan') or '').strip(),
+                'beratKg': jm,
+                'jumlahPesananKg': jm,
+                'hargaPerKg': hp,
+                'subtotal': float(row.get('subtotal') or round(jm * hp, 2) or 0),
+            })
+        return lines
     jm = float(doc.get('jumlahPesananKg') or 0)
     hp = float(doc.get('hargaPerKg') or 0)
     if jm <= 0 or hp <= 0:
@@ -3876,6 +3924,7 @@ def pemesanan_items_from_doc(doc):
         'tipeProduk': (doc.get('tipeProduk') or '').strip(),
         'jenisKopi': (doc.get('jenisKopi') or '').strip(),
         'prosesPengolahan': (doc.get('prosesPengolahan') or '').strip(),
+        'beratKg': jm,
         'jumlahPesananKg': jm,
         'hargaPerKg': hp,
         'subtotal': round(jm * hp, 2),
@@ -3931,11 +3980,11 @@ def create_pemesanan():
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
 
-        items_norm, items_err = _normalize_pemesanan_items_from_body(data)
-        use_items = items_norm is not None
-        if use_items and items_err:
-            return jsonify({'error': items_err}), 400
-        if not use_items:
+        kloter_norm, kloter_err = _normalize_pemesanan_kloter_from_body(data)
+        use_kloter = kloter_norm is not None
+        if use_kloter and kloter_err:
+            return jsonify({'error': kloter_err}), 400
+        if not use_kloter:
             legacy_req = ['tipeProduk', 'prosesPengolahan', 'jenisKopi', 'jumlahPesananKg', 'hargaPerKg']
             for field in legacy_req:
                 if field not in data:
@@ -3959,9 +4008,9 @@ def create_pemesanan():
         if biaya_pengiriman < 0:
             return jsonify({'error': 'Biaya pengiriman tidak boleh negatif'}), 400
 
-        if use_items:
-            jumlah_total_kg = sum(float(i['jumlahPesananKg']) for i in items_norm)
-            subtotal_barang = sum(float(i['subtotal']) for i in items_norm)
+        if use_kloter:
+            jumlah_total_kg = sum(float(i['jumlahPesananKg']) for i in kloter_norm)
+            subtotal_barang = sum(float(i['subtotal']) for i in kloter_norm)
         else:
             if float(data['jumlahPesananKg']) <= 0:
                 return jsonify({'error': 'Jumlah pesanan harus lebih dari 0'}), 400
@@ -3989,11 +4038,11 @@ def create_pemesanan():
         
         new_id = get_next_id('pemesanan')
 
-        if use_items:
-            first = items_norm[0]
-            tipe_root = first['tipeProduk'] if len(items_norm) == 1 else 'Campuran'
-            jk_root = first['jenisKopi'] if len(items_norm) == 1 else 'Campuran'
-            pr_root = first['prosesPengolahan'] if len(items_norm) == 1 else 'Campuran'
+        if use_kloter:
+            first = kloter_norm[0]
+            tipe_root = first['tipeProduk'] if len(kloter_norm) == 1 else 'Campuran'
+            jk_root = first['jenisKopi'] if len(kloter_norm) == 1 else 'Campuran'
+            pr_root = first['prosesPengolahan'] if len(kloter_norm) == 1 else 'Campuran'
             harga_avg = round(subtotal_barang / jumlah_total_kg, 4) if jumlah_total_kg > 0 else 0.0
             pemesanan_data = {
                 'id': new_id,
@@ -4001,7 +4050,7 @@ def create_pemesanan():
                 'namaPembeli': data['namaPembeli'],
                 'tipePemesanan': tipe_pm,
                 'negara': data.get('negara', '') if tipe_pm == 'International' else '',
-                'items': items_norm,
+                'kloter': kloter_norm,
                 'tipeProduk': tipe_root,
                 'jenisKopi': jk_root,
                 'prosesPengolahan': pr_root,
@@ -4116,25 +4165,29 @@ def update_pemesanan(pemesanan_id):
                 else:
                     update_data[field] = data[field]
 
-        if 'items' in data:
-            items_norm, items_err = _normalize_pemesanan_items_from_body(data)
-            if items_err:
-                return jsonify({'error': items_err}), 400
-            if not items_norm:
-                return jsonify({'error': 'items kosong atau tidak valid'}), 400
-            update_data['items'] = items_norm
-            jum = sum(float(i['jumlahPesananKg']) for i in items_norm)
-            subb = sum(float(i['subtotal']) for i in items_norm)
-            first = items_norm[0]
+        unset_legacy_items = False
+        if 'kloter' in data or 'items' in data:
+            kloter_norm, kloter_err = _normalize_pemesanan_kloter_from_body(data)
+            if kloter_err:
+                return jsonify({'error': kloter_err}), 400
+            if not kloter_norm:
+                return jsonify({'error': 'kloter kosong atau tidak valid'}), 400
+            update_data['kloter'] = kloter_norm
+            unset_legacy_items = True
+            jum = sum(float(i['jumlahPesananKg']) for i in kloter_norm)
+            subb = sum(float(i['subtotal']) for i in kloter_norm)
+            first = kloter_norm[0]
             update_data['jumlahPesananKg'] = jum
             update_data['hargaPerKg'] = round(subb / jum, 4) if jum > 0 else 0.0
-            update_data['tipeProduk'] = first['tipeProduk'] if len(items_norm) == 1 else 'Campuran'
-            update_data['jenisKopi'] = first['jenisKopi'] if len(items_norm) == 1 else 'Campuran'
-            update_data['prosesPengolahan'] = first['prosesPengolahan'] if len(items_norm) == 1 else 'Campuran'
+            update_data['tipeProduk'] = first['tipeProduk'] if len(kloter_norm) == 1 else 'Campuran'
+            update_data['jenisKopi'] = first['jenisKopi'] if len(kloter_norm) == 1 else 'Campuran'
+            update_data['prosesPengolahan'] = first['prosesPengolahan'] if len(kloter_norm) == 1 else 'Campuran'
 
-        _total_keys = ('totalHarga', 'jumlahPesananKg', 'hargaPerKg', 'biayaPajak', 'biayaPengiriman', 'items')
+        _total_keys = ('totalHarga', 'jumlahPesananKg', 'hargaPerKg', 'biayaPajak', 'biayaPengiriman', 'kloter', 'items')
         if any(k in update_data for k in _total_keys):
-            if 'items' in update_data:
+            if 'kloter' in update_data:
+                sub_lines = sum(float(i.get('subtotal', 0) or 0) for i in update_data['kloter'])
+            elif 'items' in update_data:
                 sub_lines = sum(float(i.get('subtotal', 0) or 0) for i in update_data['items'])
             else:
                 j = float(update_data.get('jumlahPesananKg', pemesanan.get('jumlahPesananKg', 0)))
@@ -4181,10 +4234,14 @@ def update_pemesanan(pemesanan_id):
             update_data['statusPembayaran'] = 'Lunas'
         
         update_data['updatedAt'] = datetime.now()
-        
+
+        update_payload = {'$set': update_data}
+        if unset_legacy_items:
+            update_payload['$unset'] = {'items': ''}
+
         db.pemesanan.update_one(
             {'_id': pemesanan['_id']},
-            {'$set': update_data}
+            update_payload
         )
         
         updated = db.pemesanan.find_one({'_id': pemesanan['_id']})
@@ -4557,7 +4614,7 @@ def proses_ordering():
                 'idProduksi': id_produksi_gabung,
                 'tipeProduk': tipe_ordering_label,
                 'jumlahPesananKg': jumlah_pesanan_total,
-                'itemsRingkasan': line_items,
+                'kloterRingkasan': line_items,
                 'stokSebelum': first_stok_before if first_stok_before is not None else 0.0,
                 'stokSesudah': last_stok_after if last_stok_after is not None else 0.0,
                 'statusPemesanan': 'Complete',

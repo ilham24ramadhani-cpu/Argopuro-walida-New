@@ -2306,18 +2306,44 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       </div>`;
 }
 
-/** Agregat pemesanan: banyaknya pesanan & total kg per proses pengolahan. */
+/** Agregat pemesanan: banyaknya baris (kloter) & total kg per proses pengolahan. */
 function aggregatePemesananPerProses(items) {
   const byProses = new Map();
   if (!Array.isArray(items)) return [];
   items.forEach((p) => {
-    const raw =
-      (p.prosesPengolahan && String(p.prosesPengolahan).trim()) || "";
-    const key = raw || "(Tanpa proses pengolahan)";
-    const cur = byProses.get(key) || { kg: 0, n: 0 };
-    cur.kg += safeNumber(p.jumlahPesananKg);
-    cur.n += 1;
-    byProses.set(key, cur);
+    const inner =
+      Array.isArray(p.kloter) && p.kloter.length
+        ? p.kloter
+        : Array.isArray(p.items) && p.items.length
+          ? p.items
+          : null;
+    const pieces = inner
+      ? inner.map((r) => {
+          const kg = safeNumber(
+            r.beratKg != null && r.beratKg !== ""
+              ? r.beratKg
+              : r.jumlahPesananKg,
+          );
+          return {
+            prosesPengolahan: r.prosesPengolahan,
+            jumlahPesananKg: kg,
+          };
+        })
+      : [
+          {
+            prosesPengolahan: p.prosesPengolahan,
+            jumlahPesananKg: safeNumber(p.jumlahPesananKg),
+          },
+        ];
+    pieces.forEach((row) => {
+      const raw =
+        (row.prosesPengolahan && String(row.prosesPengolahan).trim()) || "";
+      const key = raw || "(Tanpa proses pengolahan)";
+      const cur = byProses.get(key) || { kg: 0, n: 0 };
+      cur.kg += safeNumber(row.jumlahPesananKg);
+      cur.n += 1;
+      byProses.set(key, cur);
+    });
   });
   return [...byProses.entries()]
     .sort((a, b) => a[0].localeCompare(b[0], "id"))
@@ -2349,14 +2375,14 @@ function htmlRekapPemesananAggPerProses(items) {
         <div class="inner">
         <h2>Ringkasan per proses pengolahan</h2>
         <p class="meta">
-          <strong>Jumlah pesanan</strong> = banyaknya baris pemesanan pada filter ini.
-          <strong>Total kg</strong> = penjumlahan kolom jumlah (kg) untuk proses pengolahan yang sama.
+          <strong>Jumlah baris</strong> = banyaknya kloter / baris produk (jika satu dokumen punya beberapa kloter, tiap kloter dihitung).
+          <strong>Total kg</strong> = penjumlahan berat (kg) per proses pengolahan.
         </p>
         <table>
           <thead>
             <tr>
               <th>Proses pengolahan</th>
-              <th>Jumlah pesanan</th>
+              <th>Jumlah baris</th>
               <th>Total kg</th>
             </tr>
           </thead>
@@ -2376,7 +2402,7 @@ function htmlRekapPemesananAggPerProses(items) {
 /** Matriks untuk lembar Excel «Per proses» (pemesanan). */
 function buildPemesananPerProsesSheetMatrix(items) {
   const rows = aggregatePemesananPerProses(items);
-  const header = ["Proses pengolahan", "Jumlah pesanan", "Total kg"];
+  const header = ["Proses pengolahan", "Jumlah baris", "Total kg"];
   if (!rows.length) return [header, ["—", "", ""]];
   const body = rows.map((r) => [r.nama, r.n, r.kg]);
   const totalN = rows.reduce((s, r) => s + r.n, 0);

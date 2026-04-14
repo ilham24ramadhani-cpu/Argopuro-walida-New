@@ -686,7 +686,7 @@
             ></button>
           </div>
           <div class="modal-body py-3">
-            <form id="formPemesanan">
+            <form id="formPemesanan" novalidate>
               <input type="hidden" id="pemesananId" />
               <input type="hidden" id="idMasterPembeli" value="" />
 
@@ -814,79 +814,53 @@
                 </div>
               </div>
 
-              <!-- Produk -->
-              <div class="rounded-3 border p-3 mb-3">
+              <!-- Kloter produk (satu pemesanan = banyak kloter) -->
+              <div class="rounded-3 border p-3 mb-3" id="wrapKloterPemesanan">
                 <h6
-                  class="text-uppercase text-secondary small fw-semibold mb-3 pb-2 border-bottom border-secondary border-opacity-25"
+                  class="text-uppercase text-secondary small fw-semibold mb-2 pb-2 border-bottom border-secondary border-opacity-25"
                 >
-                  Produk
+                  Kloter produk
                 </h6>
-                <div class="row g-3">
-                  <div class="col-lg-4 col-md-6">
-                    <label for="tipeProduk" class="form-label"
-                      >Tipe produk <span class="text-danger">*</span></label
-                    >
-                    <select class="form-select" id="tipeProduk" required>
-                      <option value="">Pilih tipe produk</option>
-                    </select>
-                  </div>
-                  <div class="col-lg-4 col-md-6">
-                    <label for="prosesPengolahan" class="form-label"
-                      >Proses pengolahan <span class="text-danger">*</span></label
-                    >
-                    <select class="form-select" id="prosesPengolahan" required>
-                      <option value="">Pilih proses</option>
-                    </select>
-                  </div>
-                  <div class="col-lg-4 col-md-12">
-                    <label for="jenisKopi" class="form-label"
-                      >Jenis kopi <span class="text-danger">*</span></label
-                    >
-                    <select class="form-select" id="jenisKopi" required>
-                      <option value="">Pilih jenis kopi</option>
-                    </select>
-                  </div>
+                <p class="small text-muted mb-3">
+                  Satu <strong>ID pembelian</strong> dapat berisi beberapa kloter.
+                  Tiap kloter mencatat <strong>tipe produk</strong>, <strong>jenis kopi</strong>,
+                  <strong>proses pengolahan</strong>, <strong>berat (kg)</strong>, dan
+                  <strong>harga per kg</strong>.
+                </p>
+                <div class="table-responsive">
+                  <table class="table table-sm table-bordered align-middle mb-2">
+                    <thead class="table-light">
+                      <tr>
+                        <th>Tipe produk</th>
+                        <th>Jenis kopi</th>
+                        <th>Proses</th>
+                        <th class="text-end" style="min-width: 6rem">Berat (kg)</th>
+                        <th class="text-end" style="min-width: 7rem">Harga/kg (Rp)</th>
+                        <th class="text-end" style="min-width: 7rem">Subtotal</th>
+                        <th class="text-center" style="width: 3rem"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="tbodyKloterPemesanan"></tbody>
+                  </table>
                 </div>
+                <button
+                  type="button"
+                  class="btn btn-outline-primary btn-sm"
+                  id="btnTambahKloter"
+                  onclick="addKloterRowClick()"
+                >
+                  <i class="bi bi-plus-lg me-1"></i>Tambah kloter
+                </button>
               </div>
 
-              <!-- Jumlah & harga -->
+              <!-- Pajak, pengiriman & total -->
               <div class="rounded-3 border p-3 mb-3">
                 <h6
                   class="text-uppercase text-secondary small fw-semibold mb-3 pb-2 border-bottom border-secondary border-opacity-25"
                 >
-                  Jumlah &amp; harga
+                  Pajak, pengiriman &amp; total
                 </h6>
                 <div class="row g-3 align-items-end">
-                  <div class="col-6 col-xl-2">
-                    <label for="jumlahPesananKg" class="form-label"
-                      >Jumlah (kg) <span class="text-danger">*</span></label
-                    >
-                    <input
-                      type="number"
-                      class="form-control"
-                      id="jumlahPesananKg"
-                      placeholder="0"
-                      min="0"
-                      step="0.01"
-                      required
-                      onchange="calculateTotalHarga()"
-                    />
-                  </div>
-                  <div class="col-6 col-xl-2">
-                    <label for="hargaPerKg" class="form-label"
-                      >Harga / kg (Rp) <span class="text-danger">*</span></label
-                    >
-                    <input
-                      type="number"
-                      class="form-control"
-                      id="hargaPerKg"
-                      placeholder="0"
-                      min="0"
-                      step="1000"
-                      required
-                      onchange="calculateTotalHarga()"
-                    />
-                  </div>
                   <div class="col-6 col-xl-2">
                     <label for="biayaPajak" class="form-label">
                       Pajak (Rp)
@@ -1082,22 +1056,29 @@
                           <strong>Tipe:</strong>
                           <span id="displayTipePemesanan">-</span>
                         </p>
-                        <p class="mb-1">
-                          <strong>Produk:</strong>
-                          <span id="displayTipeProduk">-</span>
+                        <p class="mb-2 small text-muted mb-0">
+                          <strong>Kloter produk</strong> (per baris: tipe, jenis kopi, proses, berat, harga/kg)
                         </p>
-                        <p class="mb-1">
-                          <strong>Proses:</strong>
-                          <span id="displayProsesPengolahan">-</span>
-                        </p>
+                        <div class="table-responsive">
+                          <table class="table table-sm table-bordered mb-0">
+                            <thead class="table-light">
+                              <tr>
+                                <th>Tipe</th>
+                                <th>Jenis kopi</th>
+                                <th>Proses</th>
+                                <th class="text-end">Berat (kg)</th>
+                                <th class="text-end">Harga/kg</th>
+                              </tr>
+                            </thead>
+                            <tbody id="tbodyOrderingKloterPreview">
+                              <tr><td colspan="5" class="text-muted small">—</td></tr>
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                       <div class="col-md-6">
                         <p class="mb-1">
-                          <strong>Jenis Kopi:</strong>
-                          <span id="displayJenisKopi">-</span>
-                        </p>
-                        <p class="mb-1">
-                          <strong>Jumlah Pesanan:</strong>
+                          <strong>Total berat:</strong>
                           <span id="displayJumlahPesanan">-</span> kg
                         </p>
                         <p class="mb-1">
