@@ -866,6 +866,35 @@ function sanitizeRekapDataCellForExport(raw) {
   return s;
 }
 
+/**
+ * Isi sel lembar «Data» untuk Excel: angka asli jika kolom punya excelValue,
+ * supaya SUM/AVERAGE di spreadsheet jalan.
+ */
+function rekapExcelCellFromColumn(column, item) {
+  if (typeof column.excelValue === "function") {
+    try {
+      const n = column.excelValue(item);
+      if (typeof n === "number" && Number.isFinite(n)) {
+        return {
+          kind: "number",
+          value: n,
+          numFmt: column.excelNumFmt,
+        };
+      }
+    } catch (e) {
+      console.warn("rekapExcelCellFromColumn excelValue", e);
+    }
+  }
+  const raw = column.value(item);
+  if (raw === undefined || raw === null) {
+    return { kind: "string", value: "" };
+  }
+  return {
+    kind: "string",
+    value: sanitizeRekapDataCellForExport(String(raw)),
+  };
+}
+
 function parseValidDate(value) {
   if (!value) return null;
   const date = new Date(value);
@@ -1026,12 +1055,23 @@ const LAPORAN_REKAP_CONFIG = {
         label: "Jumlah (kg)",
         align: "right",
         value: (item) => formatKgValue(safeNumber(item.jumlah)) || "-",
+        excelValue: (item) => {
+          const j = safeNumber(item.jumlah);
+          return j > 0 ? j : null;
+        },
+        excelNumFmt: "#,##0.00",
       },
       {
         label: "Harga/Kg (Rp)",
         align: "right",
         value: (item) =>
           item.hargaPerKg ? formatCurrencyNumeric(item.hargaPerKg) : "-",
+        excelValue: (item) => {
+          if (item.hargaPerKg == null || item.hargaPerKg === "") return null;
+          const h = safeNumber(item.hargaPerKg);
+          return Number.isFinite(h) ? Math.round(h) : null;
+        },
+        excelNumFmt: "#,##0",
       },
       {
         label: "Total Pengeluaran (Rp)",
@@ -1040,6 +1080,12 @@ const LAPORAN_REKAP_CONFIG = {
           item.totalPengeluaran
             ? formatCurrencyNumeric(item.totalPengeluaran)
             : "-",
+        excelValue: (item) => {
+          if (!item.totalPengeluaran) return null;
+          const t = safeNumber(item.totalPengeluaran);
+          return Number.isFinite(t) ? Math.round(t) : null;
+        },
+        excelNumFmt: "#,##0",
       },
       {
         label: "Tanggal Masuk",
@@ -1163,6 +1209,11 @@ const LAPORAN_REKAP_CONFIG = {
           safeNumber(item.beratAwal)
             ? `${safeNumber(item.beratAwal).toLocaleString("id-ID")} kg`
             : "-",
+        excelValue: (item) => {
+          const x = safeNumber(item.beratAwal);
+          return x > 0 ? x : null;
+        },
+        excelNumFmt: "#,##0.00",
       },
       {
         label: "Berat Akhir (kg)",
@@ -1171,6 +1222,11 @@ const LAPORAN_REKAP_CONFIG = {
           safeNumber(item.beratAkhir)
             ? `${safeNumber(item.beratAkhir).toLocaleString("id-ID")} kg`
             : "-",
+        excelValue: (item) => {
+          const x = safeNumber(item.beratAkhir);
+          return x > 0 ? x : null;
+        },
+        excelNumFmt: "#,##0.00",
       },
       {
         label: "Randomen ID (N banding 1, 2 desimal)",
@@ -1179,6 +1235,14 @@ const LAPORAN_REKAP_CONFIG = {
           window.ProduksiRandomen
             ? window.ProduksiRandomen.formatRandomenPerIdCell(item)
             : "—",
+        excelValue: (item) => {
+          const PR = window.ProduksiRandomen;
+          if (!PR) return null;
+          const r = PR.computeRandomenPerId(item);
+          const n = PR.roundBahanPerSatuKgHasil(r);
+          return n != null ? n : null;
+        },
+        excelNumFmt: "0.00",
       },
       {
         label: "Proses",
@@ -1188,6 +1252,19 @@ const LAPORAN_REKAP_CONFIG = {
         label: "Kadar Air",
         align: "center",
         value: (item) => (item.kadarAir ? `${item.kadarAir}%` : "-"),
+        excelValue: (item) => {
+          if (item.kadarAir == null || item.kadarAir === "") return null;
+          if (typeof item.kadarAir === "number" && Number.isFinite(item.kadarAir)) {
+            return item.kadarAir > 0 ? item.kadarAir : null;
+          }
+          const raw = String(item.kadarAir).replace(/%/g, "").trim();
+          const normalized = raw.includes(",")
+            ? raw.replace(/\./g, "").replace(",", ".")
+            : raw;
+          const k = safeNumber(normalized);
+          return k > 0 ? k : null;
+        },
+        excelNumFmt: "0.00",
       },
       {
         label: "Tanggal Masuk",
@@ -1308,6 +1385,11 @@ const LAPORAN_REKAP_CONFIG = {
           safeNumber(item.beratSaatIni)
             ? `${safeNumber(item.beratSaatIni).toLocaleString("id-ID")} kg`
             : "-",
+        excelValue: (item) => {
+          const x = safeNumber(item.beratSaatIni);
+          return x > 0 ? x : null;
+        },
+        excelNumFmt: "#,##0.00",
       },
       {
         label: "Jumlah",
@@ -1316,6 +1398,11 @@ const LAPORAN_REKAP_CONFIG = {
           safeNumber(item.jumlah)
             ? safeNumber(item.jumlah).toLocaleString("id-ID")
             : "-",
+        excelValue: (item) => {
+          const x = safeNumber(item.jumlah);
+          return x > 0 ? x : null;
+        },
+        excelNumFmt: "#,##0.##",
       },
     ],
     filterKey: "hasil",
@@ -1408,6 +1495,12 @@ const LAPORAN_REKAP_CONFIG = {
         align: "right",
         value: (item) =>
           item.nilai ? formatCurrencyNumeric(item.nilai) : "-",
+        excelValue: (item) => {
+          if (item.nilai == null || item.nilai === "") return null;
+          const n = safeNumber(item.nilai);
+          return Number.isFinite(n) ? Math.round(n) : null;
+        },
+        excelNumFmt: "#,##0",
       },
       { label: "Catatan", value: (item) => item.notes || "-" },
     ],
@@ -1456,6 +1549,11 @@ const LAPORAN_REKAP_CONFIG = {
                 maximumFractionDigits: 2,
               })} kg`
             : "-",
+        excelValue: (item) => {
+          const x = safeNumber(item.totalBerat);
+          return x > 0 ? x : null;
+        },
+        excelNumFmt: "#,##0.00",
       },
     ],
     filterKey: "stok",
@@ -1533,6 +1631,11 @@ const LAPORAN_REKAP_CONFIG = {
           safeNumber(item.jumlahPesananKg)
             ? formatKgValue(safeNumber(item.jumlahPesananKg))
             : "-",
+        excelValue: (item) => {
+          const x = safeNumber(item.jumlahPesananKg);
+          return x > 0 ? x : null;
+        },
+        excelNumFmt: "#,##0.00",
       },
       {
         label: "Harga/kg (Rp)",
@@ -1541,6 +1644,12 @@ const LAPORAN_REKAP_CONFIG = {
           item.hargaPerKg != null && item.hargaPerKg !== ""
             ? formatCurrencyNumeric(safeNumber(item.hargaPerKg))
             : "-",
+        excelValue: (item) => {
+          if (item.hargaPerKg == null || item.hargaPerKg === "") return null;
+          const n = safeNumber(item.hargaPerKg);
+          return Number.isFinite(n) ? Math.round(n) : null;
+        },
+        excelNumFmt: "#,##0",
       },
       {
         label: "Biaya pajak (Rp)",
@@ -1549,6 +1658,12 @@ const LAPORAN_REKAP_CONFIG = {
           item.biayaPajak != null && item.biayaPajak !== ""
             ? formatCurrencyNumeric(safeNumber(item.biayaPajak))
             : "-",
+        excelValue: (item) => {
+          if (item.biayaPajak == null || item.biayaPajak === "") return null;
+          const n = safeNumber(item.biayaPajak);
+          return Number.isFinite(n) ? Math.round(n) : null;
+        },
+        excelNumFmt: "#,##0",
       },
       {
         label: "Biaya pengiriman (Rp)",
@@ -1557,6 +1672,13 @@ const LAPORAN_REKAP_CONFIG = {
           item.biayaPengiriman != null && item.biayaPengiriman !== ""
             ? formatCurrencyNumeric(safeNumber(item.biayaPengiriman))
             : "-",
+        excelValue: (item) => {
+          if (item.biayaPengiriman == null || item.biayaPengiriman === "")
+            return null;
+          const n = safeNumber(item.biayaPengiriman);
+          return Number.isFinite(n) ? Math.round(n) : null;
+        },
+        excelNumFmt: "#,##0",
       },
       {
         label: "Total harga (Rp)",
@@ -1565,6 +1687,12 @@ const LAPORAN_REKAP_CONFIG = {
           item.totalHarga != null && item.totalHarga !== ""
             ? formatCurrencyNumeric(safeNumber(item.totalHarga))
             : "-",
+        excelValue: (item) => {
+          if (item.totalHarga == null || item.totalHarga === "") return null;
+          const n = safeNumber(item.totalHarga);
+          return Number.isFinite(n) ? Math.round(n) : null;
+        },
+        excelNumFmt: "#,##0",
       },
       {
         label: "Status pemesanan",
@@ -3174,14 +3302,34 @@ async function exportRekapExcel(category) {
       };
       rekapExcelBorderAll(cNo);
       config.columns.forEach((col, ci) => {
-        const raw = col.value(item);
         const c = wsData.getCell(rowIdx, ci + 2);
-        c.value =
-          raw === undefined || raw === null
-            ? ""
-            : sanitizeRekapDataCellForExport(String(raw));
-        c.fill = rowFill;
-        c.alignment = { vertical: "top", horizontal: "left", wrapText: true };
+        const payload = rekapExcelCellFromColumn(col, item);
+        if (payload.kind === "number") {
+          c.value = payload.value;
+          if (payload.numFmt) {
+            c.numFmt = payload.numFmt;
+          }
+          c.fill = rowFill;
+          c.alignment = {
+            vertical: "top",
+            horizontal:
+              col.align === "center" ? "center" : col.align === "left" ? "left" : "right",
+            wrapText: true,
+          };
+        } else {
+          c.value = payload.value;
+          c.fill = rowFill;
+          c.alignment = {
+            vertical: "top",
+            horizontal:
+              col.align === "right"
+                ? "right"
+                : col.align === "center"
+                  ? "center"
+                  : "left",
+            wrapText: true,
+          };
+        }
         rekapExcelBorderAll(c);
       });
     });
