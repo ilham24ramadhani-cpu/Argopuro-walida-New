@@ -1762,7 +1762,7 @@ async function fetchArgopuroLogoForPdf() {
 
 function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl) {
   const nama = "Argopuro Walida";
-  const kontak = "0812-3362-4910";
+  const kontak = "+62 857-0766-1006";
   const alamat =
     "Ds. Tlogosari Rt 06/Rw 01, Kecamatan Sumbermalang, Kabupaten Situbondo";
   let y = 12;
