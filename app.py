@@ -2462,14 +2462,18 @@ def _batch_stok_tersedia_setelah_ordering(produksi_doc, tipe_produk_selected):
     return max(0.0, pool - total_ord)
 
 
-def _fifo_allocate_ordering_batches(pemesanan, tipe_produk_selected, jumlah_pesanan):
+def _fifo_allocate_ordering_batches(pemesanan, tipe_produk_selected, jumlah_pesanan,
+                                    jenis_kopi_override=None, proses_pengolahan_override=None):
     """
     Memenuhi jumlah pesanan dari batch pengemasan yang cocok (jenis kopi + proses),
     prioritas tanggal pengemasan lebih awal (FIFO).
     Mengembalikan daftar (produksi_doc, kg_diambil).
+    Override jenis_kopi / proses untuk satu baris pemesanan multi-item.
     """
-    ps_pem = (pemesanan.get('prosesPengolahan') or '').strip()
-    jk_pem = (pemesanan.get('jenisKopi') or '').strip()
+    ps_pem = (proses_pengolahan_override if proses_pengolahan_override is not None
+              else (pemesanan.get('prosesPengolahan') or '')).strip()
+    jk_pem = (jenis_kopi_override if jenis_kopi_override is not None
+              else (pemesanan.get('jenisKopi') or '')).strip()
     need = float(jumlah_pesanan)
     if need <= 0:
         return []
@@ -3814,6 +3818,70 @@ def list_laporan_pdf():
 
 # ==================== PEMESANAN ENDPOINTS ====================
 
+def _normalize_pemesanan_items_from_body(data):
+    """
+    Normalisasi array items dari JSON.
+    Setiap baris: tipeProduk, jenisKopi, prosesPengolahan, jumlahPesananKg, hargaPerKg.
+    Mengembalikan (list_dict_atau_None, pesan_error_atau_None).
+    """
+    raw = data.get('items')
+    if not isinstance(raw, list):
+        return None, None
+    if len(raw) == 0:
+        return None, None
+    out = []
+    for idx, it in enumerate(raw):
+        if not isinstance(it, dict):
+            return None, f'Baris {idx + 1}: format tidak valid'
+        tp = (it.get('tipeProduk') or '').strip()
+        jk = (it.get('jenisKopi') or '').strip()
+        pr = (it.get('prosesPengolahan') or '').strip()
+        try:
+            jm = float(it.get('jumlahPesananKg') or 0)
+            hp = float(it.get('hargaPerKg') or 0)
+        except (TypeError, ValueError):
+            return None, f'Baris {idx + 1}: jumlah atau harga tidak valid'
+        if tp not in ('Green Beans', 'Pixel'):
+            return None, f'Baris {idx + 1}: tipeProduk harus Green Beans atau Pixel'
+        if not jk or not pr:
+            return None, f'Baris {idx + 1}: jenis kopi dan proses pengolahan wajib diisi'
+        if jm <= 0 or hp <= 0:
+            return None, f'Baris {idx + 1}: jumlah (kg) dan harga per kg harus lebih dari 0'
+        sub = round(jm * hp, 2)
+        out.append({
+            'tipeProduk': tp,
+            'jenisKopi': jk,
+            'prosesPengolahan': pr,
+            'jumlahPesananKg': jm,
+            'hargaPerKg': hp,
+            'subtotal': sub,
+        })
+    if not out:
+        return None, 'Tidak ada baris barang yang valid'
+    return out, None
+
+
+def pemesanan_items_from_doc(doc):
+    """Baca barang dari dokumen: field items[] atau bentuk lama satu baris."""
+    if not doc:
+        return []
+    raw = doc.get('items')
+    if isinstance(raw, list) and len(raw) > 0:
+        return raw
+    jm = float(doc.get('jumlahPesananKg') or 0)
+    hp = float(doc.get('hargaPerKg') or 0)
+    if jm <= 0 or hp <= 0:
+        return []
+    return [{
+        'tipeProduk': (doc.get('tipeProduk') or '').strip(),
+        'jenisKopi': (doc.get('jenisKopi') or '').strip(),
+        'prosesPengolahan': (doc.get('prosesPengolahan') or '').strip(),
+        'jumlahPesananKg': jm,
+        'hargaPerKg': hp,
+        'subtotal': round(jm * hp, 2),
+    }]
+
+
 @app.route('/api/pemesanan', methods=['GET'])
 def get_pemesanan():
     """Get all pemesanan data"""
@@ -3858,13 +3926,20 @@ def create_pemesanan():
     try:
         data = request.json
         
-        # Validate required fields
-        required_fields = ['idPembelian', 'namaPembeli', 'tipePemesanan', 'tipeProduk', 
-                          'prosesPengolahan', 'jenisKopi', 'jumlahPesananKg', 
-                          'hargaPerKg', 'totalHarga', 'statusPemesanan']
-        for field in required_fields:
+        base_required = ['idPembelian', 'namaPembeli', 'tipePemesanan', 'totalHarga', 'statusPemesanan']
+        for field in base_required:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
+
+        items_norm, items_err = _normalize_pemesanan_items_from_body(data)
+        use_items = items_norm is not None
+        if use_items and items_err:
+            return jsonify({'error': items_err}), 400
+        if not use_items:
+            legacy_req = ['tipeProduk', 'prosesPengolahan', 'jenisKopi', 'jumlahPesananKg', 'hargaPerKg']
+            for field in legacy_req:
+                if field not in data:
+                    return jsonify({'error': f'Missing required field: {field}'}), 400
         
         tipe_pm = (data.get('tipePemesanan') or '').strip()
         if tipe_pm not in ('Lokal', 'International', 'E-commerce'):
@@ -3874,15 +3949,8 @@ def create_pemesanan():
         if status_bayar not in ('Lunas', 'Belum Lunas', 'Pembayaran Bertahap'):
             return jsonify({'error': 'statusPembayaran harus Lunas, Belum Lunas, atau Pembayaran Bertahap'}), 400
         
-        # Validate International requires negara
         if tipe_pm == 'International' and not data.get('negara'):
             return jsonify({'error': 'Negara wajib diisi untuk pemesanan International'}), 400
-        
-        # Validate harga and jumlah > 0
-        if float(data['jumlahPesananKg']) <= 0:
-            return jsonify({'error': 'Jumlah pesanan harus lebih dari 0'}), 400
-        if float(data['hargaPerKg']) <= 0:
-            return jsonify({'error': 'Harga per kg harus lebih dari 0'}), 400
 
         biaya_pajak = float(data.get('biayaPajak') or 0)
         if biaya_pajak < 0:
@@ -3890,53 +3958,85 @@ def create_pemesanan():
         biaya_pengiriman = float(data.get('biayaPengiriman') or 0)
         if biaya_pengiriman < 0:
             return jsonify({'error': 'Biaya pengiriman tidak boleh negatif'}), 400
-        
-        # Validate totalHarga = (jumlah × harga/kg) + pajak + pengiriman
-        jumlah_pesanan = float(data['jumlahPesananKg'])
-        harga_per_kg = float(data['hargaPerKg'])
+
+        if use_items:
+            jumlah_total_kg = sum(float(i['jumlahPesananKg']) for i in items_norm)
+            subtotal_barang = sum(float(i['subtotal']) for i in items_norm)
+        else:
+            if float(data['jumlahPesananKg']) <= 0:
+                return jsonify({'error': 'Jumlah pesanan harus lebih dari 0'}), 400
+            if float(data['hargaPerKg']) <= 0:
+                return jsonify({'error': 'Harga per kg harus lebih dari 0'}), 400
+            jumlah_total_kg = float(data['jumlahPesananKg'])
+            subtotal_barang = jumlah_total_kg * float(data['hargaPerKg'])
+
         total_harga_received = float(data['totalHarga'])
-        calculated_total = jumlah_pesanan * harga_per_kg + biaya_pajak + biaya_pengiriman
-        
-        # Allow small floating point differences (0.01)
+        calculated_total = subtotal_barang + biaya_pajak + biaya_pengiriman
+
         if abs(total_harga_received - calculated_total) > 0.01:
             print(f"❌ [PEMESANAN CREATE] Total harga mismatch:")
             print(f"   Received: {total_harga_received}")
             print(f"   Calculated: {calculated_total}")
-            print(f"   Difference: {abs(total_harga_received - calculated_total)}")
             return jsonify({
-                'error': 'Total harga tidak sesuai dengan perhitungan',
+                'error': 'Total harga tidak sesuai dengan perhitungan (subtotal barang + pajak + pengiriman)',
                 'received': total_harga_received,
                 'calculated': calculated_total,
-                'difference': abs(total_harga_received - calculated_total)
             }), 400
         
-        # Check if idPembelian already exists
         existing = db.pemesanan.find_one({'idPembelian': data['idPembelian']})
         if existing:
             return jsonify({'error': 'ID Pembelian already exists'}), 400
         
         new_id = get_next_id('pemesanan')
-        
-        pemesanan_data = {
-            'id': new_id,
-            'idPembelian': data['idPembelian'],
-            'namaPembeli': data['namaPembeli'],
-            'tipePemesanan': tipe_pm,
-            'negara': data.get('negara', '') if tipe_pm == 'International' else '',
-            'tipeProduk': data['tipeProduk'],
-            'prosesPengolahan': data['prosesPengolahan'],
-            'jenisKopi': data['jenisKopi'],
-            'jumlahPesananKg': float(data['jumlahPesananKg']),
-            'hargaPerKg': float(data['hargaPerKg']),
-            'biayaPajak': biaya_pajak,
-            'biayaPengiriman': biaya_pengiriman,
-            'totalHarga': float(data['totalHarga']),
-            'statusPemesanan': data['statusPemesanan'],
-            'statusPembayaran': status_bayar,
-            'tanggalPemesanan': data.get('tanggalPemesanan', datetime.now().strftime('%Y-%m-%d')),
-            'createdAt': datetime.now(),
-            'updatedAt': datetime.now()
-        }
+
+        if use_items:
+            first = items_norm[0]
+            tipe_root = first['tipeProduk'] if len(items_norm) == 1 else 'Campuran'
+            jk_root = first['jenisKopi'] if len(items_norm) == 1 else 'Campuran'
+            pr_root = first['prosesPengolahan'] if len(items_norm) == 1 else 'Campuran'
+            harga_avg = round(subtotal_barang / jumlah_total_kg, 4) if jumlah_total_kg > 0 else 0.0
+            pemesanan_data = {
+                'id': new_id,
+                'idPembelian': data['idPembelian'],
+                'namaPembeli': data['namaPembeli'],
+                'tipePemesanan': tipe_pm,
+                'negara': data.get('negara', '') if tipe_pm == 'International' else '',
+                'items': items_norm,
+                'tipeProduk': tipe_root,
+                'jenisKopi': jk_root,
+                'prosesPengolahan': pr_root,
+                'jumlahPesananKg': jumlah_total_kg,
+                'hargaPerKg': harga_avg,
+                'biayaPajak': biaya_pajak,
+                'biayaPengiriman': biaya_pengiriman,
+                'totalHarga': float(data['totalHarga']),
+                'statusPemesanan': data['statusPemesanan'],
+                'statusPembayaran': status_bayar,
+                'tanggalPemesanan': data.get('tanggalPemesanan', datetime.now().strftime('%Y-%m-%d')),
+                'createdAt': datetime.now(),
+                'updatedAt': datetime.now()
+            }
+        else:
+            pemesanan_data = {
+                'id': new_id,
+                'idPembelian': data['idPembelian'],
+                'namaPembeli': data['namaPembeli'],
+                'tipePemesanan': tipe_pm,
+                'negara': data.get('negara', '') if tipe_pm == 'International' else '',
+                'tipeProduk': data['tipeProduk'],
+                'prosesPengolahan': data['prosesPengolahan'],
+                'jenisKopi': data['jenisKopi'],
+                'jumlahPesananKg': float(data['jumlahPesananKg']),
+                'hargaPerKg': float(data['hargaPerKg']),
+                'biayaPajak': biaya_pajak,
+                'biayaPengiriman': biaya_pengiriman,
+                'totalHarga': float(data['totalHarga']),
+                'statusPemesanan': data['statusPemesanan'],
+                'statusPembayaran': status_bayar,
+                'tanggalPemesanan': data.get('tanggalPemesanan', datetime.now().strftime('%Y-%m-%d')),
+                'createdAt': datetime.now(),
+                'updatedAt': datetime.now()
+            }
         catatan_pm = (data.get('catatanPemesanan') or '').strip()
         if catatan_pm:
             pemesanan_data['catatanPemesanan'] = catatan_pm
@@ -4016,10 +4116,30 @@ def update_pemesanan(pemesanan_id):
                 else:
                     update_data[field] = data[field]
 
-        _total_keys = ('totalHarga', 'jumlahPesananKg', 'hargaPerKg', 'biayaPajak', 'biayaPengiriman')
+        if 'items' in data:
+            items_norm, items_err = _normalize_pemesanan_items_from_body(data)
+            if items_err:
+                return jsonify({'error': items_err}), 400
+            if not items_norm:
+                return jsonify({'error': 'items kosong atau tidak valid'}), 400
+            update_data['items'] = items_norm
+            jum = sum(float(i['jumlahPesananKg']) for i in items_norm)
+            subb = sum(float(i['subtotal']) for i in items_norm)
+            first = items_norm[0]
+            update_data['jumlahPesananKg'] = jum
+            update_data['hargaPerKg'] = round(subb / jum, 4) if jum > 0 else 0.0
+            update_data['tipeProduk'] = first['tipeProduk'] if len(items_norm) == 1 else 'Campuran'
+            update_data['jenisKopi'] = first['jenisKopi'] if len(items_norm) == 1 else 'Campuran'
+            update_data['prosesPengolahan'] = first['prosesPengolahan'] if len(items_norm) == 1 else 'Campuran'
+
+        _total_keys = ('totalHarga', 'jumlahPesananKg', 'hargaPerKg', 'biayaPajak', 'biayaPengiriman', 'items')
         if any(k in update_data for k in _total_keys):
-            j = float(update_data.get('jumlahPesananKg', pemesanan.get('jumlahPesananKg', 0)))
-            hk = float(update_data.get('hargaPerKg', pemesanan.get('hargaPerKg', 0)))
+            if 'items' in update_data:
+                sub_lines = sum(float(i.get('subtotal', 0) or 0) for i in update_data['items'])
+            else:
+                j = float(update_data.get('jumlahPesananKg', pemesanan.get('jumlahPesananKg', 0)))
+                hk = float(update_data.get('hargaPerKg', pemesanan.get('hargaPerKg', 0)))
+                sub_lines = j * hk
             pj = float(update_data.get('biayaPajak', pemesanan.get('biayaPajak', 0)) or 0)
             pg = float(update_data.get('biayaPengiriman', pemesanan.get('biayaPengiriman', 0)) or 0)
             th = float(update_data.get('totalHarga', pemesanan.get('totalHarga', 0)))
@@ -4027,10 +4147,10 @@ def update_pemesanan(pemesanan_id):
                 return jsonify({'error': 'Biaya pajak tidak boleh negatif'}), 400
             if pg < 0:
                 return jsonify({'error': 'Biaya pengiriman tidak boleh negatif'}), 400
-            expected = j * hk + pj + pg
+            expected = sub_lines + pj + pg
             if abs(th - expected) > 0.01:
                 return jsonify({
-                    'error': 'Total harga tidak sesuai dengan jumlah × harga/kg + pajak + pengiriman',
+                    'error': 'Total harga tidak sesuai (subtotal barang + pajak + pengiriman)',
                     'expected': expected,
                     'received': th,
                 }), 400
@@ -4188,26 +4308,47 @@ def proses_ordering():
         existing_ordering = db.ordering.find_one({'idPembelian': data['idPembelian']})
         if existing_ordering:
             return jsonify({'error': 'Pemesanan ini sudah diproses sebelumnya'}), 400
-        
-        tipe_produk_selected = (data.get('tipeProduk') or pemesanan.get('tipeProduk') or '').strip()
-        if tipe_produk_selected not in ('Green Beans', 'Pixel'):
-            return jsonify({'error': 'Tipe produk harus Green Beans atau Pixel'}), 400
-        
-        tipe_produk_pemesanan = (pemesanan.get('tipeProduk') or '').strip()
-        if tipe_produk_pemesanan and tipe_produk_selected != tipe_produk_pemesanan:
-            return jsonify({
-                'error': 'Tipe produk tidak sesuai',
-                'tipeProdukStok': tipe_produk_selected,
-                'tipeProdukPemesanan': tipe_produk_pemesanan
-            }), 400
-        
-        jumlah_pesanan = float(pemesanan['jumlahPesananKg'])
+
+        line_items = pemesanan_items_from_doc(pemesanan)
+        if not line_items:
+            return jsonify({'error': 'Pemesanan tidak memiliki barang'}), 400
+
         tanggal_ordering = data.get('tanggalOrdering', datetime.now().strftime('%Y-%m-%d'))
-        
         id_produksi_payload = data.get('idProduksi')
         use_single_batch = id_produksi_payload is not None and str(id_produksi_payload).strip() != ''
-        
+
+        tipe_from_req = (data.get('tipeProduk') or pemesanan.get('tipeProduk') or '').strip()
+        if tipe_from_req in ('Green Beans', 'Pixel'):
+            tipe_produk_selected = tipe_from_req
+        elif line_items:
+            tipe_produk_selected = (line_items[0].get('tipeProduk') or '').strip()
+        else:
+            tipe_produk_selected = ''
+        if tipe_produk_selected not in ('Green Beans', 'Pixel'):
+            return jsonify({'error': 'Tipe produk harus Green Beans atau Pixel'}), 400
+
+        tipe_produk_pemesanan = (pemesanan.get('tipeProduk') or '').strip()
+        multi_barang = len(line_items) > 1
+        if not multi_barang and tipe_produk_pemesanan and tipe_produk_pemesanan not in ('Campuran',):
+            if tipe_produk_selected != tipe_produk_pemesanan:
+                return jsonify({
+                    'error': 'Tipe produk tidak sesuai',
+                    'tipeProdukStok': tipe_produk_selected,
+                    'tipeProdukPemesanan': tipe_produk_pemesanan
+                }), 400
+
+        jumlah_pesanan_total = float(sum(float(x.get('jumlahPesananKg') or 0) for x in line_items))
+
         if use_single_batch:
+            if len(line_items) != 1:
+                return jsonify({
+                    'error': 'Pemesanan beberapa barang tidak mendukung pemilihan satu id produksi. Kosongkan id produksi untuk alokasi otomatis (FIFO).'
+                }), 400
+            it0 = line_items[0]
+            jumlah_pesanan = float(it0['jumlahPesananKg'])
+            tipe_produk_selected = (it0.get('tipeProduk') or tipe_produk_selected).strip()
+            if tipe_produk_selected not in ('Green Beans', 'Pixel'):
+                return jsonify({'error': 'Tipe produk baris harus Green Beans atau Pixel'}), 400
             # --- Cabang lama: satu id produksi eksplisit ---
             produksi = db.produksi.find_one({'idProduksi': id_produksi_payload})
             if not produksi:
@@ -4236,7 +4377,7 @@ def proses_ordering():
                 return jsonify({'error': 'Produksi menggabungkan bahan dengan jenis kopi berbeda'}), 400
             
             proses_tampilan = _proses_pengolahan_tampilan_untuk_agregasi(produksi, bahan)
-            ps_pem = (pemesanan.get('prosesPengolahan') or '').strip()
+            ps_pem = (it0.get('prosesPengolahan') or '').strip()
             ps_raw = (produksi.get('prosesPengolahan') or '').strip()
             if ps_pem not in (ps_raw, proses_tampilan):
                 return jsonify({
@@ -4246,11 +4387,11 @@ def proses_ordering():
                     'prosesPemesanan': ps_pem
                 }), 400
             
-            if bahan.get('jenisKopi') != pemesanan.get('jenisKopi'):
+            if (bahan.get('jenisKopi') or '').strip() != (it0.get('jenisKopi') or '').strip():
                 return jsonify({
                     'error': 'Jenis kopi tidak sesuai',
                     'jenisKopiProduksi': bahan.get('jenisKopi'),
-                    'jenisKopiPemesanan': pemesanan.get('jenisKopi')
+                    'jenisKopiPemesanan': it0.get('jenisKopi')
                 }), 400
             
             hasil_produksi_list = list(db.hasilProduksi.find({
@@ -4278,8 +4419,8 @@ def proses_ordering():
                 'idBahan': produksi.get('idBahan'),
                 'tipeProduk': tipe_produk_selected,
                 'kemasan': pemesanan.get('kemasan', ''),
-                'jenisKopi': pemesanan.get('jenisKopi'),
-                'prosesPengolahan': pemesanan.get('prosesPengolahan'),
+                'jenisKopi': it0.get('jenisKopi'),
+                'prosesPengolahan': it0.get('prosesPengolahan'),
                 'levelRoasting': pemesanan.get('levelRoasting', ''),
                 'tanggal': tanggal_ordering,
                 'beratSaatIni': jumlah_pesanan,
@@ -4329,98 +4470,133 @@ def proses_ordering():
                 'jumlahDikurangi': jumlah_pesanan
             }), 201
         
-        # --- Cabang baru: agregat Kelola Stok (tanpa pilih id produksi) ---
-        stok_rows, _ = _compute_stok_hasil_aggregate('', '')
-        key_pem = _stok_key(
-            tipe_produk_selected,
-            pemesanan.get('jenisKopi'),
-            pemesanan.get('prosesPengolahan'),
-        )
-        stok_tersedia = 0.0
-        for r in stok_rows:
-            rk = _stok_key(r.get('tipeProduk'), r.get('jenisKopi'), r.get('prosesPengolahan'))
-            if rk == key_pem:
-                stok_tersedia = float(r.get('totalBerat', 0) or 0)
-                break
-        
-        print(f"📦 [ORDERING PROSES] (agregat) key={key_pem}, stok_tersedia={stok_tersedia}, jumlah={jumlah_pesanan}")
-        
-        if stok_tersedia < jumlah_pesanan:
-            return jsonify({
-                'error': 'Stok tidak mencukupi',
-                'stokTersedia': stok_tersedia,
-                'jumlahPesanan': jumlah_pesanan,
-                'kekurangan': jumlah_pesanan - stok_tersedia,
-                'hint': 'Pastikan kombinasi tipe produk, jenis kopi, dan proses pengolahan sama dengan baris stok di Kelola Stok.'
-            }), 400
-        
+        # --- Cabang agregat: FIFO per baris (satu atau beberapa kombinasi tipe/jenis/proses) ---
+        tipe_ordering_label = 'Campuran' if multi_barang else tipe_produk_selected
+        stok_rows_all, _ = _compute_stok_hasil_aggregate('', '')
+        stok_remaining_by_key = {}
+        inserted_hasil_ids = []
+        all_prod_ids_order = []
+        first_stok_before = None
+        last_stok_after = None
+
         try:
-            allocations = _fifo_allocate_ordering_batches(pemesanan, tipe_produk_selected, jumlah_pesanan)
-        except RuntimeError as re:
-            return jsonify({'error': str(re), 'stokTersedia': stok_tersedia}), 400
-        
-        if not allocations:
-            return jsonify({'error': 'Tidak ada batch pengemasan yang cocok untuk alokasi stok'}), 400
-        
-        id_produksi_gabung = ','.join(str(p.get('idProduksi') or '').strip() for p, _ in allocations)
-        
-        new_id = get_next_id('ordering')
-        ordering_data = {
-            'id': new_id,
-            'idPembelian': data['idPembelian'],
-            'idProduksi': id_produksi_gabung,
-            'tipeProduk': tipe_produk_selected,
-            'jumlahPesananKg': jumlah_pesanan,
-            'stokSebelum': stok_tersedia,
-            'stokSesudah': stok_tersedia - jumlah_pesanan,
-            'statusPemesanan': 'Complete',
-            'tanggalOrdering': tanggal_ordering,
-            'createdAt': datetime.now(),
-            'updatedAt': datetime.now()
-        }
-        
-        print(f"🔵 [ORDERING PROSES] Inserting ordering (FIFO agregat): {ordering_data}")
-        result_ordering = db.ordering.insert_one(ordering_data)
-        ordering_data['_id'] = result_ordering.inserted_id
-        
-        for produksi, kg in allocations:
-            hasil_produksi_id = get_next_id('hasilProduksi')
-            hasil_produksi_data = {
-                'id': hasil_produksi_id,
-                'idProduksi': str(produksi.get('idProduksi') or '').strip(),
-                'idBahan': produksi.get('idBahan'),
-                'tipeProduk': tipe_produk_selected,
-                'kemasan': pemesanan.get('kemasan', ''),
-                'jenisKopi': pemesanan.get('jenisKopi'),
-                'prosesPengolahan': pemesanan.get('prosesPengolahan'),
-                'levelRoasting': pemesanan.get('levelRoasting', ''),
-                'tanggal': tanggal_ordering,
-                'beratSaatIni': float(kg),
-                'jumlah': 0,
-                'isFromOrdering': True,
-                'idPembelian': data['idPembelian']
-            }
-            print(f"🔵 [ORDERING PROSES] Inserting hasilProduksi FIFO: {hasil_produksi_data}")
-            db.hasilProduksi.insert_one(hasil_produksi_data)
-        
-        db.pemesanan.update_one(
-            {'idPembelian': data['idPembelian']},
-            {'$set': {
+            for idx, it in enumerate(line_items):
+                tipe_sel = (it.get('tipeProduk') or '').strip()
+                if tipe_sel not in ('Green Beans', 'Pixel'):
+                    raise ValueError(f'Baris {idx + 1}: tipeProduk harus Green Beans atau Pixel')
+                jum_baris = float(it.get('jumlahPesananKg') or 0)
+                if jum_baris <= 0:
+                    raise ValueError(f'Baris {idx + 1}: jumlah (kg) tidak valid')
+                jk_it = (it.get('jenisKopi') or '').strip()
+                pr_it = (it.get('prosesPengolahan') or '').strip()
+                if not jk_it or not pr_it:
+                    raise ValueError(f'Baris {idx + 1}: jenis kopi dan proses wajib diisi')
+
+                key_pem = _stok_key(tipe_sel, jk_it, pr_it)
+                if key_pem not in stok_remaining_by_key:
+                    stok_tersedia = 0.0
+                    for r in stok_rows_all:
+                        rk = _stok_key(r.get('tipeProduk'), r.get('jenisKopi'), r.get('prosesPengolahan'))
+                        if rk == key_pem:
+                            stok_tersedia = float(r.get('totalBerat', 0) or 0)
+                            break
+                    stok_remaining_by_key[key_pem] = stok_tersedia
+                stok_tersedia = stok_remaining_by_key[key_pem]
+
+                if idx == 0:
+                    first_stok_before = stok_tersedia
+
+                if stok_tersedia < jum_baris - 1e-9:
+                    raise ValueError(
+                        f'Baris {idx + 1}: stok tidak mencukupi (tersedia {stok_tersedia:g} kg, butuh {jum_baris:g} kg)'
+                    )
+
+                try:
+                    allocations = _fifo_allocate_ordering_batches(
+                        pemesanan, tipe_sel, jum_baris,
+                        jenis_kopi_override=jk_it,
+                        proses_pengolahan_override=pr_it,
+                    )
+                except RuntimeError as re:
+                    raise ValueError(f'Baris {idx + 1}: {str(re)}') from re
+
+                if not allocations:
+                    raise ValueError(f'Baris {idx + 1}: tidak ada batch pengemasan yang cocok')
+
+                for produksi, kg in allocations:
+                    hasil_produksi_id = get_next_id('hasilProduksi')
+                    hasil_produksi_data = {
+                        'id': hasil_produksi_id,
+                        'idProduksi': str(produksi.get('idProduksi') or '').strip(),
+                        'idBahan': produksi.get('idBahan'),
+                        'tipeProduk': tipe_sel,
+                        'kemasan': pemesanan.get('kemasan', ''),
+                        'jenisKopi': jk_it,
+                        'prosesPengolahan': pr_it,
+                        'levelRoasting': pemesanan.get('levelRoasting', ''),
+                        'tanggal': tanggal_ordering,
+                        'beratSaatIni': float(kg),
+                        'jumlah': 0,
+                        'isFromOrdering': True,
+                        'idPembelian': data['idPembelian'],
+                    }
+                    ins = db.hasilProduksi.insert_one(hasil_produksi_data)
+                    inserted_hasil_ids.append(ins.inserted_id)
+                    ip = str(produksi.get('idProduksi') or '').strip()
+                    if ip:
+                        all_prod_ids_order.append(ip)
+
+                stok_remaining_by_key[key_pem] = stok_tersedia - jum_baris
+                last_stok_after = stok_remaining_by_key[key_pem]
+
+            id_produksi_gabung = ','.join(dict.fromkeys(all_prod_ids_order))
+            new_id = get_next_id('ordering')
+            ordering_data = {
+                'id': new_id,
+                'idPembelian': data['idPembelian'],
+                'idProduksi': id_produksi_gabung,
+                'tipeProduk': tipe_ordering_label,
+                'jumlahPesananKg': jumlah_pesanan_total,
+                'itemsRingkasan': line_items,
+                'stokSebelum': first_stok_before if first_stok_before is not None else 0.0,
+                'stokSesudah': last_stok_after if last_stok_after is not None else 0.0,
                 'statusPemesanan': 'Complete',
-                'statusPembayaran': 'Lunas',
-                'updatedAt': datetime.now()
-            }}
-        )
-        
-        return jsonify({
-            'success': True,
-            'message': 'Ordering berhasil diproses, stok telah dikurangi (alokasi otomatis per batch)',
-            'ordering': json_serialize(ordering_data),
-            'stokSebelum': stok_tersedia,
-            'stokSesudah': stok_tersedia - jumlah_pesanan,
-            'jumlahDikurangi': jumlah_pesanan,
-            'idProduksiAlokasi': id_produksi_gabung,
-        }), 201
+                'tanggalOrdering': tanggal_ordering,
+                'createdAt': datetime.now(),
+                'updatedAt': datetime.now(),
+            }
+
+            print(f"🔵 [ORDERING PROSES] Inserting ordering (FIFO multi-baris): {ordering_data}")
+            result_ordering = db.ordering.insert_one(ordering_data)
+            ordering_data['_id'] = result_ordering.inserted_id
+
+            db.pemesanan.update_one(
+                {'idPembelian': data['idPembelian']},
+                {'$set': {
+                    'statusPemesanan': 'Complete',
+                    'statusPembayaran': 'Lunas',
+                    'updatedAt': datetime.now(),
+                }},
+            )
+
+            return jsonify({
+                'success': True,
+                'message': 'Ordering berhasil diproses, stok telah dikurangi (semua barang)',
+                'ordering': json_serialize(ordering_data),
+                'stokSebelum': first_stok_before,
+                'stokSesudah': last_stok_after,
+                'jumlahDikurangi': jumlah_pesanan_total,
+                'idProduksiAlokasi': id_produksi_gabung,
+            }), 201
+
+        except ValueError as ve:
+            if inserted_hasil_ids:
+                db.hasilProduksi.delete_many({'_id': {'$in': inserted_hasil_ids}})
+            return jsonify({'error': str(ve)}), 400
+        except Exception:
+            if inserted_hasil_ids:
+                db.hasilProduksi.delete_many({'_id': {'$in': inserted_hasil_ids}})
+            raise
         
     except Exception as e:
         print(f"❌ [ORDERING PROSES] ERROR: {str(e)}")
