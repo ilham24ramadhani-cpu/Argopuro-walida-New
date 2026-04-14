@@ -504,22 +504,15 @@ def validate_pengeringan_tahapan(status_tahapan_baru, kadar_air_baru, berat_terk
             if 'Pengeringan Awal' not in status_lama:
                 return False, 'Pengeringan Akhir hanya dapat dipilih jika tahapan sebelumnya adalah Pengeringan Awal'
             
-            # Cari kadar air dan berat terkini dari tahapan Pengeringan Awal (bisa dari history atau data saat ini)
-            kadar_air_awal = None
-            berat_terkini_awal = None
-            
-            # Cek dari history untuk menemukan entry Pengeringan Awal
-            history = produksi_lama.get('historyTahapan', [])
-            for entry in reversed(history):  # Cari dari yang terbaru
-                if 'Pengeringan Awal' in str(entry.get('statusTahapan', '')) or 'Pengeringan Awal' in str(entry.get('namaTahapan', '')):
-                    kadar_air_awal = entry.get('kadarAir')
-                    berat_terkini_awal = entry.get('beratTerkini')
-                    break
-            
-            # Jika tidak ditemukan di history, gunakan data saat ini jika status saat ini adalah Pengeringan Awal
-            if kadar_air_awal is None and 'Pengeringan Awal' in status_lama:
-                kadar_air_awal = produksi_lama.get('kadarAir')
-                berat_terkini_awal = produksi_lama.get('beratTerkini')
+            # Referensi Pengeringan Awal: selalu dari dokumen saat ini (bukan history).
+            # historyTahapan menyimpan snapshot SEBELUM setiap update; jika pengguna
+            # memperbarui berat terkini beberapa kali di tahap yang sama, entri history
+            # "Pengeringan Awal" terbaru masih memuat berat lama (mis. hanya bahan pertama
+            # atau nilai sebelum koreksi), sementara beratTerkini dokumen sudah benar.
+            # Fallback lama (history dulu, dokumen hanya jika kadar_air None) membiarkan
+            # berat usang tetap dipakai selama kadar air sempat tercatat di history.
+            kadar_air_awal = produksi_lama.get('kadarAir')
+            berat_terkini_awal = produksi_lama.get('beratTerkini')
             
             # Validasi kadar air Pengeringan Akhir harus lebih kecil dari Pengeringan Awal
             if kadar_air_awal is not None:
