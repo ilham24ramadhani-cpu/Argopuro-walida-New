@@ -1,7 +1,7 @@
 /**
  * Randomen / rendemen: berat awal ÷ berat green beans (pengemasan).
  * Berat pixel hanya dicatat, tidak masuk penyebut. Jika beratGreenBeans belum ada (data lama), fallback ke beratAkhir.
- * Tampilan utama: rasio sebenarnya (bahan ÷ hasil) dengan satu angka di belakang koma, contoh "6,4 banding 1".
+ * Tampilan utama: rasio sebenarnya (bahan ÷ hasil) dengan dua angka di belakang koma, contoh "6,43 banding 1".
  */
 (function (global) {
   function safeNum(v) {
@@ -17,30 +17,30 @@
     return b / h;
   }
 
-  /** Rasio kg bahan per 1 kg hasil, satu angka di belakang koma (persepuluhan terdekat). */
+  /** Rasio kg bahan per 1 kg hasil, dua angka di belakang koma (perseratus terdekat). */
   function roundBahanPerSatuKgHasil(ratio) {
     if (ratio == null || !Number.isFinite(ratio) || ratio <= 0) return null;
-    return Math.round(ratio * 10) / 10;
+    return Math.round(ratio * 100) / 100;
   }
 
-  /** Angka utama satu desimal (locale id-ID), tanpa sufiks " banding 1". */
+  /** Angka utama dua desimal (locale id-ID), tanpa sufiks " banding 1". */
   function formatAngkaRandomenUtama(ratio) {
     const n = roundBahanPerSatuKgHasil(ratio);
     if (n == null) return null;
     return n.toLocaleString("id-ID", {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     });
   }
 
-  /** Tampilan utama: "6,4 banding 1" = kg bahan per 1 kg hasil GB (satu desimal). */
+  /** Tampilan utama: "6,43 banding 1" = kg bahan per 1 kg hasil GB (dua desimal). */
   function formatRandomenBanding1(ratio) {
     const s = formatAngkaRandomenUtama(ratio);
     if (s == null) return "—";
     return `${s} banding 1`;
   }
 
-  /** Rasio untuk tooltip / ringkasan (sama satu desimal dengan kolom utama). */
+  /** Rasio untuk tooltip / ringkasan (sama dua desimal dengan kolom utama). */
   function formatRandomenDesimal(ratio) {
     if (ratio == null || !Number.isFinite(ratio)) return "—";
     return formatAngkaRandomenUtama(ratio) || "—";
@@ -139,7 +139,7 @@
     return r != null ? formatRandomenBanding1(r) : "—";
   }
 
-  /** Tooltip: contoh 921,75 ÷ 143,25 kg (green beans) = 6,4 */
+  /** Tooltip: contoh 921,75 ÷ 143,25 kg (green beans) = 6,43 */
   function formatRandomenPerIdTooltip(p) {
     const r = computeRandomenPerId(p);
     if (r == null) return "";

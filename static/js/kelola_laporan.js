@@ -18,7 +18,7 @@ function isProduksiPengemasanBeratAkhir(p) {
   return Number.isFinite(ba) && ba > 0;
 }
 
-/** Randemen agregat = Σ bahan (kg) ÷ Σ berat green beans pengemasan (fallback berat akhir jika GB kosong). Pixel tidak dijumlahkan di penyebut. Satu desimal (sama seperti randomen). */
+/** Randemen agregat = Σ bahan (kg) ÷ Σ berat green beans pengemasan (fallback berat akhir jika GB kosong). Pixel tidak dijumlahkan di penyebut. Dua desimal (sama seperti randomen). */
 function formatRandemenCell(totalBahanKg, totalPengemasanKg) {
   const d = Number(totalPengemasanKg) || 0;
   const n = Number(totalBahanKg) || 0;
@@ -28,10 +28,10 @@ function formatRandemenCell(totalBahanKg, totalPengemasanKg) {
   if (PR && typeof PR.formatRandomenDesimal === "function") {
     return PR.formatRandomenDesimal(r);
   }
-  const satu = Math.round(r * 10) / 10;
-  return satu.toLocaleString("id-ID", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
+  const dua = Math.round(r * 100) / 100;
+  return dua.toLocaleString("id-ID", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 
@@ -380,7 +380,7 @@ function buildAlurProduksiTableHtml(item) {
     <th scope="col" class="text-nowrap">Tanggal</th>
     <th scope="col" class="text-nowrap">B. awal</th>
     <th scope="col" class="text-nowrap">B. akhir</th>
-    <th scope="col" class="text-nowrap" title="N banding 1: kg bahan per 1 kg hasil tahap (satu angka di belakang koma)">Randomen</th>
+    <th scope="col" class="text-nowrap" title="N banding 1: kg bahan per 1 kg hasil tahap (dua angka di belakang koma)">Randomen</th>
     <th scope="col" class="text-nowrap">Kadar</th>
     <th scope="col">Catatan</th>
   </tr>`;
@@ -1102,6 +1102,13 @@ const LAPORAN_REKAP_CONFIG = {
         (sum, entry) => sum + safeNumber(entry.jumlah),
         0
       );
+      const totalPengeluaranRp = items.reduce((sum, entry) => {
+        const tp = safeNumber(entry.totalPengeluaran);
+        if (tp > 0) return sum + tp;
+        const j = safeNumber(entry.jumlah);
+        const h = safeNumber(entry.hargaPerKg);
+        return sum + (j > 0 && h > 0 ? j * h : 0);
+      }, 0);
       return [
         {
           label: "Harga Tertinggi (Rp/kg)",
@@ -1118,6 +1125,13 @@ const LAPORAN_REKAP_CONFIG = {
         {
           label: "Total Bahan",
           value: formatKgValue(totalBerat),
+        },
+        {
+          label: "Total pengeluaran terkait bahan masuk",
+          value:
+            totalPengeluaranRp > 0
+              ? formatCurrency(totalPengeluaranRp)
+              : "—",
         },
         (() => {
           const { totalBahanKg, totalPengemasanKg } =
@@ -1159,7 +1173,7 @@ const LAPORAN_REKAP_CONFIG = {
             : "-",
       },
       {
-        label: "Randomen ID (N banding 1, 1 desimal)",
+        label: "Randomen ID (N banding 1, 2 desimal)",
         align: "right",
         value: (item) =>
           window.ProduksiRandomen
@@ -2143,7 +2157,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
         <div class="inner">
         <h2>Rekap randomen per proses pengolahan</h2>
         <p class="meta">
-          Randomen: <strong>N banding 1</strong> (N kg bahan per 1 kg <strong>green beans</strong>), tampilan <strong>satu desimal</strong> dari hasil pembagian. Penyebut = berat green beans; pixel tidak dihitung. Data lama tanpa GB memakai berat akhir. Hanya batch pengemasan dengan berat valid.
+          Randomen: <strong>N banding 1</strong> (N kg bahan per 1 kg <strong>green beans</strong>), tampilan <strong>dua desimal</strong> dari hasil pembagian. Penyebut = berat green beans; pixel tidak dihitung. Data lama tanpa GB memakai berat akhir. Hanya batch pengemasan dengan berat valid.
         </p>
         <table>
           <thead>
@@ -2152,7 +2166,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
               <th>Jumlah batch</th>
               <th>Σ Berat awal (kg)</th>
               <th>Σ Berat GB randomen (kg)</th>
-              <th>Randomen (N banding 1, 1 desimal)</th>
+              <th>Randomen (N banding 1, 2 desimal)</th>
             </tr>
           </thead>
           <tbody>
@@ -2349,7 +2363,7 @@ function buildRandomenPerProsesSheetMatrix(items) {
         "Jumlah batch",
         "Σ Berat awal (kg)",
         "Σ Berat GB randomen (kg)",
-        "Randomen (N banding 1, 1 desimal)",
+        "Randomen (N banding 1, 2 desimal)",
       ],
       ["Tidak ada data produksi pada filter ini.", "", "", "", ""],
     ];
@@ -2364,7 +2378,7 @@ function buildRandomenPerProsesSheetMatrix(items) {
     "Jumlah batch",
     "Σ Berat awal (kg)",
     "Σ Berat GB randomen (kg)",
-    "Randomen (N banding 1, 1 desimal)",
+    "Randomen (N banding 1, 2 desimal)",
   ];
   if (keys.length === 0) {
     return [
@@ -3225,7 +3239,7 @@ async function exportRekapExcel(category) {
       rr += 1;
       mergeBorderRow(
         rr,
-        "N banding 1 (kg bahan per 1 kg green beans), satu desimal. Hanya batch pengemasan dengan berat valid.",
+        "N banding 1 (kg bahan per 1 kg green beans), dua desimal. Hanya batch pengemasan dengan berat valid.",
         10
       );
       rr += 1;
@@ -3545,7 +3559,7 @@ function buildTimelineItem(item, isFirst, index = 0, bahanById) {
           ${escapeHtmlLaporan(PR.formatRandomenPerIdCell(item))}
           <span class="text-muted"> — ${escapeHtmlLaporan(PR.formatRandomenPerIdTooltip(item) || "setelah pengemasan")}</span>
         </div>
-        <p class="small text-muted mt-2 mb-1 fw-semibold">Randomen per tahapan (N banding 1, satu desimal)</p>
+        <p class="small text-muted mt-2 mb-1 fw-semibold">Randomen per tahapan (N banding 1, dua desimal)</p>
         <pre class="small text-muted mb-0 bg-body-secondary rounded p-2" style="white-space:pre-wrap;font-family:inherit">${escapeHtmlLaporan(
           PR.buildRingkasanPerTahapanText(item)
         )}</pre>`
@@ -4148,7 +4162,7 @@ function generateProduksiPDF(id) {
   doc.setFont(undefined, "normal");
   doc.setTextColor(80, 80, 80);
   doc.text(
-    "Tiap baris: randomen = N banding 1 (satu desimal), bahan per 1 kg green beans (pengemasan); pixel tidak di penyebut; kadar air, catatan.",
+    "Tiap baris: randomen = N banding 1 (dua desimal), bahan per 1 kg green beans (pengemasan); pixel tidak di penyebut; kadar air, catatan.",
     20,
     y
   );
