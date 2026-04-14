@@ -1,8 +1,7 @@
 /**
  * Randomen / rendemen: berat awal ÷ berat green beans (pengemasan).
  * Berat pixel hanya dicatat, tidak masuk penyebut. Jika beratGreenBeans belum ada (data lama), fallback ke beratAkhir.
- * Tampilan utama: N banding 1 (Math.round), arti ±N kg bahan untuk 1 kg hasil GB.
- * Detail rasio (desimal) untuk tooltip / PDF: formatRandomenDesimal, formatRandomenPerIdTooltip.
+ * Tampilan utama: rasio sebenarnya (bahan ÷ hasil) dengan satu angka di belakang koma, contoh "6,4 banding 1".
  */
 (function (global) {
   function safeNum(v) {
@@ -18,24 +17,33 @@
     return b / h;
   }
 
-  /** Nilai pembulatan: kg bahan per 1 kg hasil (untuk tampilan "N banding 1"). */
+  /** Rasio kg bahan per 1 kg hasil, satu angka di belakang koma (persepuluhan terdekat). */
   function roundBahanPerSatuKgHasil(ratio) {
     if (ratio == null || !Number.isFinite(ratio) || ratio <= 0) return null;
-    const n = Math.round(ratio);
-    return n < 1 ? 1 : n;
+    return Math.round(ratio * 10) / 10;
   }
 
-  /** Tampilan utama: "6 banding 1" = ±6 kg bahan untuk 1 kg hasil (dibulatkan). */
-  function formatRandomenBanding1(ratio) {
+  /** Angka utama satu desimal (locale id-ID), tanpa sufiks " banding 1". */
+  function formatAngkaRandomenUtama(ratio) {
     const n = roundBahanPerSatuKgHasil(ratio);
-    if (n == null) return "—";
-    return `${n.toLocaleString("id-ID")} banding 1`;
+    if (n == null) return null;
+    return n.toLocaleString("id-ID", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
   }
 
-  /** Angka rasio detail (tooltip / PDF teks penjelas), bukan untuk kolom utama. */
+  /** Tampilan utama: "6,4 banding 1" = kg bahan per 1 kg hasil GB (satu desimal). */
+  function formatRandomenBanding1(ratio) {
+    const s = formatAngkaRandomenUtama(ratio);
+    if (s == null) return "—";
+    return `${s} banding 1`;
+  }
+
+  /** Rasio untuk tooltip / ringkasan (sama satu desimal dengan kolom utama). */
   function formatRandomenDesimal(ratio) {
     if (ratio == null || !Number.isFinite(ratio)) return "—";
-    return ratio.toLocaleString("id-ID", { maximumFractionDigits: 4 });
+    return formatAngkaRandomenUtama(ratio) || "—";
   }
 
   function formatKgAngka(kg) {
@@ -131,7 +139,7 @@
     return r != null ? formatRandomenBanding1(r) : "—";
   }
 
-  /** Tooltip: contoh 85,5 ÷ 17,09 ≈ 5,0032 */
+  /** Tooltip: contoh 921,75 ÷ 143,25 kg (green beans) = 6,4 */
   function formatRandomenPerIdTooltip(p) {
     const r = computeRandomenPerId(p);
     if (r == null) return "";
@@ -139,7 +147,7 @@
     const h = getDenominatorHasilRandomenFromDoc(p);
     const pakaiGb = safeNum(p.beratGreenBeans) > 0;
     const label = pakaiGb ? "green beans" : "berat akhir (data lama)";
-    return `${formatKgAngka(b)} ÷ ${formatKgAngka(h)} kg (${label}) ≈ ${formatRandomenDesimal(r)}`;
+    return `${formatKgAngka(b)} ÷ ${formatKgAngka(h)} kg (${label}) = ${formatRandomenDesimal(r)}`;
   }
 
   /**
@@ -261,6 +269,7 @@
     formatRandomenRatio,
     formatRandomenBanding1,
     formatRandomenDesimal,
+    formatAngkaRandomenUtama,
     formatKgAngka,
     roundBahanPerSatuKgHasil,
     getDenominatorAkhirProduksi,

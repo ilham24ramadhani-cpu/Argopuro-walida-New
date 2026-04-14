@@ -18,13 +18,21 @@ function isProduksiPengemasanBeratAkhir(p) {
   return Number.isFinite(ba) && ba > 0;
 }
 
-/** Randemen agregat = Σ bahan (kg) ÷ Σ berat green beans pengemasan (fallback berat akhir jika GB kosong). Pixel tidak dijumlahkan di penyebut. */
+/** Randemen agregat = Σ bahan (kg) ÷ Σ berat green beans pengemasan (fallback berat akhir jika GB kosong). Pixel tidak dijumlahkan di penyebut. Satu desimal (sama seperti randomen). */
 function formatRandemenCell(totalBahanKg, totalPengemasanKg) {
   const d = Number(totalPengemasanKg) || 0;
   const n = Number(totalBahanKg) || 0;
   if (d <= 0) return "—";
   const r = n / d;
-  return r.toLocaleString("id-ID", { maximumFractionDigits: 4 });
+  const PR = typeof window !== "undefined" && window.ProduksiRandomen;
+  if (PR && typeof PR.formatRandomenDesimal === "function") {
+    return PR.formatRandomenDesimal(r);
+  }
+  const satu = Math.round(r * 10) / 10;
+  return satu.toLocaleString("id-ID", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
 }
 
 function ringkasanProsesBahanLaporan(item) {
@@ -40,6 +48,60 @@ function getBahanMapForLaporan() {
     if (b?.idBahan) m.set(b.idBahan, b);
   }
   return m;
+}
+
+/** Daftar ID bahan dari rekaman produksi (multi-bahan atau legacy tunggal). */
+function getIdBahanListFromProduksiLaporan(p) {
+  if (!p) return [];
+  if (Array.isArray(p.idBahanList) && p.idBahanList.length > 0) {
+    return p.idBahanList.map((x) => String(x).trim()).filter(Boolean);
+  }
+  if (p.idBahan) return [String(p.idBahan).trim()];
+  return [];
+}
+
+/** Format berat untuk PDF ringkasan produksi (termasuk 0 kg). */
+function formatBeratKgLaporanPdf(val) {
+  if (val == null || val === "") return "—";
+  const n = typeof val === "number" ? val : parseFloat(val);
+  if (!Number.isFinite(n)) return "—";
+  return `${n.toLocaleString("id-ID", { maximumFractionDigits: 4 })} kg`;
+}
+
+/**
+ * Matrix untuk tabel PDF: header + baris per ID bahan dengan pemasok & alokasi.
+ * @returns {string[][]|null} null jika tidak ada ID bahan.
+ */
+function buildMatrixSumberBahanProduksiPdf(item) {
+  const ids = getIdBahanListFromProduksiLaporan(item);
+  if (!ids.length) return null;
+  const map = getBahanMapForLaporan();
+  const alokRows = Array.isArray(item.alokasiBeratBahan)
+    ? item.alokasiBeratBahan
+    : [];
+  const alokMap = new Map();
+  for (const r of alokRows) {
+    const id = String(r.idBahan || "").trim();
+    if (id) alokMap.set(id, Number(r.berat) || 0);
+  }
+  const header = ["No", "ID Bahan", "Pemasok", "Alokasi (kg)"];
+  const body = ids.map((idBahan, i) => {
+    const b = map.get(idBahan);
+    let kg = alokMap.has(idBahan) ? alokMap.get(idBahan) : null;
+    if (kg == null && ids.length === 1) {
+      const ba = Number(item.beratAwal);
+      kg = Number.isFinite(ba) ? ba : null;
+    }
+    let kgStr = "—";
+    if (kg != null && Number.isFinite(kg)) {
+      kgStr =
+        kg === 0
+          ? "0"
+          : kg.toLocaleString("id-ID", { maximumFractionDigits: 4 });
+    }
+    return [String(i + 1), idBahan, (b && b.pemasok) || "—", kgStr];
+  });
+  return [header, ...body];
 }
 
 /**
@@ -318,7 +380,7 @@ function buildAlurProduksiTableHtml(item) {
     <th scope="col" class="text-nowrap">Tanggal</th>
     <th scope="col" class="text-nowrap">B. awal</th>
     <th scope="col" class="text-nowrap">B. akhir</th>
-    <th scope="col" class="text-nowrap" title="Dibulatkan: N banding 1 (kg bahan per 1 kg hasil tahap)">Randomen</th>
+    <th scope="col" class="text-nowrap" title="N banding 1: kg bahan per 1 kg hasil tahap (satu angka di belakang koma)">Randomen</th>
     <th scope="col" class="text-nowrap">Kadar</th>
     <th scope="col">Catatan</th>
   </tr>`;
@@ -1097,7 +1159,7 @@ const LAPORAN_REKAP_CONFIG = {
             : "-",
       },
       {
-        label: "Randomen ID (N banding 1)",
+        label: "Randomen ID (N banding 1, 1 desimal)",
         align: "right",
         value: (item) =>
           window.ProduksiRandomen
@@ -2081,7 +2143,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
         <div class="inner">
         <h2>Rekap randomen per proses pengolahan</h2>
         <p class="meta">
-          Randomen: <strong>N banding 1</strong> (N kg bahan per 1 kg <strong>green beans</strong>). Penyebut = berat green beans; pixel tidak dihitung. Data lama tanpa GB memakai berat akhir. Hanya batch pengemasan dengan berat valid.
+          Randomen: <strong>N banding 1</strong> (N kg bahan per 1 kg <strong>green beans</strong>), tampilan <strong>satu desimal</strong> dari hasil pembagian. Penyebut = berat green beans; pixel tidak dihitung. Data lama tanpa GB memakai berat akhir. Hanya batch pengemasan dengan berat valid.
         </p>
         <table>
           <thead>
@@ -2090,7 +2152,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
               <th>Jumlah batch</th>
               <th>Σ Berat awal (kg)</th>
               <th>Σ Berat GB randomen (kg)</th>
-              <th>Randomen (N banding 1)</th>
+              <th>Randomen (N banding 1, 1 desimal)</th>
             </tr>
           </thead>
           <tbody>
@@ -2287,7 +2349,7 @@ function buildRandomenPerProsesSheetMatrix(items) {
         "Jumlah batch",
         "Σ Berat awal (kg)",
         "Σ Berat GB randomen (kg)",
-        "Randomen (N banding 1)",
+        "Randomen (N banding 1, 1 desimal)",
       ],
       ["Tidak ada data produksi pada filter ini.", "", "", "", ""],
     ];
@@ -2302,7 +2364,7 @@ function buildRandomenPerProsesSheetMatrix(items) {
     "Jumlah batch",
     "Σ Berat awal (kg)",
     "Σ Berat GB randomen (kg)",
-    "Randomen (N banding 1)",
+    "Randomen (N banding 1, 1 desimal)",
   ];
   if (keys.length === 0) {
     return [
@@ -3163,7 +3225,7 @@ async function exportRekapExcel(category) {
       rr += 1;
       mergeBorderRow(
         rr,
-        "N banding 1 (kg bahan per 1 kg green beans). Hanya batch pengemasan dengan berat valid.",
+        "N banding 1 (kg bahan per 1 kg green beans), satu desimal. Hanya batch pengemasan dengan berat valid.",
         10
       );
       rr += 1;
@@ -3483,7 +3545,7 @@ function buildTimelineItem(item, isFirst, index = 0, bahanById) {
           ${escapeHtmlLaporan(PR.formatRandomenPerIdCell(item))}
           <span class="text-muted"> — ${escapeHtmlLaporan(PR.formatRandomenPerIdTooltip(item) || "setelah pengemasan")}</span>
         </div>
-        <p class="small text-muted mt-2 mb-1 fw-semibold">Randomen per tahapan (N banding 1, dibulatkan)</p>
+        <p class="small text-muted mt-2 mb-1 fw-semibold">Randomen per tahapan (N banding 1, satu desimal)</p>
         <pre class="small text-muted mb-0 bg-body-secondary rounded p-2" style="white-space:pre-wrap;font-family:inherit">${escapeHtmlLaporan(
           PR.buildRingkasanPerTahapanText(item)
         )}</pre>`
@@ -3597,17 +3659,26 @@ function buildTimelineSteps(item, bahanById) {
     statusClass: "warning",
   });
 
-  if (item.statusTahapan === "Pengemasan" && Number.isFinite(beratAwalValue)) {
+  const stTahap = (item.statusTahapan || "").trim();
+  if (stTahap.includes("Pengemasan") && Number.isFinite(beratAwalValue)) {
     const beratAkhirValue =
       typeof item.beratAkhir === "number"
         ? item.beratAkhir
         : parseFloat(item.beratAkhir);
+    const parts = [];
+    if (Number.isFinite(beratAkhirValue)) {
+      parts.push(`Berat akhir: ${beratAkhirValue.toLocaleString("id-ID")} kg`);
+    } else {
+      parts.push("Berat akhir belum diinput");
+    }
+    const gbTxt = formatBeratKgLaporanPdf(item.beratGreenBeans);
+    const pxTxt = formatBeratKgLaporanPdf(item.beratPixel);
+    if (gbTxt !== "—") parts.push(`Green beans: ${gbTxt}`);
+    if (pxTxt !== "—") parts.push(`Pixel: ${pxTxt}`);
     steps.push({
       title: "Pengemasan",
       subtitle: formatDate(item.tanggalSekarang),
-      details: Number.isFinite(beratAkhirValue)
-        ? `Berat akhir: ${beratAkhirValue.toLocaleString("id-ID")} kg`
-        : "Berat akhir belum diinput",
+      details: parts.join(" · "),
     });
   }
 
@@ -4011,6 +4082,14 @@ function generateProduksiPDF(id) {
       "Berat Akhir",
       `${item.beratAkhir ? item.beratAkhir.toLocaleString("id-ID") : "—"} kg`,
     ],
+    [
+      "Berat green beans (hasil pengemasan)",
+      formatBeratKgLaporanPdf(item.beratGreenBeans),
+    ],
+    [
+      "Berat produk pixel (pengemasan)",
+      formatBeratKgLaporanPdf(item.beratPixel),
+    ],
     ["Randomen (per ID produksi)", rndPerId],
     ["Proses Pengolahan", prosesTampilanPdf],
     ["Kadar Air", item.kadarAir ? `${item.kadarAir}%` : "—"],
@@ -4025,6 +4104,34 @@ function generateProduksiPDF(id) {
   if (item.jumlahKemasan != null)
     pairsProd.push(["Jumlah Kemasan", String(item.jumlahKemasan)]);
   y = pdfRenderKeyValueTable(doc, y, pairsProd, { title: "Ringkasan" });
+
+  const sumberMatrix = buildMatrixSumberBahanProduksiPdf(item);
+  if (y > 200) {
+    doc.addPage();
+    y = 20;
+  }
+  doc.setFontSize(11);
+  doc.setFont(undefined, "bold");
+  doc.text("Sumber bahan (ID & pemasok)", 20, y);
+  y += 6;
+  doc.setFontSize(8);
+  doc.setFont(undefined, "normal");
+  doc.setTextColor(80, 80, 80);
+  doc.text(
+    "Alokasi = berat bahan awal per ID yang dipakai untuk produksi ini (sesuai Kelola Produksi). Pemasok diambil dari data bahan masuk.",
+    20,
+    y
+  );
+  y += 5;
+  doc.setTextColor(0, 0, 0);
+  if (sumberMatrix) {
+    y = pdfRenderTableFromMatrix(doc, y, sumberMatrix, [8, 42, 72, 48]);
+  } else {
+    doc.setFontSize(9);
+    doc.text("— Tidak ada ID bahan tercatat pada produksi ini.", 20, y);
+    y += 8;
+  }
+
   y = pdfAppendCatatanPerTahapanList(doc, y, item);
 
   // === DETAIL ALUR PRODUKSI (tabel) ===
@@ -4041,7 +4148,7 @@ function generateProduksiPDF(id) {
   doc.setFont(undefined, "normal");
   doc.setTextColor(80, 80, 80);
   doc.text(
-    "Tiap baris: randomen = N banding 1 (dibulatkan), bahan per 1 kg green beans (pengemasan); pixel tidak di penyebut; kadar air, catatan.",
+    "Tiap baris: randomen = N banding 1 (satu desimal), bahan per 1 kg green beans (pengemasan); pixel tidak di penyebut; kadar air, catatan.",
     20,
     y
   );
