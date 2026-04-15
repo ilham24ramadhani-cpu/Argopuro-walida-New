@@ -13,16 +13,21 @@ let currentDeleteType = null; // 'produk', 'proses', 'jenisKopi', 'varietas', 'r
 // Konstanta tahapan produksi yang tersedia
 // CATATAN: Tahapan sekarang diambil dari Master Data, bukan hardcode
 // Konstanta ini hanya untuk referensi/fallback jika diperlukan
+// Urutan objek = urutan checkbox di form (sinkron dengan kelola_produksi.js & app.py)
 const ALL_TAHAPAN = {
   Sortasi: "Sortasi Cherry atau Buah Kopi",
   Fermentasi: "Fermentasi",
   Pulping: "Pulping",
   Pencucian: "Pencucian",
-  "Pengeringan Awal": "Pengeringan Awal",
-  "Pengeringan Akhir": "Pengeringan Akhir",
-  Hulling: "Pengupasan Kulit Tanduk (Hulling)",
+  "Pengeringan Awal (Para-Para)": "Pengeringan Awal (Para - Para)",
+  "Fermentasi 2": "Fermentasi 2",
+  "Hulling 1": "Pengupasan Kulit Tanduk (Hulling) 1",
+  "Pengeringan Akhir (Pengeringan Lantai)":
+    "Pengeringan Akhir (Pengeringan Lantai)",
+  "Hulling 2": "Pengupasan Kulit Tanduk (Hulling) 2",
   "Hand Sortasi": "Hand Sortasi atau Sortasi Biji Kopi",
   Grinding: "Grinding",
+  Roasting: "Roasting",
   Pengemasan: "Pengemasan (Tahapan Akhir)",
 };
 
