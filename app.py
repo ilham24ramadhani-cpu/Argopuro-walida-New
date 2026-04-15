@@ -126,75 +126,6 @@ def get_next_id_produksi_preview():
     seq = get_next_id_preview(counter_key)
     return f"PRD-{yyyymm}-{str(seq).zfill(4)}"
 
-# --- Tahapan produksi (sinkron dengan static/js/kelola_data.js & kelola_produksi.js) ---
-_TAHAPAN_DEF = [
-    ('Sortasi', 'Sortasi Cherry atau Buah Kopi'),
-    ('Fermentasi', 'Fermentasi'),
-    ('Pulping', 'Pulping'),
-    ('Pencucian', 'Pencucian'),
-    ('Pengeringan Awal (Para-Para)', 'Pengeringan Awal (Para - Para)'),
-    ('Fermentasi 2', 'Fermentasi 2'),
-    ('Hulling 1', 'Pengupasan Kulit Tanduk (Hulling) 1'),
-    ('Pengeringan Akhir (Pengeringan Lantai)', 'Pengeringan Akhir (Pengeringan Lantai)'),
-    ('Hulling 2', 'Pengupasan Kulit Tanduk (Hulling) 2'),
-    ('Hand Sortasi', 'Hand Sortasi atau Sortasi Biji Kopi'),
-    ('Grinding', 'Grinding'),
-    ('Roasting', 'Roasting'),
-    ('Pengemasan', 'Pengemasan (Tahapan Akhir)'),
-]
-TAHAPAN_URUTAN_KEYS = [k for k, _ in _TAHAPAN_DEF]
-_TAHAPAN_KEY_TO_LABEL = dict(_TAHAPAN_DEF)
-TAHAPAN_MAP_INPUT_TO_KEY = {}
-for _k, _lab in _TAHAPAN_DEF:
-    TAHAPAN_MAP_INPUT_TO_KEY[_k] = _k
-    TAHAPAN_MAP_INPUT_TO_KEY[_lab] = _k
-TAHAPAN_MAP_INPUT_TO_KEY.update({
-    'Sortasi Buah': 'Sortasi',
-    'Pengeringan Awal': 'Pengeringan Awal (Para-Para)',
-    'Pengeringan Akhir': 'Pengeringan Akhir (Pengeringan Lantai)',
-    'Pengupasan Kulit Tanduk (Hulling)': 'Hulling 1',
-    'Hulling': 'Hulling 1',
-    'Pengemasan': 'Pengemasan',
-})
-
-
-def _normalize_input_tahapan_ke_key(status_s):
-    """Samakan label/status UI atau kunci Mongo → kunci urutan TAHAPAN_URUTAN_KEYS."""
-    if status_s is None:
-        return None
-    s = str(status_s).strip()
-    if not s:
-        return s
-    if s in TAHAPAN_MAP_INPUT_TO_KEY:
-        return TAHAPAN_MAP_INPUT_TO_KEY[s]
-    for key in sorted(TAHAPAN_MAP_INPUT_TO_KEY.keys(), key=len, reverse=True):
-        if len(key) >= 4 and key in s:
-            return TAHAPAN_MAP_INPUT_TO_KEY[key]
-    return s
-
-
-def _master_punya_tahapan(tahapan_status, norm_key):
-    """True jika tahapan aktif di master (termasuk alias kunci lama di dataProses)."""
-    if not isinstance(tahapan_status, dict):
-        return False
-    if tahapan_status.get(norm_key):
-        return True
-    if norm_key == 'Pengeringan Awal (Para-Para)' and tahapan_status.get('Pengeringan Awal'):
-        return True
-    if norm_key == 'Pengeringan Akhir (Pengeringan Lantai)' and tahapan_status.get('Pengeringan Akhir'):
-        return True
-    if norm_key in ('Hulling 1', 'Hulling 2') and tahapan_status.get('Hulling'):
-        return True
-    return False
-
-
-def _index_tahapan(norm_key):
-    try:
-        return TAHAPAN_URUTAN_KEYS.index(norm_key)
-    except ValueError:
-        return -1
-
-
 # Helper function untuk validasi sequential tahapan produksi
 def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_tahapan_lama=None):
     """
@@ -217,19 +148,65 @@ def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_t
             return False, f'Proses pengolahan "{proses_pengolahan}" tidak ditemukan di master data'
         
         tahapan_status = master_proses.get('tahapanStatus', {})
-        urutan_tahapan = TAHAPAN_URUTAN_KEYS
-
-        status_baru_normalized = _normalize_input_tahapan_ke_key(status_tahapan_baru)
-
+        
+        # Mapping tahapan untuk validasi (nilai kanonik = kunci di tahapanStatus master)
+        tahapan_map = {
+            'Sortasi Cherry atau Buah Kopi': 'Sortasi',
+            'Sortasi Buah': 'Sortasi',  # Kompatibilitas nama lama
+            'Fermentasi': 'Fermentasi',
+            'Pulping': 'Pulping',
+            'Pencucian': 'Pencucian',
+            'Pengeringan Awal': 'Pengeringan Awal',
+            'Pengeringan Awal (Para - Para)': 'Pengeringan Awal',
+            'Fermentasi 2': 'Fermentasi 2',
+            'Pulping 2': 'Pulping 2',
+            'Pengeringan Akhir': 'Pengeringan Akhir',
+            'Pengeringan Akhir (Pengeringan Lantai)': 'Pengeringan Akhir',
+            'Pengupasan Kulit Tanduk (Hulling)': 'Hulling',
+            'Hand Sortasi atau Sortasi Biji Kopi': 'Hand Sortasi',
+            'Roasting': 'Roasting',  # legacy (data lama)
+            'Grinding': 'Grinding',
+            'Pengemasan': 'Pengemasan'
+        }
+        
+        # Daftar urutan tahapan (sesuai urutan logis proses basah → pengeringan para-para → siklus kedua → pengeringan lantai → …)
+        urutan_tahapan = [
+            'Sortasi', 'Fermentasi', 'Pulping', 'Pencucian',
+            'Pengeringan Awal', 'Fermentasi 2', 'Pulping 2', 'Pengeringan Akhir',
+            'Hulling', 'Hand Sortasi', 'Grinding', 'Pengemasan',
+        ]
+        
+        # Mapping urutan tahapan untuk mendapatkan index
+        urutan_map = {tahapan: idx for idx, tahapan in enumerate(urutan_tahapan)}
+        
+        # Normalisasi status tahapan baru
+        status_baru_normalized = None
+        for key, value in tahapan_map.items():
+            if key in status_tahapan_baru or status_tahapan_baru == key:
+                status_baru_normalized = value
+                break
+        
+        if not status_baru_normalized:
+            # Jika tidak ditemukan di map, coba langsung
+            status_baru_normalized = status_tahapan_baru
+        
         # Validasi: tahapan baru harus ada di konfigurasi master (kecuali Pengemasan yang selalu tersedia)
         if status_baru_normalized != 'Pengemasan':
-            if not _master_punya_tahapan(tahapan_status, status_baru_normalized):
+            if not tahapan_status.get(status_baru_normalized, False):
                 return False, f'Tahapan "{status_tahapan_baru}" tidak tersedia untuk proses pengolahan "{proses_pengolahan}"'
         
         # Jika ini adalah update (ada status lama), validasi sequential
         if status_tahapan_lama:
-            status_lama_normalized = _normalize_input_tahapan_ke_key(status_tahapan_lama)
-
+            # Normalisasi status lama
+            status_lama_normalized = None
+            for key, value in tahapan_map.items():
+                if key in status_tahapan_lama or status_tahapan_lama == key:
+                    status_lama_normalized = value
+                    break
+            
+            if not status_lama_normalized:
+                status_lama_normalized = status_tahapan_lama
+            
             # Cari index tahapan lama dan baru
             try:
                 index_lama = urutan_tahapan.index(status_lama_normalized)
@@ -251,13 +228,9 @@ def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_t
                 if index_baru - index_lama > 1:
                     tahapan_terlewat = urutan_tahapan[index_lama + 1:index_baru]
                     # Filter hanya tahapan yang ada di konfigurasi master
-                    tahapan_terlewat_valid = [
-                        t for t in tahapan_terlewat
-                        if _master_punya_tahapan(tahapan_status, t) or t == 'Pengemasan'
-                    ]
+                    tahapan_terlewat_valid = [t for t in tahapan_terlewat if tahapan_status.get(t, False) or t == 'Pengemasan']
                     if tahapan_terlewat_valid:
-                        labels = [_TAHAPAN_KEY_TO_LABEL.get(t, t) for t in tahapan_terlewat_valid]
-                        return False, f'Tidak dapat melompati tahapan. Tahapan yang terlewat: {", ".join(labels)}'
+                        return False, f'Tidak dapat melompati tahapan. Tahapan yang terlewat: {", ".join(tahapan_terlewat_valid)}'
             except ValueError:
                 # Jika tahapan tidak ditemukan di urutan, skip validasi sequential
                 pass
@@ -585,6 +558,51 @@ def _cascade_rename_master_proses_pengolahan(old_nama, new_nama):
     return stats
 
 
+def _last_snapshot_pengeringan_awal(produksi_lama):
+    """
+    Ambil kadar air & berat terkini acuan dari Pengeringan Awal terakhir
+    (dokumen saat ini jika sedang di tahap itu, atau entri history terbaru).
+    Dipakai saat validasi Pengeringan Akhir setelah tahap antara (mis. Pulping 2).
+    """
+    if not produksi_lama:
+        return None, None
+    st = (produksi_lama.get('statusTahapan') or '')
+    if 'Pengeringan Awal' in st and produksi_lama.get('kadarAir') is not None:
+        try:
+            ka = float(produksi_lama['kadarAir'])
+        except (TypeError, ValueError):
+            ka = None
+        try:
+            bt = float(produksi_lama['beratTerkini']) if produksi_lama.get('beratTerkini') is not None else None
+        except (TypeError, ValueError):
+            bt = None
+        if ka is not None:
+            return ka, bt
+    hist = produksi_lama.get('historyTahapan') or []
+    if not isinstance(hist, list):
+        return None, None
+    for entry in reversed(hist):
+        if not isinstance(entry, dict):
+            continue
+        nama = (entry.get('namaTahapan') or entry.get('statusTahapanSebelumnya') or '')
+        if 'Pengeringan Awal' not in nama:
+            continue
+        ka = entry.get('kadarAir')
+        bt = entry.get('beratTerkini')
+        if ka is None:
+            continue
+        try:
+            ka_f = float(ka)
+        except (TypeError, ValueError):
+            continue
+        try:
+            bt_f = float(bt) if bt is not None else None
+        except (TypeError, ValueError):
+            bt_f = None
+        return ka_f, bt_f
+    return None, None
+
+
 # Helper function untuk validasi khusus tahapan Pengeringan Awal dan Akhir
 def validate_pengeringan_tahapan(status_tahapan_baru, kadar_air_baru, berat_terkini_baru, produksi_lama=None):
     """
@@ -612,7 +630,7 @@ def validate_pengeringan_tahapan(status_tahapan_baru, kadar_air_baru, berat_terk
             if not kadar_air_baru or kadar_air_baru < 0 or kadar_air_baru > 100:
                 return False, f'Kadar air wajib diisi untuk tahapan {status_normalized} (0-100%)'
         
-        # Validasi khusus untuk Pengeringan Akhir (termasuk pengeringan lantai)
+        # Validasi khusus untuk Pengeringan Akhir
         if status_normalized == 'Pengeringan Akhir':
             # Harus ada produksi lama untuk validasi (hanya untuk update mode)
             if not produksi_lama:
@@ -620,32 +638,25 @@ def validate_pengeringan_tahapan(status_tahapan_baru, kadar_air_baru, berat_terk
                 # Validasi sequential akan menangani ini
                 return True, None  # Biarkan validasi sequential menangani
             
-            # Sudah melewati tahap pengeringan awal (para-para atau nama lama)
-            status_lama = produksi_lama.get('statusTahapan', '')
-            idx_lama = _index_tahapan(_normalize_input_tahapan_ke_key(status_lama))
-            idx_para = _index_tahapan('Pengeringan Awal (Para-Para)')
-            if idx_lama <= idx_para:
+            status_lama = (produksi_lama.get('statusTahapan') or '').strip()
+            # Alur lama: langsung setelah Pengeringan Awal. Alur baru: setelah Pulping 2.
+            sl = status_lama
+            boleh_dari_awal = 'Pengeringan Awal' in sl
+            boleh_dari_pulping2 = sl == 'Pulping 2' or 'Pulping 2' in sl
+            if not (boleh_dari_awal or boleh_dari_pulping2):
                 return False, (
-                    'Pengeringan akhir (lantai) hanya dapat dipilih setelah tahap '
-                    'Pengeringan Awal (Para - Para) selesai.'
+                    'Pengeringan Akhir hanya dapat dipilih jika tahapan sebelumnya '
+                    'adalah Pengeringan Awal atau Pulping 2 (sesuai alur yang dikonfigurasi).'
                 )
-            
-            # Referensi Pengeringan Awal: selalu dari dokumen saat ini (bukan history).
-            # historyTahapan menyimpan snapshot SEBELUM setiap update; jika pengguna
-            # memperbarui berat terkini beberapa kali di tahap yang sama, entri history
-            # "Pengeringan Awal" terbaru masih memuat berat lama (mis. hanya bahan pertama
-            # atau nilai sebelum koreksi), sementara beratTerkini dokumen sudah benar.
-            # Fallback lama (history dulu, dokumen hanya jika kadar_air None) membiarkan
-            # berat usang tetap dipakai selama kadar air sempat tercatat di history.
-            kadar_air_awal = produksi_lama.get('kadarAir')
-            berat_terkini_awal = produksi_lama.get('beratTerkini')
-            
-            # Validasi kadar air Pengeringan Akhir harus lebih kecil dari Pengeringan Awal
+
+            kadar_air_awal, berat_terkini_awal = _last_snapshot_pengeringan_awal(produksi_lama)
+
+            # Validasi kadar air Pengeringan Akhir harus lebih kecil dari acuan Pengeringan Awal (jika ada)
             if kadar_air_awal is not None:
                 if kadar_air_baru >= kadar_air_awal:
                     return False, f'Kadar air Pengeringan Akhir ({kadar_air_baru}%) harus lebih kecil dari kadar air Pengeringan Awal ({kadar_air_awal}%)'
-            
-            # Validasi berat terkini Pengeringan Akhir ≤ berat terkini Pengeringan Awal
+
+            # Validasi berat terkini Pengeringan Akhir ≤ acuan berat setelah Pengeringan Awal (jika ada)
             if berat_terkini_awal is not None:
                 if berat_terkini_baru > berat_terkini_awal:
                     return False, f'Berat terkini Pengeringan Akhir ({berat_terkini_baru} kg) tidak boleh lebih besar dari berat terkini Pengeringan Awal ({berat_terkini_awal} kg)'

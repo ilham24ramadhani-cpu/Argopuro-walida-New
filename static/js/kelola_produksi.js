@@ -90,10 +90,11 @@ function isTambahBahanTerlarangSetelahPengeringanAkhir(statusTahapan) {
   if (!s) return false;
   if (s.includes("Pengeringan Akhir")) return true;
   const later = [
-    "Pengupasan Kulit Tanduk (Hulling) 2",
+    "Hulling",
     "Hand Sortasi",
     "Grinding",
     "Pengemasan",
+    "Pengupasan Kulit Tanduk",
     "Roasting",
   ];
   return later.some((m) => s.includes(m));
@@ -635,93 +636,120 @@ async function loadBahanDataProduksi() {
   await syncProduksiBahanDariCheckbox();
 }
 
-// Konstanta tahapan — sinkron dengan kelola_data.js & app.py (TAHAPAN_URUTAN_KEYS)
+// Konstanta tahapan produksi yang tersedia
+// CATATAN: Tahapan sekarang diambil dari Master Data, bukan hardcode
+// Konstanta ini hanya untuk referensi/fallback jika diperlukan
 const ALL_TAHAPAN = {
   Sortasi: "Sortasi Cherry atau Buah Kopi",
   Fermentasi: "Fermentasi",
   Pulping: "Pulping",
   Pencucian: "Pencucian",
-  "Pengeringan Awal (Para-Para)": "Pengeringan Awal (Para - Para)",
+  "Pengeringan Awal": "Pengeringan Awal (Para - Para)",
   "Fermentasi 2": "Fermentasi 2",
-  "Hulling 1": "Pengupasan Kulit Tanduk (Hulling) 1",
-  "Pengeringan Akhir (Pengeringan Lantai)":
-    "Pengeringan Akhir (Pengeringan Lantai)",
-  "Hulling 2": "Pengupasan Kulit Tanduk (Hulling) 2",
+  "Pulping 2": "Pulping 2",
+  "Pengeringan Akhir": "Pengeringan Akhir (Pengeringan Lantai)",
+  Hulling: "Pengupasan Kulit Tanduk (Hulling)",
   "Hand Sortasi": "Hand Sortasi atau Sortasi Biji Kopi",
   Grinding: "Grinding",
-  Roasting: "Roasting",
   Pengemasan: "Pengemasan (Tahapan Akhir)",
 };
 
-const TAHAPAN_URUTAN_KEYS = Object.keys(ALL_TAHAPAN);
+/** Urutan kanonik (kunci = kunci di tahapanStatus master). */
+const URUTAN_TAHAPAN_PRODUKSI = [
+  "Sortasi",
+  "Fermentasi",
+  "Pulping",
+  "Pencucian",
+  "Pengeringan Awal",
+  "Fermentasi 2",
+  "Pulping 2",
+  "Pengeringan Akhir",
+  "Hulling",
+  "Hand Sortasi",
+  "Grinding",
+  "Pengemasan",
+];
 
-const TAHAPAN_LEGACY_STATUS_TO_KEY = {
-  "Sortasi Buah": "Sortasi",
-  "Pengeringan Awal": "Pengeringan Awal (Para-Para)",
-  "Pengeringan Akhir": "Pengeringan Akhir (Pengeringan Lantai)",
-  "Pengupasan Kulit Tanduk (Hulling)": "Hulling 1",
-  Hulling: "Hulling 1",
+/** Nilai option/value tersimpan di statusTahapan (selainnya sama dengan key). */
+const TAHAPAN_OPTION_VALUE = {
+  Sortasi: "Sortasi Cherry atau Buah Kopi",
+  Hulling: "Pengupasan Kulit Tanduk (Hulling)",
+  "Hand Sortasi": "Hand Sortasi atau Sortasi Biji Kopi",
+  Pengemasan: "Pengemasan",
 };
 
-function normalizeTahapanKeKey(s) {
-  if (s == null || s === "") return s;
-  const str = String(s).trim();
-  if (TAHAPAN_LEGACY_STATUS_TO_KEY[str]) {
-    return TAHAPAN_LEGACY_STATUS_TO_KEY[str];
+function nilaiTahapanUntukForm(key) {
+  return TAHAPAN_OPTION_VALUE[key] ?? key;
+}
+
+function normalisasiTahapanKeUrutanKey(str) {
+  if (!str) return "";
+  const map = {
+    "Sortasi Cherry atau Buah Kopi": "Sortasi",
+    "Sortasi Buah": "Sortasi",
+    Fermentasi: "Fermentasi",
+    Pulping: "Pulping",
+    Pencucian: "Pencucian",
+    "Pengeringan Awal": "Pengeringan Awal",
+    "Pengeringan Awal (Para - Para)": "Pengeringan Awal",
+    "Fermentasi 2": "Fermentasi 2",
+    "Pulping 2": "Pulping 2",
+    "Pengeringan Akhir": "Pengeringan Akhir",
+    "Pengeringan Akhir (Pengeringan Lantai)": "Pengeringan Akhir",
+    "Pengupasan Kulit Tanduk (Hulling)": "Hulling",
+    "Hand Sortasi atau Sortasi Biji Kopi": "Hand Sortasi",
+    Roasting: "Roasting",
+    Grinding: "Grinding",
+    Pengemasan: "Pengemasan",
+  };
+  return map[str] || str;
+}
+
+function labelTahapanUntukPesan(key) {
+  return ALL_TAHAPAN[key] || TAHAPAN_OPTION_VALUE[key] || key;
+}
+
+function lastSnapshotPengeringanAwalDariProduksi(produksiLama) {
+  if (!produksiLama) return { kadarAir: null, beratTerkini: null };
+  const st = produksiLama.statusTahapan || "";
+  if (st.includes("Pengeringan Awal") && produksiLama.kadarAir != null) {
+    const ka = parseFloat(produksiLama.kadarAir);
+    const bt =
+      produksiLama.beratTerkini != null
+        ? parseFloat(produksiLama.beratTerkini)
+        : null;
+    if (!Number.isNaN(ka))
+      return {
+        kadarAir: ka,
+        beratTerkini: Number.isNaN(bt) ? null : bt,
+      };
   }
-  if (ALL_TAHAPAN[str]) return str;
-  for (const lab of Object.values(ALL_TAHAPAN)) {
-    if (str === lab) {
-      const ent = Object.entries(ALL_TAHAPAN).find(([, v]) => v === lab);
-      return ent ? ent[0] : str;
+  const hist = Array.isArray(produksiLama.historyTahapan)
+    ? [...produksiLama.historyTahapan].reverse()
+    : [];
+  for (const h of hist) {
+    const n = h.namaTahapan || h.statusTahapanSebelumnya || "";
+    if (n.includes("Pengeringan Awal") && h.kadarAir != null) {
+      const ka = parseFloat(h.kadarAir);
+      const bt =
+        h.beratTerkini != null ? parseFloat(h.beratTerkini) : null;
+      if (!Number.isNaN(ka))
+        return {
+          kadarAir: ka,
+          beratTerkini: Number.isNaN(bt) ? null : bt,
+        };
     }
   }
-  const keys = Object.keys(TAHAPAN_LEGACY_STATUS_TO_KEY).sort(
-    (a, b) => b.length - a.length,
+  return { kadarAir: null, beratTerkini: null };
+}
+
+function bolehPilihPengeringanAkhirSetelah(statusLama) {
+  const s = statusLama || "";
+  return (
+    s.includes("Pengeringan Awal") ||
+    s === "Pulping 2" ||
+    s.includes("Pulping 2")
   );
-  for (const k of keys) {
-    if (k.length >= 4 && str.includes(k)) {
-      return TAHAPAN_LEGACY_STATUS_TO_KEY[k];
-    }
-  }
-  for (const k of Object.keys(ALL_TAHAPAN).sort((a, b) => b.length - a.length)) {
-    if (k.length >= 4 && str.includes(k)) return k;
-  }
-  return str;
-}
-
-function tahapanKeyToLabel(k) {
-  return ALL_TAHAPAN[k] || k;
-}
-
-function masterPunyaTahapan(master, normKey) {
-  if (!master) return false;
-  if (master[normKey]) return true;
-  if (
-    normKey === "Pengeringan Awal (Para-Para)" &&
-    master["Pengeringan Awal"]
-  ) {
-    return true;
-  }
-  if (
-    normKey === "Pengeringan Akhir (Pengeringan Lantai)" &&
-    master["Pengeringan Akhir"]
-  ) {
-    return true;
-  }
-  if (
-    (normKey === "Hulling 1" || normKey === "Hulling 2") &&
-    master.Hulling
-  ) {
-    return true;
-  }
-  return false;
-}
-
-function sudahLewatPengeringanAwalParaPara(statusStr) {
-  const i = TAHAPAN_URUTAN_KEYS.indexOf(normalizeTahapanKeKey(statusStr));
-  const i0 = TAHAPAN_URUTAN_KEYS.indexOf("Pengeringan Awal (Para-Para)");
-  return i > i0;
 }
 
 // Load data master dari Kelola Data (MONGODB ONLY)
@@ -1037,6 +1065,7 @@ async function loadTahapanFromMasterProduksi(overrideProsesNama) {
 
   // Get tahapan yang tersedia dari master
   const availableTahapan = [];
+  const urutanTahapan = URUTAN_TAHAPAN_PRODUKSI;
 
   console.log("🔄 Memproses tahapan dari master:", masterData.tahapanStatus);
 
@@ -1046,8 +1075,8 @@ async function loadTahapanFromMasterProduksi(overrideProsesNama) {
       if (tahapan === "Pengemasan") {
         continue;
       }
-      const mappedValue = ALL_TAHAPAN[tahapan] || tahapan;
-      const mappedLabel = ALL_TAHAPAN[tahapan] || tahapan;
+      const mappedValue = nilaiTahapanUntukForm(tahapan);
+      const mappedLabel = ALL_TAHAPAN[tahapan] || mappedValue;
       availableTahapan.push({
         value: mappedValue,
         label: mappedLabel,
@@ -1077,9 +1106,11 @@ async function loadTahapanFromMasterProduksi(overrideProsesNama) {
 
   // Urutkan sesuai urutan tahapan baku
   availableTahapan.sort((a, b) => {
-    const idxA = TAHAPAN_URUTAN_KEYS.indexOf(normalizeTahapanKeKey(a.key));
-    const idxB = TAHAPAN_URUTAN_KEYS.indexOf(normalizeTahapanKeKey(b.key));
-    return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+    const idxA =
+      urutanTahapan.indexOf(a.key) === -1 ? 999 : urutanTahapan.indexOf(a.key);
+    const idxB =
+      urutanTahapan.indexOf(b.key) === -1 ? 999 : urutanTahapan.indexOf(b.key);
+    return idxA - idxB;
   });
 
   console.log("📋 Total tahapan tersedia:", availableTahapan.length);
@@ -1130,18 +1161,21 @@ async function loadTahapanFromMasterProduksi(overrideProsesNama) {
   } else {
     // EDIT MODE: Tampilkan semua tahapan yang aktif, tapi disable yang tidak valid
     const tahapanLama = currentProduksiTahapanAktif || "";
+    
+    const urutanTahapan = URUTAN_TAHAPAN_PRODUKSI;
 
-    const tahapanLamaNormalized = normalizeTahapanKeKey(tahapanLama);
-    const indexLama = TAHAPAN_URUTAN_KEYS.indexOf(tahapanLamaNormalized);
-
+    const tahapanLamaNormalized = normalisasiTahapanKeUrutanKey(tahapanLama);
+    const indexLama = urutanTahapan.indexOf(tahapanLamaNormalized);
+    
     availableTahapan.forEach((tahapan) => {
       const option = document.createElement("option");
       option.value = tahapan.value;
       option.textContent = tahapan.label;
-
-      const tahapanNormalized = normalizeTahapanKeKey(tahapan.key);
-      const indexBaru = TAHAPAN_URUTAN_KEYS.indexOf(tahapanNormalized);
-
+      
+      // Normalisasi tahapan untuk validasi
+      const tahapanNormalized = normalisasiTahapanKeUrutanKey(tahapan.key);
+      const indexBaru = urutanTahapan.indexOf(tahapanNormalized);
+      
       // Disable: mundur saja. Tahapan sama tetap bisa dipilih (simpan edit tanpa maju proses).
       // Disable loncat jika ada tahapan aktif terlewat.
       if (indexLama !== -1 && indexBaru !== -1) {
@@ -1149,23 +1183,22 @@ async function loadTahapanFromMasterProduksi(overrideProsesNama) {
           option.disabled = true;
           option.textContent += " (Tidak dapat mundur)";
         } else if (indexBaru > indexLama && indexBaru - indexLama > 1) {
-          const tahapanTerlewat = TAHAPAN_URUTAN_KEYS.slice(
-            indexLama + 1,
-            indexBaru,
-          );
+          // Cek apakah ada tahapan terlewat yang aktif di master
+          const tahapanTerlewat = urutanTahapan.slice(indexLama + 1, indexBaru);
           const adaTahapanTerlewatAktif = tahapanTerlewat.some((t) => {
             if (t === "Pengemasan") return true;
-            return masterPunyaTahapan(currentMasterTahapanProduksi, t);
+            return currentMasterTahapanProduksi && currentMasterTahapanProduksi[t];
           });
-
+          
           if (adaTahapanTerlewatAktif) {
+            // Ada tahapan terlewat yang aktif
             option.disabled = true;
             const tahapanTerlewatLabels = tahapanTerlewat
               .filter((t) => {
                 if (t === "Pengemasan") return true;
-                return masterPunyaTahapan(currentMasterTahapanProduksi, t);
+                return currentMasterTahapanProduksi && currentMasterTahapanProduksi[t];
               })
-              .map((t) => tahapanKeyToLabel(t));
+              .map((t) => labelTahapanUntukPesan(t));
             option.textContent += ` (Loncat: ${tahapanTerlewatLabels.join(", ")})`;
           }
         }
@@ -1283,14 +1316,17 @@ function validateSequentialTahapan() {
     return;
   }
 
-  const tahapanLamaNormalized = normalizeTahapanKeKey(
+  const urutanTahapan = URUTAN_TAHAPAN_PRODUKSI;
+
+  // Normalisasi tahapan
+  const tahapanLamaNormalized = normalisasiTahapanKeUrutanKey(
     currentProduksiTahapanAktif,
   );
-  const tahapanBaruNormalized = normalizeTahapanKeKey(selectedTahapan);
+  const tahapanBaruNormalized = normalisasiTahapanKeUrutanKey(selectedTahapan);
 
   try {
-    const indexLama = TAHAPAN_URUTAN_KEYS.indexOf(tahapanLamaNormalized);
-    const indexBaru = TAHAPAN_URUTAN_KEYS.indexOf(tahapanBaruNormalized);
+    const indexLama = urutanTahapan.indexOf(tahapanLamaNormalized);
+    const indexBaru = urutanTahapan.indexOf(tahapanBaruNormalized);
 
     if (indexLama === -1 || indexBaru === -1) {
       // Jika tahapan tidak ditemukan di urutan, skip validasi
@@ -1312,18 +1348,16 @@ function validateSequentialTahapan() {
 
     // Validasi: tidak boleh loncat tahapan (hanya saat maju)
     if (indexBaru - indexLama > 1) {
-      const tahapanTerlewat = TAHAPAN_URUTAN_KEYS.slice(
-        indexLama + 1,
-        indexBaru,
-      );
+      const tahapanTerlewat = urutanTahapan.slice(indexLama + 1, indexBaru);
+      // Filter hanya tahapan yang ada di konfigurasi master
       const tahapanTerlewatValid = tahapanTerlewat.filter((t) => {
         if (t === "Pengemasan") return true;
-        return masterPunyaTahapan(currentMasterTahapanProduksi, t);
+        return currentMasterTahapanProduksi && currentMasterTahapanProduksi[t];
       });
 
       if (tahapanTerlewatValid.length > 0) {
         const tahapanTerlewatLabels = tahapanTerlewatValid.map((t) =>
-          tahapanKeyToLabel(t),
+          labelTahapanUntukPesan(t),
         );
         statusErrorText.textContent = `Tidak dapat melompati tahapan. Tahapan yang terlewat: ${tahapanTerlewatLabels.join(", ")}`;
         statusError.classList.remove("d-none");
@@ -1349,8 +1383,13 @@ function validateSequentialTahapanBeforeSave(
     return { valid: true, error: null };
   }
 
-  const tahapanBaruNormalized = normalizeTahapanKeKey(statusTahapanBaru);
-  const indexBaru = TAHAPAN_URUTAN_KEYS.indexOf(tahapanBaruNormalized);
+  const urutanTahapan = URUTAN_TAHAPAN_PRODUKSI;
+
+  // Normalisasi tahapan
+  const tahapanBaruNormalized = normalisasiTahapanKeUrutanKey(
+    statusTahapanBaru,
+  );
+  const indexBaru = urutanTahapan.indexOf(tahapanBaruNormalized);
 
   if (indexBaru === -1) {
     return { valid: true, error: null }; // Skip validasi jika tahapan tidak dikenal
@@ -1358,8 +1397,10 @@ function validateSequentialTahapanBeforeSave(
 
   // Jika ada status lama, validasi sequential
   if (statusTahapanLama) {
-    const tahapanLamaNormalized = normalizeTahapanKeKey(statusTahapanLama);
-    const indexLama = TAHAPAN_URUTAN_KEYS.indexOf(tahapanLamaNormalized);
+    const tahapanLamaNormalized = normalisasiTahapanKeUrutanKey(
+      statusTahapanLama,
+    );
+    const indexLama = urutanTahapan.indexOf(tahapanLamaNormalized);
 
     if (indexLama !== -1) {
       if (indexBaru < indexLama) {
@@ -1373,19 +1414,18 @@ function validateSequentialTahapanBeforeSave(
         return { valid: true, error: null };
       }
 
+      // Validasi: tidak boleh loncat tahapan (hanya saat maju)
       if (indexBaru - indexLama > 1) {
-        const tahapanTerlewat = TAHAPAN_URUTAN_KEYS.slice(
-          indexLama + 1,
-          indexBaru,
-        );
+        const tahapanTerlewat = urutanTahapan.slice(indexLama + 1, indexBaru);
+        // Filter hanya tahapan yang ada di konfigurasi master
         const tahapanTerlewatValid = tahapanTerlewat.filter((t) => {
           if (t === "Pengemasan") return true;
-          return masterPunyaTahapan(masterTahapanStatus, t);
+          return masterTahapanStatus && masterTahapanStatus[t];
         });
 
         if (tahapanTerlewatValid.length > 0) {
           const tahapanTerlewatLabels = tahapanTerlewatValid.map((t) =>
-            tahapanKeyToLabel(t),
+            labelTahapanUntukPesan(t),
           );
           return {
             valid: false,
@@ -1395,36 +1435,32 @@ function validateSequentialTahapanBeforeSave(
       }
     }
   } else {
+    // Untuk create mode, pastikan tidak mulai dari tengah
+    // Harus mulai dari tahapan pertama yang ada di master
     if (masterTahapanStatus) {
       const tahapanAktif = Object.entries(masterTahapanStatus)
         .filter(([key, value]) => value === true)
         .map(([key]) => key);
 
       if (tahapanAktif.length > 0) {
-        tahapanAktif.sort((a, b) => {
-          const ia = TAHAPAN_URUTAN_KEYS.indexOf(normalizeTahapanKeKey(a));
-          const ib = TAHAPAN_URUTAN_KEYS.indexOf(normalizeTahapanKeKey(b));
-          return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-        });
         const tahapanPertama = tahapanAktif[0];
-        const indexPertama = TAHAPAN_URUTAN_KEYS.indexOf(
-          normalizeTahapanKeKey(tahapanPertama),
-        );
+        const indexPertama = urutanTahapan.indexOf(tahapanPertama);
 
         if (indexBaru > indexPertama) {
-          const tahapanSebelumnya = TAHAPAN_URUTAN_KEYS.slice(
+          // Cek apakah ada tahapan sebelum statusTahapanBaru yang harus dilalui dulu
+          const tahapanSebelumnya = urutanTahapan.slice(
             indexPertama,
             indexBaru,
           );
           const tahapanSebelumnyaValid = tahapanSebelumnya.filter((t) => {
-            if (t === tahapanBaruNormalized) return false;
+            if (t === tahapanBaruNormalized) return false; // Exclude tahapan baru sendiri
             if (t === "Pengemasan") return true;
-            return masterPunyaTahapan(masterTahapanStatus, t);
+            return masterTahapanStatus[t];
           });
 
           if (tahapanSebelumnyaValid.length > 0) {
             const tahapanSebelumnyaLabels = tahapanSebelumnyaValid.map((t) =>
-              tahapanKeyToLabel(t),
+              labelTahapanUntukPesan(t),
             );
             return {
               valid: false,
@@ -2629,20 +2665,23 @@ window.saveProduksi = async function saveProduksi() {
       }
     }
     
-    // Validasi khusus untuk tahap pengeringan akhir (lantai / nama lama)
+    // Validasi khusus untuk Pengeringan Akhir
     if (statusTahapan && statusTahapan.includes("Pengeringan Akhir")) {
       if (isEditMode && produksiLama) {
         const statusLama = produksiLama.statusTahapan || "";
-        if (!sudahLewatPengeringanAwalParaPara(statusLama)) {
+        if (!bolehPilihPengeringanAkhirSetelah(statusLama)) {
           alert(
-            "Pengeringan akhir (lantai) hanya dapat dipilih setelah tahap Pengeringan Awal (Para - Para) selesai.",
+            "Pengeringan Akhir hanya dapat dipilih setelah Pengeringan Awal atau setelah Pulping 2 (sesuai alur).",
           );
           return;
         }
 
-        const kadarAirAwal = produksiLama.kadarAir || 0;
-        if (kadarAir >= kadarAirAwal) {
-          alert(`Kadar air Pengeringan Akhir (${kadarAir}%) harus lebih kecil dari kadar air Pengeringan Awal (${kadarAirAwal}%)`);
+        const refAwal = lastSnapshotPengeringanAwalDariProduksi(produksiLama);
+        const kadarAirAwal = refAwal.kadarAir;
+        if (kadarAirAwal != null && kadarAir >= kadarAirAwal) {
+          alert(
+            `Kadar air Pengeringan Akhir (${kadarAir}%) harus lebih kecil dari kadar air Pengeringan Awal (${kadarAirAwal}%)`,
+          );
           if (kadarAirElement) kadarAirElement.focus();
           return;
         }
@@ -2678,30 +2717,33 @@ window.saveProduksi = async function saveProduksi() {
         .filter(([key, value]) => value === true && key !== 'Pengemasan')
         .map(([key]) => key);
       
+      // Urutkan sesuai urutan tahapan
+      const urutanTahapan = URUTAN_TAHAPAN_PRODUKSI;
+
       tahapanAktif.sort((a, b) => {
-        const idxA = TAHAPAN_URUTAN_KEYS.indexOf(normalizeTahapanKeKey(a));
-        const idxB = TAHAPAN_URUTAN_KEYS.indexOf(normalizeTahapanKeKey(b));
-        return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+        const idxA = urutanTahapan.indexOf(a) === -1 ? 999 : urutanTahapan.indexOf(a);
+        const idxB = urutanTahapan.indexOf(b) === -1 ? 999 : urutanTahapan.indexOf(b);
+        return idxA - idxB;
       });
 
       const tahapanPertama = tahapanAktif.length > 0 ? tahapanAktif[0] : null;
 
-      const statusTahapanNormalized = normalizeTahapanKeKey(statusTahapan);
-
-      if (
-        tahapanPertama &&
-        statusTahapanNormalized !== normalizeTahapanKeKey(tahapanPertama)
-      ) {
+      const statusTahapanNormalized = normalisasiTahapanKeUrutanKey(
+        statusTahapan,
+      );
+      
+      if (tahapanPertama && statusTahapanNormalized !== tahapanPertama) {
         console.error(`❌ Untuk produksi baru, hanya tahapan pertama yang boleh dipilih: ${tahapanPertama}`);
-        alert(`Untuk produksi baru, Anda harus memulai dari tahapan pertama: ${tahapanKeyToLabel(tahapanPertama)}. Silakan pilih tahapan tersebut.`);
+        alert(`Untuk produksi baru, Anda harus memulai dari tahapan pertama: ${tahapanPertama}. Silakan pilih tahapan tersebut.`);
         // Reset ke tahapan pertama
         const statusSelect = document.getElementById("statusTahapan");
         if (statusSelect) {
+          // Cari option yang sesuai dengan tahapan pertama
           for (let option of statusSelect.options) {
-            if (
-              normalizeTahapanKeKey(option.value) ===
-              normalizeTahapanKeKey(tahapanPertama)
-            ) {
+            const optionNormalized = normalisasiTahapanKeUrutanKey(
+              option.value,
+            );
+            if (optionNormalized === tahapanPertama) {
               statusSelect.value = option.value;
               break;
             }
@@ -2755,11 +2797,9 @@ window.saveProduksi = async function saveProduksi() {
           if (tahapanLamaOption) {
             statusSelect.value = tahapanLamaOption.value;
           }
-        } else if (!isEditMode && statusSelect) {
-          const firstOpt = Array.from(statusSelect.options).find(
-            (o) => o.value && !o.disabled,
-          );
-          if (firstOpt) statusSelect.value = firstOpt.value;
+        } else if (!isEditMode && availableTahapan.length > 0) {
+          // Kembalikan ke tahapan pertama untuk ADD MODE
+          statusSelect.value = availableTahapan[0].value;
         }
         
         // Trigger toggle functions
@@ -2784,19 +2824,23 @@ window.saveProduksi = async function saveProduksi() {
       }
     }
     
+    // Validasi khusus untuk Pengeringan Akhir
     if (statusTahapan && statusTahapan.includes("Pengeringan Akhir")) {
       if (isEditMode && produksiLama) {
         const statusLama = produksiLama.statusTahapan || "";
-        if (!sudahLewatPengeringanAwalParaPara(statusLama)) {
+        if (!bolehPilihPengeringanAkhirSetelah(statusLama)) {
           alert(
-            "Pengeringan akhir (lantai) hanya dapat dipilih setelah tahap Pengeringan Awal (Para - Para) selesai.",
+            "Pengeringan Akhir hanya dapat dipilih setelah Pengeringan Awal atau setelah Pulping 2 (sesuai alur).",
           );
           return;
         }
 
-        const kadarAirAwal = produksiLama.kadarAir || 0;
-        if (kadarAir >= kadarAirAwal) {
-          alert(`Kadar air Pengeringan Akhir (${kadarAir}%) harus lebih kecil dari kadar air Pengeringan Awal (${kadarAirAwal}%)`);
+        const refAwal = lastSnapshotPengeringanAwalDariProduksi(produksiLama);
+        const kadarAirAwal = refAwal.kadarAir;
+        if (kadarAirAwal != null && kadarAir >= kadarAirAwal) {
+          alert(
+            `Kadar air Pengeringan Akhir (${kadarAir}%) harus lebih kecil dari kadar air Pengeringan Awal (${kadarAirAwal}%)`,
+          );
           if (kadarAirElement) {
             kadarAirElement.focus();
             kadarAirElement.style.borderColor = "#dc3545";
@@ -2901,11 +2945,22 @@ window.saveProduksi = async function saveProduksi() {
         return;
       }
       
-      // Validasi khusus: berat terkini Pengeringan Akhir ≤ berat terkini Pengeringan Awal
-      if (statusTahapan && statusTahapan.includes("Pengeringan Akhir") && isEditMode && produksiLama) {
-        const beratTerkiniAwal = produksiLama.beratTerkini || 0;
+      // Validasi khusus: berat terkini Pengeringan Akhir ≤ acuan berat Pengeringan Awal terakhir
+      if (
+        statusTahapan &&
+        statusTahapan.includes("Pengeringan Akhir") &&
+        isEditMode &&
+        produksiLama
+      ) {
+        const refAwal = lastSnapshotPengeringanAwalDariProduksi(produksiLama);
+        const beratTerkiniAwal =
+          refAwal.beratTerkini != null
+            ? refAwal.beratTerkini
+            : produksiLama.beratTerkini || 0;
         if (beratTerkini > beratTerkiniAwal) {
-          alert(`Berat terkini Pengeringan Akhir (${beratTerkini} kg) tidak boleh lebih besar dari berat terkini Pengeringan Awal (${beratTerkiniAwal} kg)`);
+          alert(
+            `Berat terkini Pengeringan Akhir (${beratTerkini} kg) tidak boleh lebih besar dari berat terkini Pengeringan Awal (${beratTerkiniAwal} kg)`,
+          );
           beratTerkiniElement.focus();
           beratTerkiniElement.style.borderColor = "#dc3545";
           return;
