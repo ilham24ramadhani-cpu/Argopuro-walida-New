@@ -464,6 +464,93 @@ def _sync_produksi_proses_pengolahan_after_bahan_update(id_bahan, old_proses_row
         )
 
 
+def _cascade_rename_master_proses_pengolahan(old_nama, new_nama):
+    """
+    Saat nama proses di dataProses diubah, perbarui semua salinan string nama lama
+    (produksi, bahan.prosesBahan, pemesanan, hasilProduksi) agar validasi master
+    seperti validate_sequential_tahapan tidak gagal dengan 'tidak ditemukan'.
+    """
+    old_nama = (old_nama or '').strip()
+    new_nama = (new_nama or '').strip()
+    if not old_nama or not new_nama or old_nama == new_nama:
+        return {
+            'produksi_updated': 0,
+            'bahan_updated': 0,
+            'pemesanan_updated': 0,
+            'hasilProduksi_updated': 0,
+        }
+    stats = {
+        'produksi_updated': 0,
+        'bahan_updated': 0,
+        'pemesanan_updated': 0,
+        'hasilProduksi_updated': 0,
+    }
+    r_prod = db.produksi.update_many(
+        {'prosesPengolahan': old_nama},
+        {'$set': {'prosesPengolahan': new_nama}},
+    )
+    stats['produksi_updated'] = int(r_prod.modified_count or 0)
+
+    r_hasil = db.hasilProduksi.update_many(
+        {'prosesPengolahan': old_nama},
+        {'$set': {'prosesPengolahan': new_nama}},
+    )
+    stats['hasilProduksi_updated'] = int(r_hasil.modified_count or 0)
+
+    for doc in db.bahan.find({'prosesBahan.prosesPengolahan': old_nama}):
+        lines = list(doc.get('prosesBahan') or [])
+        changed = False
+        for line in lines:
+            if not isinstance(line, dict):
+                continue
+            if (line.get('prosesPengolahan') or '').strip() == old_nama:
+                line['prosesPengolahan'] = new_nama
+                changed = True
+        if changed:
+            db.bahan.update_one({'_id': doc['_id']}, {'$set': {'prosesBahan': lines}})
+            stats['bahan_updated'] += 1
+
+    pem_filter = {
+        '$or': [
+            {'prosesPengolahan': old_nama},
+            {'kloter.prosesPengolahan': old_nama},
+            {'items.prosesPengolahan': old_nama},
+        ]
+    }
+    for doc in db.pemesanan.find(pem_filter):
+        set_fields = {}
+        if (doc.get('prosesPengolahan') or '').strip() == old_nama:
+            set_fields['prosesPengolahan'] = new_nama
+        for arr_key in ('kloter', 'items'):
+            arr = doc.get(arr_key)
+            if not isinstance(arr, list):
+                continue
+            new_arr = []
+            row_changed = False
+            for row in arr:
+                if isinstance(row, dict) and (row.get('prosesPengolahan') or '').strip() == old_nama:
+                    new_row = dict(row)
+                    new_row['prosesPengolahan'] = new_nama
+                    new_arr.append(new_row)
+                    row_changed = True
+                else:
+                    new_arr.append(row)
+            if row_changed:
+                set_fields[arr_key] = new_arr
+        if set_fields:
+            db.pemesanan.update_one({'_id': doc['_id']}, {'$set': set_fields})
+            stats['pemesanan_updated'] += 1
+
+    total = sum(stats.values())
+    if total:
+        print(
+            f"✅ [RENAME PROSES] '{old_nama}' → '{new_nama}': "
+            f"produksi={stats['produksi_updated']}, bahan={stats['bahan_updated']}, "
+            f"pemesanan={stats['pemesanan_updated']}, hasilProduksi={stats['hasilProduksi_updated']}"
+        )
+    return stats
+
+
 # Helper function untuk validasi khusus tahapan Pengeringan Awal dan Akhir
 def validate_pengeringan_tahapan(status_tahapan_baru, kadar_air_baru, berat_terkini_baru, produksi_lama=None):
     """
@@ -2821,18 +2908,27 @@ def update_dataProses(item_id):
                 return jsonify({'error': 'Nama already exists'}), 400
         
         update_data = {}
+        old_nama = (item.get('nama') or '').strip()
         if 'nama' in data:
             update_data['nama'] = data['nama']
         if 'tahapanStatus' in data:
             update_data['tahapanStatus'] = data['tahapanStatus']
-        
+
+        new_nama = (update_data.get('nama') or item.get('nama') or '').strip()
+        cascade_stats = None
+        if 'nama' in update_data and old_nama and new_nama and new_nama != old_nama:
+            cascade_stats = _cascade_rename_master_proses_pengolahan(old_nama, new_nama)
+
         db.dataProses.update_one(
             {'_id': item['_id']},
             {'$set': update_data}
         )
-        
+
         updated = db.dataProses.find_one({'_id': item['_id']})
-        return jsonify(json_serialize(updated)), 200
+        payload = json_serialize(updated)
+        if cascade_stats and isinstance(payload, dict):
+            payload['referensiDiperbarui'] = cascade_stats
+        return jsonify(payload), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
