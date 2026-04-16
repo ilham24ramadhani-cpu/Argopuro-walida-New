@@ -261,13 +261,15 @@ async function renderIdBahanEditMode(p) {
     .forEach((el) => el.remove());
   if (ph) ph.classList.add("d-none");
 
-  if (p.bahanMasterBerubahLepasOtomatis) {
+  const bukaAlokasiKarenaMaster = !!p.bahanMasterBerubahLepasOtomatis;
+
+  if (bukaAlokasiKarenaMaster) {
     const hint = document.createElement("div");
     hint.className =
       "alert alert-warning border small mb-2 py-2 readonly-bahan-blok";
     hint.setAttribute("role", "status");
     hint.innerHTML =
-      '<i class="bi bi-arrow-counterclockwise me-1"></i> Master bahan berubah: alokasi ID terdampak sudah dilepas. <strong>Centang ulang</strong> ID bahan di bawah (sisa mengikuti data terbaru), lalu simpan.';
+      '<i class="bi bi-arrow-counterclockwise me-1"></i> Master bahan berubah: alokasi lama <strong>bisa dicentang atau tidak</strong> (tidak terkunci). Sesuaikan pilihan dengan sisa master di daftar bawah, lalu simpan — <strong>tanpa perlu hapus ID Produksi</strong>.';
     container.appendChild(hint);
   }
 
@@ -300,7 +302,22 @@ async function renderIdBahanEditMode(p) {
     const wrap = document.createElement("div");
     wrap.className = "form-check mb-1";
     const cid = `cbBahanEditLocked_${idx++}`;
-    wrap.innerHTML = `
+    if (bukaAlokasiKarenaMaster) {
+      wrap.innerHTML = `
+      <input class="form-check-input" type="checkbox" name="idBahanProduksi" id="${cid}"
+        checked
+        data-id-bahan="${escapeHtmlProduksi(id)}"
+        data-berat-alokasi="${br}" />
+      <label class="form-check-label" for="${cid}">
+        <strong>${escapeHtmlProduksi(id)}</strong>
+        <span class="small text-muted"> — alokasi tercatat ${br.toLocaleString("id-ID")} kg (sesuaikan centang, lalu simpan)</span>
+      </label>`;
+      container.appendChild(wrap);
+      wrap.querySelector('input[type="checkbox"]')?.addEventListener("change", () =>
+        syncProduksiBahanEditCheckbox(),
+      );
+    } else {
+      wrap.innerHTML = `
       <input class="form-check-input" type="checkbox" name="idBahanProduksi" id="${cid}"
         checked disabled data-bahan-locked="1"
         data-id-bahan="${escapeHtmlProduksi(id)}"
@@ -309,7 +326,8 @@ async function renderIdBahanEditMode(p) {
         <strong>${escapeHtmlProduksi(id)}</strong>
         <span class="small"> — alokasi tercatat ${br.toLocaleString("id-ID")} kg (tidak dapat dihapus)</span>
       </label>`;
-    container.appendChild(wrap);
+      container.appendChild(wrap);
+    }
   });
 
   if (kunciTambahBahan) {
@@ -389,7 +407,9 @@ function syncProduksiBahanEditCheckbox() {
       'input[name="idBahanProduksi"]:not([data-bahan-locked]):checked',
     )
     .forEach((cb) => {
-      sum += parseFloat(cb.dataset.sisa || "0") || 0;
+      const w =
+        parseFloat(cb.dataset.beratAlokasi || cb.dataset.sisa || "0") || 0;
+      sum += w;
     });
 
   const rounded = Math.round(sum * 10000) / 10000;
@@ -2372,7 +2392,7 @@ window.editProduksi = async function editProduksi(id) {
         window._produksiEditSnapshot = { ...p, beratAwal: baAfterRender };
         if (p.bahanMasterBerubahLepasOtomatis) {
           alert(
-            "Data master bahan berubah: ID bahan terdampak dilepas dari produksi ini (bukan lagi terkunci). Buka daftar centang di bawah, pilih ulang ID bahan sesuai sisa master saat ini, periksa berat awal, lalu simpan.",
+            "Data master bahan berubah: Anda bisa mengedit produksi ini dengan ID Produksi yang sama. Centang bahan di bawah (alokasi lama tidak terkunci), sesuaikan dengan sisa master, lalu simpan — tidak perlu menghapus dan membuat ID Produksi baru.",
           );
         }
 
@@ -2561,28 +2581,47 @@ window.saveProduksi = async function saveProduksi() {
 
     if (isEditMode && produksiLama) {
       const container = document.getElementById("idBahanCheckboxContainer");
-      const locked = container?.querySelectorAll('input[data-bahan-locked="1"]') || [];
-      const newChecked = container?.querySelectorAll(
-        'input[name="idBahanProduksi"]:not([data-bahan-locked]):checked',
-      ) || [];
       idBahanList = [];
       alokasiBeratBahan = [];
-      locked.forEach((cb) => {
-        const bid = (cb.dataset.idBahan || "").trim();
-        const br = parseFloat(cb.dataset.beratAlokasi || "0") || 0;
-        if (bid) {
-          idBahanList.push(bid);
-          alokasiBeratBahan.push({ idBahan: bid, berat: br });
-        }
-      });
-      newChecked.forEach((cb) => {
-        const bid = (cb.dataset.idBahan || cb.value || "").trim();
-        const sisa = parseFloat(cb.dataset.sisa || "0") || 0;
-        if (bid) {
-          idBahanList.push(bid);
-          alokasiBeratBahan.push({ idBahan: bid, berat: sisa });
-        }
-      });
+      if (produksiLama.bahanMasterBerubahLepasOtomatis) {
+        const checkedAll =
+          container?.querySelectorAll(
+            'input[name="idBahanProduksi"]:checked',
+          ) || [];
+        checkedAll.forEach((cb) => {
+          const bid = (cb.dataset.idBahan || cb.value || "").trim();
+          const br =
+            parseFloat(cb.dataset.beratAlokasi || cb.dataset.sisa || "0") || 0;
+          if (bid && br > 0) {
+            idBahanList.push(bid);
+            alokasiBeratBahan.push({ idBahan: bid, berat: br });
+          }
+        });
+      } else {
+        const locked =
+          container?.querySelectorAll('input[data-bahan-locked="1"]') || [];
+        const newChecked =
+          container?.querySelectorAll(
+            'input[name="idBahanProduksi"]:not([data-bahan-locked]):checked',
+          ) || [];
+        locked.forEach((cb) => {
+          const bid = (cb.dataset.idBahan || "").trim();
+          const br = parseFloat(cb.dataset.beratAlokasi || "0") || 0;
+          if (bid) {
+            idBahanList.push(bid);
+            alokasiBeratBahan.push({ idBahan: bid, berat: br });
+          }
+        });
+        newChecked.forEach((cb) => {
+          const bid = (cb.dataset.idBahan || cb.value || "").trim();
+          const sisa =
+            parseFloat(cb.dataset.beratAlokasi || cb.dataset.sisa || "0") || 0;
+          if (bid) {
+            idBahanList.push(bid);
+            alokasiBeratBahan.push({ idBahan: bid, berat: sisa });
+          }
+        });
+      }
       idBahan = idBahanList[0] || produksiLama.idBahan;
     } else {
       const container = document.getElementById("idBahanCheckboxContainer");

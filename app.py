@@ -1401,7 +1401,8 @@ def update_produksi(produksi_id):
         if existing:
             return jsonify({'error': 'ID Produksi already exists'}), 400
         
-        # Edit: hanya boleh MENAMBAH id bahan (tidak boleh menghapus); alokasi lama tidak boleh diubah
+        # Edit: biasanya hanya boleh menambah id & alokasi lama tidak boleh diubah;
+        # setelah master bahan berubah (bahanMasterBerubahLepasOtomatis), boleh hapus/ubah alokasi lalu centang ulang.
         old_ids = _id_bahan_list_from_produksi(produksi)
         old_set = set(old_ids)
         old_map = _alokasi_map_from_produksi(produksi)
@@ -1411,7 +1412,10 @@ def update_produksi(produksi_id):
         else:
             new_list = [str(data.get('idBahan') or '').strip()] if data.get('idBahan') else []
         new_set = set(new_list)
-        if not old_set <= new_set:
+        boleh_kurangi_atau_ubah_alokasi = bool(
+            produksi.get('bahanMasterBerubahLepasOtomatis')
+        )
+        if not boleh_kurangi_atau_ubah_alokasi and not old_set <= new_set:
             return jsonify({
                 'error': 'Hanya boleh menambah ID Bahan pada produksi ini; tidak boleh menghapus bahan yang sudah tercatat',
             }), 400
@@ -1443,18 +1447,26 @@ def update_produksi(produksi_id):
             return jsonify({'error': 'alokasiBeratBahan harus memuat tepat satu entri per id di idBahanList'}), 400
 
         for bid in old_set:
+            if bid not in new_set:
+                continue
             o = float(old_map.get(bid, 0) or 0)
             n = float(new_map.get(bid, 0) or 0)
-            if abs(o - n) > 1e-3:
+            if not boleh_kurangi_atau_ubah_alokasi and abs(o - n) > 1e-3:
                 return jsonify({
                     'error': f'Alokasi bahan {bid} tidak boleh diubah; hanya boleh menambah bahan baru',
                 }), 400
 
         proses_pp = str(data['prosesPengolahan'] or '').strip()
-        for bid in new_set - old_set:
+        for bid in new_set:
             need = float(new_map.get(bid, 0) or 0)
             if need <= 0:
-                return jsonify({'error': f'Berat alokasi untuk bahan baru {bid} harus lebih dari 0'}), 400
+                return jsonify({'error': f'Berat alokasi untuk bahan {bid} harus lebih dari 0'}), 400
+            old_w = float(old_map.get(bid, 0) or 0)
+            is_new = bid not in old_set
+            if not is_new and not (
+                boleh_kurangi_atau_ubah_alokasi and abs(need - old_w) > 1e-5
+            ):
+                continue
             bahan_one = db.bahan.find_one({'idBahan': bid})
             if not bahan_one:
                 return jsonify({'error': f'Bahan tidak ditemukan: {bid}'}), 400
@@ -1466,22 +1478,32 @@ def update_produksi(produksi_id):
                 sisa, err = _sisa_bahan_line(bahan_one, bid, proses_pp)
                 if err:
                     return jsonify({'error': f'{bid}: {err}'}), 400
-                if need > (sisa or 0) + 1e-3:
+                room = (sisa or 0) + (old_w if bid in old_set else 0)
+                if need > room + 1e-3:
                     return jsonify({
-                        'error': 'Sisa bahan tidak mencukupi untuk bahan tambahan',
+                        'error': (
+                            'Sisa bahan tidak mencukupi untuk bahan tambahan'
+                            if is_new
+                            else 'Sisa bahan tidak mencukupi untuk alokasi baru (setelah master diubah)'
+                        ),
                         'idBahan': bid,
-                        'sisaTersedia': sisa,
+                        'sisaTersedia': room,
                         'beratDiminta': need,
                     }), 400
             else:
                 sisa, err = _sisa_bahan_line(bahan_one, bid, None)
                 if err:
                     return jsonify({'error': f'{bid}: {err}'}), 400
-                if need > (sisa or 0) + 1e-3:
+                room = (sisa or 0) + (old_w if bid in old_set else 0)
+                if need > room + 1e-3:
                     return jsonify({
-                        'error': 'Sisa bahan tidak mencukupi untuk bahan tambahan',
+                        'error': (
+                            'Sisa bahan tidak mencukupi untuk bahan tambahan'
+                            if is_new
+                            else 'Sisa bahan tidak mencukupi untuk alokasi baru (setelah master diubah)'
+                        ),
                         'idBahan': bid,
-                        'sisaTersedia': sisa,
+                        'sisaTersedia': room,
                         'beratDiminta': need,
                     }), 400
 
