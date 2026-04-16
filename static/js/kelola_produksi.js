@@ -352,6 +352,13 @@ async function renderIdBahanEditMode(p) {
     }
   }
 
+  const nCheckBahan = container.querySelectorAll(".form-check").length;
+  if (nCheckBahan === 0 && ph) {
+    ph.classList.remove("d-none");
+    ph.textContent =
+      "Belum ada ID bahan terpasang. Centang satu atau lebih ID di bawah (sisa mengikuti data master) lalu simpan.";
+  }
+
   const hid = document.getElementById("idBahan");
   if (hid) hid.value = oldIds[0] || "";
   syncProduksiBahanEditCheckbox();
@@ -2349,6 +2356,15 @@ window.editProduksi = async function editProduksi(id) {
         await loadTahapanFromMasterProduksi(p.prosesPengolahan);
         setElementValue("statusTahapan", p.statusTahapan);
         await renderIdBahanEditMode(p);
+        const baAfterRender =
+          parseFloat(String(document.getElementById("beratAwal")?.value || "").replace(",", ".")) ||
+          0;
+        window._produksiEditSnapshot = { ...p, beratAwal: baAfterRender };
+        if (p.bahanMasterBerubahLepasOtomatis) {
+          alert(
+            "Data master bahan untuk ID yang dipakai produksi ini telah diubah. Sistem telah melepaskan ID tersebut dari alokasi (setara uncentang) dan menyesuaikan berat awal. Centang lagi ID bahan yang diperlukan, pastikan berat awal, lalu simpan untuk memakai sisa terbaru.",
+          );
+        }
 
         const stSel = document.getElementById("statusTahapan");
         if (stSel) {

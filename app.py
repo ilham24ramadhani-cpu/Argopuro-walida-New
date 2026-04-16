@@ -471,6 +471,99 @@ def _sync_produksi_proses_pengolahan_after_bahan_update(id_bahan, old_proses_row
         )
 
 
+def _proses_bahan_stok_equivalent(old_lines, new_lines):
+    """True jika setiap jalur punya nama proses + jumlahBeratProses yang sama (abaikan detail kloter)."""
+    def norm(lst):
+        if not isinstance(lst, list):
+            return []
+        out = []
+        for x in lst:
+            if not isinstance(x, dict):
+                continue
+            pn = (x.get('prosesPengolahan') or '').strip()
+            try:
+                w = round(float(x.get('jumlahBeratProses', 0) or 0), 4)
+            except (TypeError, ValueError):
+                w = 0.0
+            out.append((pn, w))
+        return sorted(out, key=lambda t: t[0])
+
+    return norm(old_lines) == norm(new_lines)
+
+
+def _cascade_remove_id_bahan_dari_produksi_setelah_master_bahan_diubah(id_bahan):
+    """
+    Setelah master bahan diubah (proses/berat/id/jumlah), lepaskan ID bahan tersebut
+    dari semua dokumen produksi yang memakainya: hapus dari idBahanList & alokasi,
+    kurangi beratAwal, sesuaikan berat terkini/akhir. Setara 'uncentang' di UI agar
+    operator memilih ulang dan mendapat sisa baru.
+    """
+    id_bahan = str(id_bahan or '').strip()
+    if not id_bahan:
+        return {'matched': 0, 'updated': 0}
+    matched = 0
+    updated = 0
+    for p in db.produksi.find(_produksi_filter_by_bahan_id(id_bahan)):
+        matched += 1
+        ids = _id_bahan_list_from_produksi(p)
+        if id_bahan not in ids:
+            continue
+        amap = _alokasi_map_from_produksi(p)
+        removed_w = float(amap.get(id_bahan, 0) or 0)
+        new_ids = [x for x in ids if x != id_bahan]
+        alok_rows = p.get('alokasiBeratBahan')
+        new_alok = []
+        if isinstance(alok_rows, list):
+            for r in alok_rows:
+                if not isinstance(r, dict):
+                    continue
+                bid = str(r.get('idBahan', '') or '').strip()
+                if not bid or bid == id_bahan:
+                    continue
+                try:
+                    bw = float(r.get('berat', 0) or 0)
+                except (TypeError, ValueError):
+                    bw = 0.0
+                new_alok.append({'idBahan': bid, 'berat': bw})
+        old_bw = float(p.get('beratAwal', 0) or 0)
+        new_bw = max(0.0, round(old_bw - removed_w, 4))
+        primary = new_ids[0] if new_ids else ''
+        fields = {
+            'idBahanList': new_ids,
+            'idBahan': primary,
+            'alokasiBeratBahan': new_alok,
+            'beratAwal': new_bw,
+            'bahanMasterBerubahLepasOtomatis': True,
+            'bahanMasterBerubahLepasPada': datetime.now().isoformat(),
+        }
+        try:
+            bt_f = float(p.get('beratTerkini'))
+        except (TypeError, ValueError):
+            bt_f = None
+        if bt_f is not None:
+            if new_bw <= 1e-6:
+                fields['beratTerkini'] = 0.0
+            elif bt_f > new_bw:
+                fields['beratTerkini'] = new_bw
+        try:
+            ba_f = float(p.get('beratAkhir')) if p.get('beratAkhir') is not None else None
+        except (TypeError, ValueError):
+            ba_f = None
+        if ba_f is not None:
+            if new_bw <= 1e-6:
+                fields['beratAkhir'] = None
+            elif ba_f > new_bw:
+                fields['beratAkhir'] = round(min(ba_f, new_bw), 4)
+        db.produksi.update_one({'_id': p['_id']}, {'$set': fields})
+        updated += 1
+    if updated:
+        print(
+            f"✅ [CASCADE BAHAN→PRODUKSI] idBahan={id_bahan}: "
+            f"melepaskan dari {updated} dokumen produksi (dari {matched} kandidat)."
+        )
+    return {'matched': matched, 'updated': updated}
+
+
 def _cascade_rename_master_proses_pengolahan(old_nama, new_nama):
     """
     Saat nama proses di dataProses diubah, perbarui semua salinan string nama lama
@@ -1408,6 +1501,11 @@ def update_produksi(produksi_id):
         isPengemasan = 'Pengemasan' in data['statusTahapan']
         beratTerkini = data.get('beratTerkini')
         
+        berat_awal_req = float(data.get('beratAwal', 0) or 0)
+        alokasi_ulang_setelah_master = bool(
+            produksi.get('bahanMasterBerubahLepasOtomatis') and berat_awal_req < 1e-6
+        )
+
         if isPengemasan:
             # Saat Pengemasan: gunakan nilai dari data lama jika tidak ada di request
             if not beratTerkini or beratTerkini <= 0:
@@ -1416,11 +1514,21 @@ def update_produksi(produksi_id):
                 if beratTerkini <= 0:
                     return jsonify({'error': 'Berat terkini tidak valid. Pastikan produksi sudah memiliki berat terkini sebelum masuk tahap Pengemasan'}), 400
         else:
-            # Untuk tahapan lain: wajib diisi
-            if not beratTerkini or beratTerkini <= 0:
-                return jsonify({'error': 'Berat terkini wajib diisi dan harus lebih dari 0 setiap kali update tahapan'}), 400
-            if beratTerkini > data['beratAwal']:
-                return jsonify({'error': 'Berat terkini tidak boleh lebih besar dari berat awal'}), 400
+            # Untuk tahapan lain: wajib diisi — kecuali menunggu alokasi ulang setelah master bahan diubah
+            if alokasi_ulang_setelah_master:
+                try:
+                    beratTerkini = float(beratTerkini) if beratTerkini is not None else 0.0
+                except (TypeError, ValueError):
+                    beratTerkini = 0.0
+                if beratTerkini < 0:
+                    return jsonify({'error': 'Berat terkini tidak boleh negatif'}), 400
+                if beratTerkini > berat_awal_req + 1e-6:
+                    return jsonify({'error': 'Berat terkini tidak boleh lebih besar dari berat awal'}), 400
+            else:
+                if not beratTerkini or beratTerkini <= 0:
+                    return jsonify({'error': 'Berat terkini wajib diisi dan harus lebih dari 0 setiap kali update tahapan'}), 400
+                if beratTerkini > data['beratAwal']:
+                    return jsonify({'error': 'Berat terkini tidak boleh lebih besar dari berat awal'}), 400
         
         detail_bt_kloter, err_detail_bt = _normalize_berat_terkini_detail_kloter_produksi(data)
         if err_detail_bt:
@@ -1457,14 +1565,15 @@ def update_produksi(produksi_id):
         
         # Validasi khusus untuk tahapan Pengeringan Awal & Akhir
         kadar_air = data.get('kadarAir')
-        is_valid_pengeringan, error_msg_pengeringan = validate_pengeringan_tahapan(
-            data['statusTahapan'],
-            kadar_air,
-            beratTerkini,
-            produksi  # Ada produksi lama untuk validasi Pengeringan Akhir
-        )
-        if not is_valid_pengeringan:
-            return jsonify({'error': error_msg_pengeringan}), 400
+        if not (alokasi_ulang_setelah_master and berat_awal_req < 1e-6):
+            is_valid_pengeringan, error_msg_pengeringan = validate_pengeringan_tahapan(
+                data['statusTahapan'],
+                kadar_air,
+                beratTerkini,
+                produksi  # Ada produksi lama untuk validasi Pengeringan Akhir
+            )
+            if not is_valid_pengeringan:
+                return jsonify({'error': error_msg_pengeringan}), 400
         
         # Update history if status changed (always record beratTerkini when updating)
         historyTahapan = produksi.get('historyTahapan', [])
@@ -1570,12 +1679,16 @@ def update_produksi(produksi_id):
             update_data['beratGreenBeans'] = float(beratGreenBeans) if beratGreenBeans else 0
             update_data['beratPixel'] = float(beratPixel) if beratPixel else 0
             update_data['tanggalPengemasan'] = data.get('tanggalSekarang') or datetime.now().strftime('%Y-%m-%d')
-        
-        db.produksi.update_one(
-            {'_id': produksi['_id']},
-            {'$set': update_data}
-        )
-        
+
+        mongo_update = {'$set': update_data}
+        if new_list and float(data['beratAwal']) > 0:
+            mongo_update['$unset'] = {
+                'bahanMasterBerubahLepasOtomatis': '',
+                'bahanMasterBerubahLepasPada': '',
+            }
+
+        db.produksi.update_one({'_id': produksi['_id']}, mongo_update)
+
         updated = db.produksi.find_one({'_id': produksi['_id']})
         return jsonify(json_serialize(updated)), 200
     except Exception as e:
@@ -1970,6 +2083,9 @@ def update_bahan(bahan_id):
         update_op = {'$set': update_data}
         if extra_unset:
             update_op['$unset'] = extra_unset
+
+        id_bahan_untuk_cascade = str(bahan.get('idBahan') or '').strip()
+
         db.bahan.update_one({'_id': bahan['_id']}, update_op)
 
         if 'prosesBahan' in update_data:
@@ -1983,7 +2099,33 @@ def update_bahan(bahan_id):
                 bahan.get('prosesBahan'),
                 update_data['prosesBahan']
             )
-        
+
+        # Ubahan stok/master yang material: lepaskan ID ini dari semua produksi (operator centang ulang)
+        cascade_stok = False
+        if 'prosesBahan' in update_data:
+            cascade_stok = not _proses_bahan_stok_equivalent(
+                bahan.get('prosesBahan'),
+                update_data['prosesBahan'],
+            )
+        elif 'idBahan' in update_data:
+            cascade_stok = str(update_data.get('idBahan', '')).strip() != str(
+                bahan.get('idBahan', '')
+            ).strip()
+        else:
+            if 'jumlah' in update_data:
+                try:
+                    old_j = float(bahan.get('jumlah', 0) or 0)
+                    new_j = float(update_data['jumlah'])
+                    cascade_stok = abs(old_j - new_j) > 1e-4
+                except (TypeError, ValueError):
+                    cascade_stok = True
+            elif 'detailKloter' in update_data:
+                cascade_stok = True
+        if cascade_stok and id_bahan_untuk_cascade:
+            _cascade_remove_id_bahan_dari_produksi_setelah_master_bahan_diubah(
+                id_bahan_untuk_cascade
+            )
+
         updated = db.bahan.find_one({'_id': bahan['_id']})
         return jsonify(json_serialize(updated)), 200
     except Exception as e:

@@ -459,7 +459,7 @@
                     </p>
                   </div>
                   <small class="text-muted"
-                    >Centang satu atau lebih bahan. Hanya bahan yang sesuai proses dan belum dipakai di produksi manapun. Berat awal dijumlahkan dari sisa tiap bahan terpilih.</small
+                    >Centang satu atau lebih bahan yang punya jalur proses ini. Untuk bahan dengan beberapa proses di Kelola Bahan, ID yang sama boleh dipakai di lebih dari satu produksi (terpisah per jalur). Bahan model lama tanpa pemisahan proses: satu ID hanya satu produksi. Berat awal dijumlahkan dari sisa tiap baris tercentang.</small
                   >
                   <input type="hidden" id="idBahan" value="" />
                 </div>
@@ -497,7 +497,7 @@
                     required
                   />
                   <small class="text-muted" id="beratAwalInfo">
-                    Berat awal diisi otomatis sesuai sisa berat jalur proses yang dipilih (dari bahan masuk).
+                    Berat awal diisi otomatis: jumlah sisa (kg) dari setiap ID bahan yang dicentang untuk jalur proses ini (biasanya memakai sisa penuh per baris). Kolom total di Kelola Bahan tidak berubah; pemakaian tercatat di produksi ini.
                   </small>
                   <small class="text-warning d-none" id="beratAwalWarning">
                     <i class="bi bi-info-circle"></i> Berat awal hanya bisa

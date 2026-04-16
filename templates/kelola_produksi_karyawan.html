@@ -399,7 +399,7 @@
                   <div id="idBahanCheckboxContainer" class="border rounded p-2 bg-light" style="max-height: 240px; overflow-y: auto">
                     <p class="text-muted small mb-0" id="idBahanCheckboxPlaceholder">Pilih proses pengolahan terlebih dahulu.</p>
                   </div>
-                  <small class="text-muted">Centang satu atau lebih bahan (sesuai proses, belum dipakai produksi lain).</small>
+                  <small class="text-muted">Centang bahan untuk jalur proses ini. Bahan multi-proses: ID yang sama boleh dipakai di beberapa produksi (per jalur). Bahan lama tanpa pemisahan proses: satu ID satu produksi. Berat awal = jumlah sisa tiap centang.</small>
                   <input type="hidden" id="idBahan" value="" />
                 </div>
               </div>
@@ -414,7 +414,7 @@
                 <div class="col-md-6 mb-3">
                   <label for="beratAwal" class="form-label">Berat Awal (kg) <span class="text-danger">*</span></label>
                   <input type="number" class="form-control" id="beratAwal" placeholder="Pilih ID Bahan terlebih dahulu" min="0" step="0.01" required />
-                  <small class="text-muted" id="beratAwalInfo">Berat awal otomatis dari sisa jalur proses yang dipilih.</small>
+                  <small class="text-muted" id="beratAwalInfo">Otomatis: jumlah sisa tiap ID tercentang. Total masuk di Kelola Bahan tetap; pemakaian lewat data produksi.</small>
                   <small class="text-warning d-none" id="beratAwalWarning">Berat awal hanya bisa diubah saat menambah produksi baru.</small>
                 </div>
                 <div class="col-12 mb-2" id="beratTerkiniMetodeRow">
