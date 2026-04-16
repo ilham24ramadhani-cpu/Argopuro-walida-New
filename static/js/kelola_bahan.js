@@ -351,24 +351,75 @@ function clearProsesBahanUI() {
   });
 }
 
+function getDetailKloterForSection(sec) {
+  const detailKloter = [];
+  const tbody = sec?.querySelector(".kloter-tbody-proses");
+  if (!tbody) return detailKloter;
+  tbody.querySelectorAll("tr").forEach((row) => {
+    const berat = parseBeratLocal(row.querySelector(".berat-karung")?.value);
+    const keterangan = row.querySelector(".keterangan")?.value?.trim() || "";
+    if (berat > 0)
+      detailKloter.push({
+        kloter: detailKloter.length + 1,
+        berat,
+        keterangan,
+      });
+  });
+  return detailKloter;
+}
+
+/**
+ * Kumpulkan prosesBahan untuk simpan. Proses yang dicentang tapi tanpa berat kloter > 0
+ * otomatis di-uncentang (draf tetap di snapshot) agar simpan tidak terblokir proses lain.
+ */
 function collectProsesBahanPayload() {
-  const sections = document.querySelectorAll("[data-proses-bahan-section]");
+  let sections = document.querySelectorAll("[data-proses-bahan-section]");
   if (!sections.length) {
     alert("Centang minimal satu proses pengolahan dan isi kloter per proses.");
     return null;
   }
+
+  const prunedNames = [];
+  for (const sec of sections) {
+    const nama = (sec.getAttribute("data-proses-bahan-section") || "").trim();
+    if (!nama) continue;
+    if (getDetailKloterForSection(sec).length === 0) prunedNames.push(nama);
+  }
+
+  if (prunedNames.length) {
+    const uniq = [...new Set(prunedNames)];
+    for (const nama of uniq) {
+      document.querySelectorAll(".proses-bahan-cb").forEach((cb) => {
+        if ((cb.dataset.prosesNama || "").trim() === nama) cb.checked = false;
+      });
+      toggleProsesBahanSection(nama, false);
+    }
+    hitungFromKloter();
+  }
+
+  sections = document.querySelectorAll("[data-proses-bahan-section]");
+  if (!sections.length) {
+    if (prunedNames.length) {
+      alert(
+        "Semua proses yang dicentang belum memiliki berat kloter lebih dari 0. Isi minimal satu proses, lalu simpan lagi."
+      );
+    } else {
+      alert("Centang minimal satu proses pengolahan dan isi kloter per proses.");
+    }
+    return null;
+  }
+
+  if (prunedNames.length) {
+    const shown = [...new Set(prunedNames)].join(", ");
+    alert(
+      `Proses berikut dicentang tetapi belum ada berat kloter > 0 — centang dilepas: ${shown}. Melanjutkan simpan untuk proses yang sudah lengkap.`
+    );
+  }
+
   const out = [];
   for (const sec of sections) {
-    const nama = sec.getAttribute("data-proses-bahan-section");
-    const tbody = sec.querySelector(".kloter-tbody-proses");
-    const detailKloter = [];
-    if (tbody) {
-      tbody.querySelectorAll("tr").forEach((row) => {
-        const berat = parseBeratLocal(row.querySelector(".berat-karung")?.value);
-        const keterangan = row.querySelector(".keterangan")?.value?.trim() || "";
-        if (berat > 0) detailKloter.push({ kloter: detailKloter.length + 1, berat, keterangan });
-      });
-    }
+    const nama = (sec.getAttribute("data-proses-bahan-section") || "").trim();
+    const detailKloter = getDetailKloterForSection(sec);
     if (detailKloter.length === 0) {
       alert(`Isi minimal satu kloter berat > 0 untuk proses "${nama}".`);
       return null;
@@ -585,6 +636,27 @@ async function loadVarietasOptions() {
   }
 }
 
+/** Isi dropdown filter pemasok dari nilai unik di data bahan (tetapkan pilihan jika masih ada). */
+function syncPemasokFilterOptions() {
+  const filterSel = document.getElementById("filterPemasokBahan");
+  if (!filterSel) return;
+  const prev = filterSel.value;
+  const names = [
+    ...new Set(
+      (bahan || []).map((b) => (b.pemasok || "").trim()).filter(Boolean)
+    ),
+  ].sort((a, b) => a.localeCompare(b, "id"));
+  filterSel.innerHTML = '<option value="">Semua pemasok</option>';
+  names.forEach((n) => {
+    const opt = document.createElement("option");
+    opt.value = n;
+    opt.textContent = n;
+    filterSel.appendChild(opt);
+  });
+  if (prev && names.includes(prev)) filterSel.value = prev;
+  else filterSel.value = "";
+}
+
 // Fungsi untuk menampilkan data bahan
 async function displayBahan() {
   // Reload data bahan dari MongoDB untuk memastikan data terbaru
@@ -601,8 +673,14 @@ async function displayBahan() {
     return;
   }
 
+  syncPemasokFilterOptions();
+
   const searchInput = document.getElementById("searchInput");
   const searchTerm = searchInput ? searchInput.value.toLowerCase() : "";
+  const filterPemasokEl = document.getElementById("filterPemasokBahan");
+  const filterPemasok = filterPemasokEl
+    ? String(filterPemasokEl.value || "").trim()
+    : "";
 
   // Filter data berdasarkan search
   let filteredBahan = bahan;
@@ -618,6 +696,11 @@ async function displayBahan() {
             x.prosesPengolahan &&
             String(x.prosesPengolahan).toLowerCase().includes(searchTerm)
         ))
+    );
+  }
+  if (filterPemasok) {
+    filteredBahan = filteredBahan.filter(
+      (b) => (b.pemasok || "").trim() === filterPemasok
     );
   }
 
@@ -1423,6 +1506,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const searchInput = document.getElementById("searchInput");
   if (searchInput) {
     searchInput.addEventListener("input", displayBahan);
+  }
+
+  const filterPemasokBahan = document.getElementById("filterPemasokBahan");
+  if (filterPemasokBahan) {
+    filterPemasokBahan.addEventListener("change", displayBahan);
   }
 
   // Event listener untuk form search
