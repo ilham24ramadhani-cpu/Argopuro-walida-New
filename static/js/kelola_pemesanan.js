@@ -2151,12 +2151,14 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setFontSize(9);
   const xCenterSig = (sigLeft + sigRight) / 2;
   const gapPembeliKeTtd = 11;
+  /* Geser sedikit ke tengah-bawah antara "Pembeli," dan garis tanda tangan */
+  const ttdTurunMm = 4;
   const gapTtdKeRuangTtd = 18;
   const gapGarisKeNama = 5.5;
   const lineH = 5.2;
 
   const computeTtdLayout = (yTop) => {
-    const yLbl = yTop + 6.5 + gapPembeliKeTtd;
+    const yLbl = yTop + 6.5 + gapPembeliKeTtd + ttdTurunMm;
     const yGr = yLbl + 4.5 + gapTtdKeRuangTtd;
     const yNm = yGr + gapGarisKeNama;
     const bottomNama = yNm + namaLinesSig.length * lineH;
