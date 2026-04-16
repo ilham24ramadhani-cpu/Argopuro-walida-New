@@ -1816,6 +1816,100 @@ function pdfFmtIdNumber(n) {
   return v.toLocaleString("id-ID");
 }
 
+/** Teks untuk PDF: uraikan entitas HTML bertingkat (mis. &amp;amp; → &). */
+function pdfDecodeHtmlEntities(raw) {
+  let s = String(raw ?? "");
+  for (let i = 0; i < 12; i++) {
+    const t = s
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&#(\d+);/g, (m, n) => {
+        const c = parseInt(n, 10);
+        return Number.isFinite(c) && c >= 0 && c <= 0x10ffff
+          ? String.fromCodePoint(c)
+          : m;
+      })
+      .replace(/&#x([0-9a-fA-F]+);/g, (m, h) => {
+        const c = parseInt(h, 16);
+        return Number.isFinite(c) && c >= 0 && c <= 0x10ffff
+          ? String.fromCodePoint(c)
+          : m;
+      })
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'");
+    if (t === s) break;
+    s = t;
+  }
+  return s;
+}
+
+/**
+ * Tabel catatan pemesanan (bingkai + header + isi).
+ * @returns {number} y di bawah tabel + jarak kecil
+ */
+function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw) {
+  const RX = 190;
+  const W = RX - LX;
+  const padX = 4;
+  const innerW = W - padX * 2;
+  const decoded = pdfDecodeHtmlEntities(String(catatanRaw).trim());
+  const blocks = decoded
+    .split(/\r?\n/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  const lineH = 4.35;
+  const headerH = 8;
+  const bodyPadTop = 5;
+  const bodyPadBottom = 6;
+  const displayLines = [];
+  blocks.forEach((blk, idx) => {
+    doc.splitTextToSize(blk, innerW).forEach((ln) => displayLines.push(ln));
+    if (idx < blocks.length - 1) displayLines.push("");
+  });
+  const bodyH = bodyPadTop + displayLines.length * lineH + bodyPadBottom;
+  const tableH = headerH + bodyH;
+
+  if (y + tableH > 276) {
+    doc.addPage();
+    y = 18;
+  }
+
+  doc.setDrawColor(46, 125, 50);
+  doc.setLineWidth(0.22);
+  doc.roundedRect(LX, y, W, tableH, 1.2, 1.2, "S");
+
+  doc.setFillColor(236, 248, 238);
+  doc.rect(LX + 0.22, y + 0.22, W - 0.44, headerH - 0.1, "F");
+  doc.setDrawColor(46, 125, 50);
+  doc.setLineWidth(0.15);
+  doc.line(LX, y + headerH, LX + W, y + headerH);
+
+  doc.setTextColor(25, 90, 40);
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(10);
+  doc.text("CATATAN", LX + padX, y + 5.6);
+  doc.setTextColor(35, 35, 35);
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(9);
+
+  let ty = y + headerH + bodyPadTop;
+  displayLines.forEach((ln) => {
+    if (ty > 274) {
+      doc.addPage();
+      ty = 22;
+    }
+    if (ln !== "") doc.text(ln, LX + padX, ty);
+    ty += lineH;
+  });
+
+  doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.1);
+  return y + tableH + 8;
+}
+
 /** Warna badge status pembayaran: teks putih tebal di atas bg */
 function pdfPaymentBadgeColors(status) {
   const s = (status || "Belum Lunas").trim();
@@ -1914,8 +2008,15 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setFont(undefined, "bold");
   doc.text("Nama", LX, y);
   doc.setFont(undefined, "normal");
-  doc.text(p.namaPembeli || "-", VX, y);
-  y += 7;
+  const namaPembeliKop = pdfDecodeHtmlEntities(
+    String(p.namaPembeli || "-").trim(),
+  );
+  const namaKopLines = doc.splitTextToSize(namaPembeliKop, 120);
+  namaKopLines.forEach((ln) => {
+    doc.text(ln, VX, y);
+    y += 5;
+  });
+  y += 2;
   doc.setFont(undefined, "bold");
   doc.text("Kontak", LX, y);
   doc.setFont(undefined, "normal");
@@ -2025,81 +2126,94 @@ function pdfDrawInvoiceBody(doc, p, y) {
   );
   doc.setFont(undefined, "normal");
   doc.setFontSize(9);
-  y += 12;
+  y += 11;
 
   const catatan = (p.catatanPemesanan && String(p.catatanPemesanan).trim()) || "";
   if (catatan) {
-    if (y > 248) {
-      doc.addPage();
-      y = 20;
-    }
-    doc.setFontSize(11);
-    doc.setFont(undefined, "bold");
-    doc.setTextColor(0, 0, 0);
-    doc.text("CATATAN", LX, y);
-    y += 6;
-    doc.setLineWidth(0.15);
-    doc.line(LX, y, 190, y);
-    y += 8;
-    doc.setFontSize(9);
-    doc.setFont(undefined, "normal");
-    doc.setTextColor(40, 40, 40);
-    doc.splitTextToSize(catatan, 170).forEach((ln) => {
-      if (y > 275) {
-        doc.addPage();
-        y = 20;
-      }
-      doc.text(ln, LX, y);
-      y += 4.5;
-    });
-    doc.setTextColor(0, 0, 0);
-    y += 8;
+    y = pdfDrawCatatanPemesananTable(doc, LX, y, catatan);
   }
 
-  /* Kolom TTD kanan bawah; nama pembeli di pojok kanan atas area tanda tangan */
+  /* Jarak ekstra agar blok TTD lebih ke bawah + ruang tanda tangan lebih lega */
+  y += 22;
+
+  /* Kolom TTD kanan bawah; bingkai digambar dulu lalu teks di atasnya */
   const sigRight = 190;
-  const sigW = 72;
+  const sigW = 74;
   const sigLeft = sigRight - sigW;
-  if (y > 232) {
+  const boxPad = 3.5;
+  const namaPembeliTtd = pdfDecodeHtmlEntities(
+    String(p.namaPembeli || "-").trim(),
+  );
+  doc.setFontSize(10);
+  doc.setFont(undefined, "bold");
+  const namaLinesSig = doc.splitTextToSize(namaPembeliTtd, sigW);
+  doc.setFont(undefined, "normal");
+  doc.setFontSize(9);
+  const gapLabelNama = 5.5;
+  const gapNamaGaris = 30;
+  const bawahGaris = 5.2;
+
+  if (y > 200) {
     doc.addPage();
-    y = 20;
+    y = 22;
   }
-  const yTtdTop = y + 4;
+  let yTtdTop = y + 8;
+  let yGariss =
+    yTtdTop + gapLabelNama + namaLinesSig.length * 5.2 + gapNamaGaris;
+  let yTtdLbl = yGariss + bawahGaris;
+  let boxTop = yTtdTop - boxPad;
+  let boxH = Math.max(yTtdLbl + 6 + boxPad - boxTop, 52);
+  if (boxTop + boxH > 288) {
+    doc.addPage();
+    y = 22;
+    yTtdTop = y + 8;
+    yGariss =
+      yTtdTop + gapLabelNama + namaLinesSig.length * 5.2 + gapNamaGaris;
+    yTtdLbl = yGariss + bawahGaris;
+    boxTop = yTtdTop - boxPad;
+    boxH = Math.max(yTtdLbl + 6 + boxPad - boxTop, 52);
+  }
+
+  doc.setDrawColor(198, 208, 198);
+  doc.setLineWidth(0.18);
+  doc.roundedRect(
+    sigLeft - boxPad,
+    boxTop,
+    sigW + boxPad * 2,
+    boxH,
+    1.2,
+    1.2,
+    "S",
+  );
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.1);
+
   doc.setFontSize(9);
   doc.setFont(undefined, "normal");
-  doc.setTextColor(70, 70, 70);
+  doc.setTextColor(75, 75, 75);
   doc.text("Pembeli,", sigRight, yTtdTop, { align: "right" });
-  let ySig = yTtdTop + 5;
+  let ySig = yTtdTop + gapLabelNama;
   doc.setTextColor(0, 0, 0);
   doc.setFont(undefined, "bold");
   doc.setFontSize(10);
-  const namaPembeli = String(p.namaPembeli || "-").trim();
-  doc.splitTextToSize(namaPembeli, sigW).forEach((ln) => {
-    if (ySig > 268) {
-      doc.addPage();
-      ySig = 20;
-    }
+  namaLinesSig.forEach((ln) => {
     doc.text(ln, sigRight, ySig, { align: "right" });
-    ySig += 5;
+    ySig += 5.2;
   });
   doc.setFont(undefined, "normal");
-  ySig += 16;
-  if (ySig > 275) {
-    doc.addPage();
-    ySig = 30;
-  }
-  doc.setDrawColor(100, 100, 100);
-  doc.setLineWidth(0.2);
+  ySig = yGariss;
+  doc.setDrawColor(88, 88, 88);
+  doc.setLineWidth(0.22);
   doc.line(sigLeft, ySig, sigRight, ySig);
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.1);
-  ySig += 5;
-  doc.setFontSize(9);
-  doc.setTextColor(60, 60, 60);
+  ySig = yTtdLbl;
+  doc.setFontSize(8.5);
+  doc.setTextColor(70, 70, 70);
   doc.text("TTD", (sigLeft + sigRight) / 2, ySig, { align: "center" });
   doc.setTextColor(0, 0, 0);
 
-  return ySig + 6;
+  return boxTop + boxH + 10;
 }
 
 // Generate Invoice PDF
