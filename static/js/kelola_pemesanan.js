@@ -2149,30 +2149,41 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const namaLinesSig = doc.splitTextToSize(namaPembeliTtd, sigW);
   doc.setFont(undefined, "normal");
   doc.setFontSize(9);
-  const gapLabelNama = 5.5;
-  const gapNamaGaris = 30;
-  const bawahGaris = 5.2;
+  const xCenterSig = (sigLeft + sigRight) / 2;
+  const gapPembeliKeTtd = 11;
+  const gapTtdKeRuangTtd = 18;
+  const gapGarisKeNama = 5.5;
+  const lineH = 5.2;
+
+  const computeTtdLayout = (yTop) => {
+    const yLbl = yTop + 6.5 + gapPembeliKeTtd;
+    const yGr = yLbl + 4.5 + gapTtdKeRuangTtd;
+    const yNm = yGr + gapGarisKeNama;
+    const bottomNama = yNm + namaLinesSig.length * lineH;
+    const bTop = yTop - boxPad;
+    const bH = Math.max(bottomNama + boxPad - bTop, 52);
+    return {
+      yLblTtdFinal: yLbl,
+      yGarisFinal: yGr,
+      yNamaStartFinal: yNm,
+      boxTop: bTop,
+      boxH: bH,
+    };
+  };
 
   if (y > 200) {
     doc.addPage();
     y = 22;
   }
   let yTtdTop = y + 8;
-  let yGariss =
-    yTtdTop + gapLabelNama + namaLinesSig.length * 5.2 + gapNamaGaris;
-  let yTtdLbl = yGariss + bawahGaris;
-  let boxTop = yTtdTop - boxPad;
-  let boxH = Math.max(yTtdLbl + 6 + boxPad - boxTop, 52);
-  if (boxTop + boxH > 288) {
+  let L = computeTtdLayout(yTtdTop);
+  if (L.boxTop + L.boxH > 288) {
     doc.addPage();
     y = 22;
     yTtdTop = y + 8;
-    yGariss =
-      yTtdTop + gapLabelNama + namaLinesSig.length * 5.2 + gapNamaGaris;
-    yTtdLbl = yGariss + bawahGaris;
-    boxTop = yTtdTop - boxPad;
-    boxH = Math.max(yTtdLbl + 6 + boxPad - boxTop, 52);
+    L = computeTtdLayout(yTtdTop);
   }
+  const { yLblTtdFinal, yGarisFinal, yNamaStartFinal, boxTop, boxH } = L;
 
   doc.setDrawColor(198, 208, 198);
   doc.setLineWidth(0.18);
@@ -2191,27 +2202,27 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setFontSize(9);
   doc.setFont(undefined, "normal");
   doc.setTextColor(75, 75, 75);
-  doc.text("Pembeli,", sigRight, yTtdTop, { align: "right" });
-  let ySig = yTtdTop + gapLabelNama;
-  doc.setTextColor(0, 0, 0);
-  doc.setFont(undefined, "bold");
-  doc.setFontSize(10);
-  namaLinesSig.forEach((ln) => {
-    doc.text(ln, sigRight, ySig, { align: "right" });
-    ySig += 5.2;
-  });
-  doc.setFont(undefined, "normal");
-  ySig = yGariss;
-  doc.setDrawColor(88, 88, 88);
-  doc.setLineWidth(0.22);
-  doc.line(sigLeft, ySig, sigRight, ySig);
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.1);
-  ySig = yTtdLbl;
+  doc.text("Pembeli,", xCenterSig, yTtdTop + 6.5, { align: "center" });
+
   doc.setFontSize(8.5);
   doc.setTextColor(70, 70, 70);
-  doc.text("TTD", (sigLeft + sigRight) / 2, ySig, { align: "center" });
+  doc.text("TTD", xCenterSig, yLblTtdFinal, { align: "center" });
+
+  doc.setDrawColor(88, 88, 88);
+  doc.setLineWidth(0.22);
+  doc.line(sigLeft, yGarisFinal, sigRight, yGarisFinal);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.1);
+
+  doc.setFontSize(10);
+  doc.setFont(undefined, "bold");
   doc.setTextColor(0, 0, 0);
+  let yN = yNamaStartFinal;
+  namaLinesSig.forEach((ln) => {
+    doc.text(ln, xCenterSig, yN, { align: "center" });
+    yN += lineH;
+  });
+  doc.setFont(undefined, "normal");
 
   return boxTop + boxH + 10;
 }
