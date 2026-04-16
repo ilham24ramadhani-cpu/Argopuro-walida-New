@@ -346,6 +346,28 @@ def _total_digunakan_bahan_proses(id_bahan, proses_q=None):
     return total
 
 
+def _total_digunakan_bahan_proses_except(id_bahan, proses_q, exclude_id_produksi_str):
+    """
+    Seperti _total_digunakan_bahan_proses, tetapi mengabaikan satu dokumen produksi
+    (idProduksi string) agar bisa menghitung ruang alokasi maksimum untuk dokumen itu.
+    """
+    total = 0.0
+    id_bahan = str(id_bahan or '').strip()
+    if not id_bahan:
+        return 0.0
+    ex = (exclude_id_produksi_str or '').strip() or None
+    pq = (proses_q or '').strip() if proses_q is not None else None
+    for p in db.produksi.find({}):
+        if ex and (p.get('idProduksi') or '') == ex:
+            continue
+        if pq is not None:
+            if (p.get('prosesPengolahan') or '').strip() != pq:
+                continue
+        m = _alokasi_map_from_produksi(p)
+        total += float(m.get(id_bahan, 0) or 0)
+    return total
+
+
 def _all_id_bahan_terpakai_produksi(exclude_id_produksi_str=None):
     """Kumpulan id bahan yang sudah muncul di dokumen produksi (untuk bahan legacy tanpa prosesBahan: satu id hanya satu produksi)."""
     used = set()
@@ -489,6 +511,174 @@ def _proses_bahan_stok_equivalent(old_lines, new_lines):
         return sorted(out, key=lambda t: t[0])
 
     return norm(old_lines) == norm(new_lines)
+
+
+def _adjust_produksi_allocations_after_bahan_master_change(id_bahan):
+    """
+    Setelah master bahan (prosesBahan atau jumlah legacy) berubah dengan ID yang sama:
+    sesuaikan alokasi per produksi ke kapasitas jalur / pool baru — tanpa membuang ID
+    jika proses produksi masih punya baris di master. Jika proses produksi tidak lagi ada
+    di master, ID dilepas dari dokumen itu (setara uncentang untuk jalur yang hilang).
+    """
+    id_bahan = str(id_bahan or '').strip()
+    if not id_bahan:
+        return {'updated': 0}
+    bdoc = db.bahan.find_one({'idBahan': id_bahan})
+    if not bdoc:
+        return {'updated': 0}
+    lines = bdoc.get('prosesBahan') or []
+    updated = 0
+    for p in db.produksi.find(_produksi_filter_by_bahan_id(id_bahan)):
+        if id_bahan not in _id_bahan_list_from_produksi(p):
+            continue
+        amap = _alokasi_map_from_produksi(p)
+        cur = float(amap.get(id_bahan, 0) or 0)
+        if cur <= 1e-9:
+            continue
+        pp = (p.get('prosesPengolahan') or '').strip()
+        id_prod = (p.get('idProduksi') or '').strip() or None
+        if lines:
+            line = next((l for l in lines if l.get('prosesPengolahan') == pp), None)
+            if not line:
+                # Proses produksi tidak lagi ada di master → lepaskan ID (sama seperti cascade parsial)
+                ids = _id_bahan_list_from_produksi(p)
+                new_ids = [x for x in ids if x != id_bahan]
+                alok_rows = p.get('alokasiBeratBahan')
+                new_alok = []
+                if isinstance(alok_rows, list):
+                    for r in alok_rows:
+                        if not isinstance(r, dict):
+                            continue
+                        bid = str(r.get('idBahan', '') or '').strip()
+                        if not bid or bid == id_bahan:
+                            continue
+                        try:
+                            bw = float(r.get('berat', 0) or 0)
+                        except (TypeError, ValueError):
+                            bw = 0.0
+                        new_alok.append({'idBahan': bid, 'berat': bw})
+                old_bw = float(p.get('beratAwal', 0) or 0)
+                new_bw = max(0.0, round(old_bw - cur, 4))
+                primary = new_ids[0] if new_ids else ''
+                fields = {
+                    'idBahanList': new_ids,
+                    'idBahan': primary,
+                    'alokasiBeratBahan': new_alok,
+                    'beratAwal': new_bw,
+                    'bahanMasterBerubahLepasOtomatis': True,
+                    'bahanMasterBerubahLepasPada': datetime.now().isoformat(),
+                }
+                try:
+                    bt_f = float(p.get('beratTerkini'))
+                except (TypeError, ValueError):
+                    bt_f = None
+                if bt_f is not None:
+                    if new_bw <= 1e-6:
+                        fields['beratTerkini'] = 0.0
+                    elif bt_f > new_bw:
+                        fields['beratTerkini'] = new_bw
+                try:
+                    ba_f = float(p.get('beratAkhir')) if p.get('beratAkhir') is not None else None
+                except (TypeError, ValueError):
+                    ba_f = None
+                if ba_f is not None:
+                    if new_bw <= 1e-6:
+                        fields['beratAkhir'] = None
+                    elif ba_f > new_bw:
+                        fields['beratAkhir'] = round(min(ba_f, new_bw), 4)
+                db.produksi.update_one(
+                    {'_id': p['_id']},
+                    {
+                        '$set': fields,
+                        '$unset': {
+                            'bahanMasterAlokasiDisesuaikan': '',
+                            'bahanMasterAlokasiDisesuaikanPada': '',
+                        },
+                    },
+                )
+                updated += 1
+                continue
+            cap = float(line.get('jumlahBeratProses', 0) or 0)
+            used_ex = _total_digunakan_bahan_proses_except(id_bahan, pp, id_prod)
+            room = max(0.0, cap - used_ex)
+        else:
+            cap = float(bdoc.get('jumlah', 0) or 0)
+            used_ex = _total_digunakan_bahan_proses_except(id_bahan, None, id_prod)
+            room = max(0.0, cap - used_ex)
+        new_w = round(min(cur, room), 4)
+        new_w = max(0.0, new_w)
+        if abs(new_w - cur) < 1e-5:
+            continue
+        alok_rows = p.get('alokasiBeratBahan')
+        new_alok = []
+        new_ids = []
+        if isinstance(alok_rows, list) and len(alok_rows) > 0:
+            for r in alok_rows:
+                if not isinstance(r, dict):
+                    continue
+                bid = str(r.get('idBahan', '') or '').strip()
+                try:
+                    bw = float(r.get('berat', 0) or 0)
+                except (TypeError, ValueError):
+                    bw = 0.0
+                if bid == id_bahan:
+                    bw = new_w
+                if bid and bw > 1e-6:
+                    new_alok.append({'idBahan': bid, 'berat': round(bw, 4)})
+            new_ids = [x['idBahan'] for x in new_alok]
+            new_bw = round(sum(x['berat'] for x in new_alok), 4)
+        else:
+            if new_w <= 1e-6:
+                new_ids = []
+                new_alok = []
+            else:
+                new_ids = [id_bahan]
+                new_alok = [{'idBahan': id_bahan, 'berat': new_w}]
+            new_bw = round(sum(x['berat'] for x in new_alok), 4)
+        primary = new_ids[0] if new_ids else ''
+        fields = {
+            'idBahanList': new_ids,
+            'idBahan': primary,
+            'alokasiBeratBahan': new_alok,
+            'beratAwal': new_bw,
+            'bahanMasterAlokasiDisesuaikan': True,
+            'bahanMasterAlokasiDisesuaikanPada': datetime.now().isoformat(),
+        }
+        try:
+            bt_f = float(p.get('beratTerkini'))
+        except (TypeError, ValueError):
+            bt_f = None
+        if bt_f is not None:
+            if new_bw <= 1e-6:
+                fields['beratTerkini'] = 0.0
+            elif bt_f > new_bw:
+                fields['beratTerkini'] = new_bw
+        try:
+            ba_f = float(p.get('beratAkhir')) if p.get('beratAkhir') is not None else None
+        except (TypeError, ValueError):
+            ba_f = None
+        if ba_f is not None:
+            if new_bw <= 1e-6:
+                fields['beratAkhir'] = None
+            elif ba_f > new_bw:
+                fields['beratAkhir'] = round(min(ba_f, new_bw), 4)
+        db.produksi.update_one(
+            {'_id': p['_id']},
+            {
+                '$set': fields,
+                '$unset': {
+                    'bahanMasterBerubahLepasOtomatis': '',
+                    'bahanMasterBerubahLepasPada': '',
+                },
+            },
+        )
+        updated += 1
+    if updated:
+        print(
+            f"✅ [ADJUST BAHAN→PRODUKSI] idBahan={id_bahan}: "
+            f"alokasi disesuaikan ke kapasitas master pada {updated} dokumen."
+        )
+    return {'updated': updated}
 
 
 def _cascade_remove_id_bahan_dari_produksi_setelah_master_bahan_diubah(id_bahan):
@@ -1503,7 +1693,11 @@ def update_produksi(produksi_id):
         
         berat_awal_req = float(data.get('beratAwal', 0) or 0)
         alokasi_ulang_setelah_master = bool(
-            produksi.get('bahanMasterBerubahLepasOtomatis') and berat_awal_req < 1e-6
+            (
+                produksi.get('bahanMasterBerubahLepasOtomatis')
+                or produksi.get('bahanMasterAlokasiDisesuaikan')
+            )
+            and berat_awal_req < 1e-6
         )
 
         if isPengemasan:
@@ -1685,6 +1879,8 @@ def update_produksi(produksi_id):
             mongo_update['$unset'] = {
                 'bahanMasterBerubahLepasOtomatis': '',
                 'bahanMasterBerubahLepasPada': '',
+                'bahanMasterAlokasiDisesuaikan': '',
+                'bahanMasterAlokasiDisesuaikanPada': '',
             }
 
         db.produksi.update_one({'_id': produksi['_id']}, mongo_update)
@@ -2100,7 +2296,7 @@ def update_bahan(bahan_id):
                 update_data['prosesBahan']
             )
 
-        # Ubahan stok/master yang material: lepaskan ID ini dari semua produksi (operator centang ulang)
+        # Ubahan stok/master: sesuaikan alokasi produksi (ID sama) atau lepaskan ID lama (rename)
         cascade_stok = False
         if 'prosesBahan' in update_data:
             cascade_stok = not _proses_bahan_stok_equivalent(
@@ -2121,12 +2317,21 @@ def update_bahan(bahan_id):
                     cascade_stok = True
             elif 'detailKloter' in update_data:
                 cascade_stok = True
-        if cascade_stok and id_bahan_untuk_cascade:
-            _cascade_remove_id_bahan_dari_produksi_setelah_master_bahan_diubah(
-                id_bahan_untuk_cascade
-            )
 
         updated = db.bahan.find_one({'_id': bahan['_id']})
+        id_bahan_setelah_update = str(updated.get('idBahan') or '').strip()
+
+        if cascade_stok and id_bahan_untuk_cascade:
+            if id_bahan_untuk_cascade == id_bahan_setelah_update:
+                _adjust_produksi_allocations_after_bahan_master_change(
+                    id_bahan_setelah_update
+                )
+            else:
+                _cascade_remove_id_bahan_dari_produksi_setelah_master_bahan_diubah(
+                    id_bahan_untuk_cascade
+                )
+            updated = db.bahan.find_one({'_id': bahan['_id']})
+
         return jsonify(json_serialize(updated)), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -2360,7 +2360,11 @@ window.editProduksi = async function editProduksi(id) {
           parseFloat(String(document.getElementById("beratAwal")?.value || "").replace(",", ".")) ||
           0;
         window._produksiEditSnapshot = { ...p, beratAwal: baAfterRender };
-        if (p.bahanMasterBerubahLepasOtomatis) {
+        if (p.bahanMasterAlokasiDisesuaikan) {
+          alert(
+            "Data master bahan telah diubah (misalnya pemisahan proses). Berat alokasi untuk ID + jalur proses produksi ini telah disesuaikan otomatis ke kapasitas baru di Kelola Bahan. Periksa berat awal / alokasi tercatat, lalu simpan jika sudah sesuai.",
+          );
+        } else if (p.bahanMasterBerubahLepasOtomatis) {
           alert(
             "Data master bahan untuk ID yang dipakai produksi ini telah diubah. Sistem telah melepaskan ID tersebut dari alokasi (setara uncentang) dan menyesuaikan berat awal. Centang lagi ID bahan yang diperlukan, pastikan berat awal, lalu simpan untuk memakai sisa terbaru.",
           );
