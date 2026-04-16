@@ -1,5 +1,7 @@
 // Data produksi (MONGODB ONLY - NO localStorage fallback)
 let produksi = [];
+/** Map idBahan → bahan untuk kolom/filter proses (sama logika dengan tabel). */
+let _bahanByIdProduksiTable = new Map();
 let currentEditId = null;
 let currentDeleteId = null;
 
@@ -1570,29 +1572,83 @@ function getProsesPengolahanTampilan(prod, bahanById) {
   return prod?.prosesPengolahan || "-";
 }
 
-// Fungsi untuk menampilkan data produksi
-async function displayProduksi() {
-  console.log("🔄 displayProduksi() called");
+/** Isi dropdown filter daftar produksi dari data terkini (pertahankan pilihan jika masih ada). */
+function populateProduksiListFilters(bahanById) {
+  const selProses = document.getElementById(
+    "filterProsesPengolahanProduksiList",
+  );
+  const selTahapan = document.getElementById("filterStatusTahapanProduksiList");
+  if (!selProses || !selTahapan) return;
 
-  // Reload data produksi dari MongoDB untuk memastikan data terbaru
-  try {
-    await loadProduksiData();
-    console.log(`✅ Produksi data ready: ${produksi.length} items`);
-  } catch (e) {
-    console.error("❌ Error loading produksi:", e);
-    produksi = [];
+  const prevProses = selProses.value;
+  const prevTahapan = selTahapan.value;
+
+  const prosesSet = new Set();
+  const tahapanSet = new Set();
+  for (const p of produksi) {
+    const label = getProsesPengolahanTampilan(p, bahanById);
+    if (label && label !== "-") prosesSet.add(label);
+    const st = (p.statusTahapan && String(p.statusTahapan).trim()) || "";
+    if (st) tahapanSet.add(st);
   }
 
-  let bahanById = new Map();
-  try {
-    if (window.API?.Bahan) {
-      const bl = await window.API.Bahan.getAll();
-      for (const b of bl || []) {
-        if (b?.idBahan) bahanById.set(b.idBahan, b);
-      }
+  const prosesSorted = Array.from(prosesSet).sort((a, b) =>
+    a.localeCompare(b, "id"),
+  );
+  const tahapanSorted = Array.from(tahapanSet).sort((a, b) =>
+    a.localeCompare(b, "id"),
+  );
+
+  function refillSelect(select, values, previous, emptyLabel) {
+    select.innerHTML = "";
+    const opt0 = document.createElement("option");
+    opt0.value = "";
+    opt0.textContent = emptyLabel;
+    select.appendChild(opt0);
+    for (const v of values) {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = v;
+      select.appendChild(o);
     }
-  } catch (e) {
-    console.warn("⚠️ Gagal memuat bahan untuk kolom proses:", e);
+    if (previous && values.includes(previous)) select.value = previous;
+    else select.value = "";
+  }
+
+  refillSelect(selProses, prosesSorted, prevProses, "Semua proses");
+  refillSelect(selTahapan, tahapanSorted, prevTahapan, "Semua tahapan");
+}
+
+// Fungsi untuk menampilkan data produksi
+async function displayProduksi(options = {}) {
+  const reloadData = options.reload !== false;
+  console.log("🔄 displayProduksi() called", { reloadData });
+
+  if (reloadData) {
+    try {
+      await loadProduksiData();
+      console.log(`✅ Produksi data ready: ${produksi.length} items`);
+    } catch (e) {
+      console.error("❌ Error loading produksi:", e);
+      produksi = [];
+    }
+  }
+
+  let bahanById = _bahanByIdProduksiTable;
+  if (reloadData) {
+    bahanById = new Map();
+    try {
+      if (window.API?.Bahan) {
+        const bl = await window.API.Bahan.getAll();
+        for (const b of bl || []) {
+          if (b?.idBahan) bahanById.set(b.idBahan, b);
+        }
+      }
+    } catch (e) {
+      console.warn("⚠️ Gagal memuat bahan untuk kolom proses:", e);
+    }
+    _bahanByIdProduksiTable = bahanById;
+    populateProduksiListFilters(bahanById);
   }
 
   const tableBody = document.getElementById("tableBody");
@@ -1611,10 +1667,34 @@ async function displayProduksi() {
   const searchInput = document.getElementById("searchInput");
   const searchTerm = searchInput ? searchInput.value.toLowerCase() : "";
 
-  // Filter data berdasarkan search
+  const filterProsesEl = document.getElementById(
+    "filterProsesPengolahanProduksiList",
+  );
+  const filterTahapanEl = document.getElementById(
+    "filterStatusTahapanProduksiList",
+  );
+  const filterProses = filterProsesEl
+    ? String(filterProsesEl.value || "").trim()
+    : "";
+  const filterTahapan = filterTahapanEl
+    ? String(filterTahapanEl.value || "").trim()
+    : "";
+
+  // Filter: proses pengolahan + tahapan + teks pencarian
   let filteredProduksi = produksi;
+  if (filterProses) {
+    filteredProduksi = filteredProduksi.filter(
+      (p) => getProsesPengolahanTampilan(p, bahanById) === filterProses,
+    );
+  }
+  if (filterTahapan) {
+    filteredProduksi = filteredProduksi.filter(
+      (p) =>
+        (p.statusTahapan && String(p.statusTahapan).trim()) === filterTahapan,
+    );
+  }
   if (searchTerm) {
-    filteredProduksi = produksi.filter(
+    filteredProduksi = filteredProduksi.filter(
       (p) =>
         (p.idProduksi && p.idProduksi.toLowerCase().includes(searchTerm)) ||
         (p.idBahan && p.idBahan.toLowerCase().includes(searchTerm)) ||
@@ -1624,8 +1704,12 @@ async function displayProduksi() {
           )) ||
         (p.prosesPengolahan &&
           p.prosesPengolahan.toLowerCase().includes(searchTerm)) ||
+        (getProsesPengolahanTampilan(p, bahanById)
+          .toLowerCase()
+          .includes(searchTerm)) ||
         (p.varietas && p.varietas.toLowerCase().includes(searchTerm)) ||
-        (p.statusTahapan && p.statusTahapan.toLowerCase().includes(searchTerm)) ||
+        (p.statusTahapan &&
+          p.statusTahapan.toLowerCase().includes(searchTerm)) ||
         (p.catatan && String(p.catatan).toLowerCase().includes(searchTerm)),
     );
   }
@@ -3584,8 +3668,6 @@ document.addEventListener("DOMContentLoaded", () => {
   setTimeout(async () => {
     try {
       console.log("🔄 Initializing produksi page...");
-      await loadProduksiData();
-      console.log(`✅ Produksi data loaded: ${produksi.length} items`);
       await displayProduksi();
       await loadProsesPengolahanOptions();
       await loadVarietasOptionsProduksi();
@@ -3606,7 +3688,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const searchInput = document.getElementById("searchInput");
   if (searchInput) {
     searchInput.addEventListener("input", async () => {
-      await displayProduksi();
+      await displayProduksi({ reload: false });
     });
   }
 
@@ -3614,7 +3696,24 @@ document.addEventListener("DOMContentLoaded", () => {
   if (searchForm) {
     searchForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      await displayProduksi();
+      await displayProduksi({ reload: false });
+    });
+  }
+
+  const filterProsesList = document.getElementById(
+    "filterProsesPengolahanProduksiList",
+  );
+  const filterTahapanList = document.getElementById(
+    "filterStatusTahapanProduksiList",
+  );
+  if (filterProsesList) {
+    filterProsesList.addEventListener("change", async () => {
+      await displayProduksi({ reload: false });
+    });
+  }
+  if (filterTahapanList) {
+    filterTahapanList.addEventListener("change", async () => {
+      await displayProduksi({ reload: false });
     });
   }
 
