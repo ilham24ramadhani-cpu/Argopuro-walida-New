@@ -1951,24 +1951,6 @@ function pdfDrawInvoiceBody(doc, p, y) {
   }
   y += 6;
 
-  const catatan = (p.catatanPemesanan && String(p.catatanPemesanan).trim()) || "";
-  if (catatan) {
-    doc.setFontSize(11);
-    doc.setFont(undefined, "bold");
-    doc.text("CATATAN", LX, y);
-    y += 6;
-    doc.setLineWidth(0.15);
-    doc.line(LX, y, 190, y);
-    y += 8;
-    doc.setFontSize(9);
-    doc.setFont(undefined, "normal");
-    doc.splitTextToSize(catatan, 170).forEach((ln) => {
-      doc.text(ln, LX, y);
-      y += 4.5;
-    });
-    y += 6;
-  }
-
   const C_QTY = 118;
   const C_HARGA = 150;
   const C_SUB = 188;
@@ -2043,7 +2025,81 @@ function pdfDrawInvoiceBody(doc, p, y) {
   );
   doc.setFont(undefined, "normal");
   doc.setFontSize(9);
-  return y + 8;
+  y += 12;
+
+  const catatan = (p.catatanPemesanan && String(p.catatanPemesanan).trim()) || "";
+  if (catatan) {
+    if (y > 248) {
+      doc.addPage();
+      y = 20;
+    }
+    doc.setFontSize(11);
+    doc.setFont(undefined, "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("CATATAN", LX, y);
+    y += 6;
+    doc.setLineWidth(0.15);
+    doc.line(LX, y, 190, y);
+    y += 8;
+    doc.setFontSize(9);
+    doc.setFont(undefined, "normal");
+    doc.setTextColor(40, 40, 40);
+    doc.splitTextToSize(catatan, 170).forEach((ln) => {
+      if (y > 275) {
+        doc.addPage();
+        y = 20;
+      }
+      doc.text(ln, LX, y);
+      y += 4.5;
+    });
+    doc.setTextColor(0, 0, 0);
+    y += 8;
+  }
+
+  /* Kolom TTD kanan bawah; nama pembeli di pojok kanan atas area tanda tangan */
+  const sigRight = 190;
+  const sigW = 72;
+  const sigLeft = sigRight - sigW;
+  if (y > 232) {
+    doc.addPage();
+    y = 20;
+  }
+  const yTtdTop = y + 4;
+  doc.setFontSize(9);
+  doc.setFont(undefined, "normal");
+  doc.setTextColor(70, 70, 70);
+  doc.text("Pembeli,", sigRight, yTtdTop, { align: "right" });
+  let ySig = yTtdTop + 5;
+  doc.setTextColor(0, 0, 0);
+  doc.setFont(undefined, "bold");
+  doc.setFontSize(10);
+  const namaPembeli = String(p.namaPembeli || "-").trim();
+  doc.splitTextToSize(namaPembeli, sigW).forEach((ln) => {
+    if (ySig > 268) {
+      doc.addPage();
+      ySig = 20;
+    }
+    doc.text(ln, sigRight, ySig, { align: "right" });
+    ySig += 5;
+  });
+  doc.setFont(undefined, "normal");
+  ySig += 16;
+  if (ySig > 275) {
+    doc.addPage();
+    ySig = 30;
+  }
+  doc.setDrawColor(100, 100, 100);
+  doc.setLineWidth(0.2);
+  doc.line(sigLeft, ySig, sigRight, ySig);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.1);
+  ySig += 5;
+  doc.setFontSize(9);
+  doc.setTextColor(60, 60, 60);
+  doc.text("TTD", (sigLeft + sigRight) / 2, ySig, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+
+  return ySig + 6;
 }
 
 // Generate Invoice PDF
