@@ -261,6 +261,16 @@ async function renderIdBahanEditMode(p) {
     .forEach((el) => el.remove());
   if (ph) ph.classList.add("d-none");
 
+  if (p.bahanMasterBerubahLepasOtomatis) {
+    const hint = document.createElement("div");
+    hint.className =
+      "alert alert-warning border small mb-2 py-2 readonly-bahan-blok";
+    hint.setAttribute("role", "status");
+    hint.innerHTML =
+      '<i class="bi bi-arrow-counterclockwise me-1"></i> Master bahan berubah: alokasi ID terdampak sudah dilepas. <strong>Centang ulang</strong> ID bahan di bawah (sisa mengikuti data terbaru), lalu simpan.';
+    container.appendChild(hint);
+  }
+
   const statusEff =
     (document.getElementById("statusTahapan")?.value &&
       String(document.getElementById("statusTahapan").value).trim()) ||
@@ -2360,13 +2370,9 @@ window.editProduksi = async function editProduksi(id) {
           parseFloat(String(document.getElementById("beratAwal")?.value || "").replace(",", ".")) ||
           0;
         window._produksiEditSnapshot = { ...p, beratAwal: baAfterRender };
-        if (p.bahanMasterAlokasiDisesuaikan) {
+        if (p.bahanMasterBerubahLepasOtomatis) {
           alert(
-            "Data master bahan telah diubah (misalnya pemisahan proses). Berat alokasi untuk ID + jalur proses produksi ini telah disesuaikan otomatis ke kapasitas baru di Kelola Bahan. Periksa berat awal / alokasi tercatat, lalu simpan jika sudah sesuai.",
-          );
-        } else if (p.bahanMasterBerubahLepasOtomatis) {
-          alert(
-            "Data master bahan untuk ID yang dipakai produksi ini telah diubah. Sistem telah melepaskan ID tersebut dari alokasi (setara uncentang) dan menyesuaikan berat awal. Centang lagi ID bahan yang diperlukan, pastikan berat awal, lalu simpan untuk memakai sisa terbaru.",
+            "Data master bahan berubah: ID bahan terdampak dilepas dari produksi ini (bukan lagi terkunci). Buka daftar centang di bawah, pilih ulang ID bahan sesuai sisa master saat ini, periksa berat awal, lalu simpan.",
           );
         }
 
