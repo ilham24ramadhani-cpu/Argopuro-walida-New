@@ -347,7 +347,7 @@ def _total_digunakan_bahan_proses(id_bahan, proses_q=None):
 
 
 def _all_id_bahan_terpakai_produksi(exclude_id_produksi_str=None):
-    """Kumpulan id bahan yang sudah terikat ke dokumen produksi (satu id hanya satu produksi)."""
+    """Kumpulan id bahan yang sudah muncul di dokumen produksi (untuk bahan legacy tanpa prosesBahan: satu id hanya satu produksi)."""
     used = set()
     ex = (exclude_id_produksi_str or '').strip() or None
     for p in db.produksi.find({}, {'idBahan': 1, 'idBahanList': 1, 'idProduksi': 1}):
@@ -1060,13 +1060,7 @@ def create_produksi():
         
         proses_pp = str(data.get('prosesPengolahan') or '').strip()
         used_globally = _all_id_bahan_terpakai_produksi(None)
-        overlap = used_globally.intersection(set(id_bahan_list))
-        if overlap:
-            return jsonify({
-                'error': 'ID bahan berikut sudah terpakai di produksi lain',
-                'idBahanTerpakai': sorted(overlap),
-            }), 400
-        
+
         berat_awal_req = float(data['beratAwal'])
         alokasi_rows = data.get('alokasiBeratBahan')
         alokasi_clean = []
@@ -1093,12 +1087,25 @@ def create_produksi():
         
         # Auto-generate idProduksi (ignore any value from frontend)
         id_produksi = generate_id_produksi()
-        
-        # Validasi per bahan: proses terdaftar + sisa cukup
+
+        legacy_overlap = []
+        bahan_by_id = {}
         for bid in id_bahan_list:
             bahan_one = db.bahan.find_one({'idBahan': bid})
             if not bahan_one:
                 return jsonify({'error': f'Bahan tidak ditemukan: {bid}'}), 400
+            bahan_by_id[bid] = bahan_one
+            if not (bahan_one.get('prosesBahan') or []) and bid in used_globally:
+                legacy_overlap.append(bid)
+        if legacy_overlap:
+            return jsonify({
+                'error': 'ID bahan berikut sudah terpakai di produksi lain',
+                'idBahanTerpakai': sorted(set(legacy_overlap)),
+            }), 400
+        
+        # Validasi per bahan: proses terdaftar + sisa cukup
+        for bid in id_bahan_list:
+            bahan_one = bahan_by_id[bid]
             lines = bahan_one.get('prosesBahan') or []
             need = next((a['berat'] for a in alokasi_clean if a['idBahan'] == bid), 0)
             if lines:
@@ -2084,9 +2091,10 @@ def get_sisa_bahan(id_bahan):
 @app.route('/api/bahan/untuk-produksi', methods=['GET'])
 def get_bahan_untuk_produksi():
     """
-    Bahan yang boleh dipilih untuk produksi baru: punya proses yang diminta,
-    belum terikat produksi manapun (kecuali idProduksi= untuk edit dokumen ini),
-    dan sisa > 0 untuk jalur proses tersebut.
+    Bahan yang boleh dipilih untuk produksi baru: punya baris proses yang diminta,
+    sisa > 0 untuk jalur tersebut. Bahan legacy (tanpa prosesBahan): id belum dipakai
+    produksi lain (kecuali idProduksi= mengabaikan dokumen itu). Bahan dengan prosesBahan:
+    id yang sama boleh dipakai beberapa id produksi — pembatasan lewat sisa per jalur proses.
     """
     try:
         proses = request.args.get('proses', '').strip()
@@ -2098,9 +2106,11 @@ def get_bahan_untuk_produksi():
         out = []
         for bahan in db.bahan.find().sort('id', 1):
             bid = bahan.get('idBahan')
-            if not bid or bid in terpakai:
+            if not bid:
                 continue
             lines = bahan.get('prosesBahan') or []
+            if not lines and bid in terpakai:
+                continue
             line = next((l for l in lines if l.get('prosesPengolahan') == proses), None) if lines else None
             if not line:
                 continue
