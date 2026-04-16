@@ -39,15 +39,21 @@ function getKloterRowValuesFromTbody(tbody) {
  * Gabungkan isi DOM saat ini dengan snapshot server (hanya di-set saat prefill edit — tidak di-overwrite)
  * agar saat kurangi lalu tambah jumlah kloter lagi, baris yang tidak tampil tetap bisa muncul lagi dari DB.
  */
-function buildMergedKloterRows(tbody, card, newNum) {
+function buildMergedKloterRows(tbody, card, newNum, clipboardRows) {
   const previous = getKloterRowValuesFromTbody(tbody);
   const server = card._detailKloterServerSnapshot || [];
+  const clip = Array.isArray(clipboardRows) ? clipboardRows : [];
   const out = [];
   for (let i = 0; i < newNum; i++) {
     if (i < previous.length) {
       out.push({
         berat: previous[i].berat,
         keterangan: previous[i].keterangan || "",
+      });
+    } else if (i < clip.length) {
+      out.push({
+        berat: clip[i].berat != null ? String(clip[i].berat) : "",
+        keterangan: clip[i].keterangan != null ? String(clip[i].keterangan) : "",
       });
     } else {
       const ini = server[i];
@@ -134,6 +140,10 @@ function ensureSelectValue(selectEl, value) {
 let masterProsesNamaBahan = [];
 /** Data lama (tanpa prosesBahan): isi kloter dipakai sekali saat proses pertama dicentang. */
 let legacyKloterOneShotPrefill = null;
+/** Saat uncentang proses: simpan isi form agar dicentang lagi tidak kosong (auto-restore). */
+const prosesBahanDraftByName = Object.create(null);
+/** Isi kloter dari proses terakhir di-uncentang — dipakai saat proses lain pilih jumlah kloter (isi baris yang sama). */
+let lastKloterClipboard = null;
 
 function prosesSectionDomId(name) {
   return "pb_" + encodeURIComponent(name).replace(/%/g, "_");
@@ -208,13 +218,37 @@ function renderProsesCheckboxGrid() {
   });
 }
 
+function snapshotProsesBahanCard(card, prosesNama) {
+  if (!card) return;
+  const sel = card.querySelector(".jumlah-kloter-proses");
+  const tbody = card.querySelector(".kloter-tbody-proses");
+  let jumlahKloter = sel?.value ?? "";
+  const rows = getKloterRowValuesFromTbody(tbody);
+  if (!jumlahKloter && rows.length) jumlahKloter = String(rows.length);
+  const serverSnap = card._detailKloterServerSnapshot;
+  prosesBahanDraftByName[prosesNama] = {
+    jumlahKloter,
+    rows: JSON.parse(JSON.stringify(rows)),
+    serverSnapshot:
+      serverSnap && serverSnap.length
+        ? JSON.parse(JSON.stringify(serverSnap))
+        : undefined,
+  };
+  if (rows.length) {
+    lastKloterClipboard = { rows: JSON.parse(JSON.stringify(rows)) };
+  }
+}
+
 function toggleProsesBahanSection(prosesNama, show) {
   const host = document.getElementById("prosesBahanSectionsHost");
   if (!host) return;
   const sid = prosesSectionDomId(prosesNama);
   const existing = document.getElementById(sid);
   if (!show) {
-    if (existing) existing.remove();
+    if (existing) {
+      snapshotProsesBahanCard(existing, prosesNama);
+      existing.remove();
+    }
     return;
   }
   if (existing) return;
@@ -270,15 +304,46 @@ function toggleProsesBahanSection(prosesNama, show) {
     } else {
       wrap.style.display = "block";
       const num = Math.min(MAX_KLOTER, Math.max(1, parseInt(v, 10) || 1));
-      const merged = buildMergedKloterRows(tbody, card, num);
+      const clipRows = lastKloterClipboard?.rows;
+      const merged = buildMergedKloterRows(tbody, card, num, clipRows);
       renderKloterRowsFromRowData(tbody, merged);
     }
     hitungFromKloter();
   });
+
+  const draft = prosesBahanDraftByName[prosesNama];
+  if (draft && (draft.jumlahKloter || (draft.rows && draft.rows.length))) {
+    if (draft.serverSnapshot && draft.serverSnapshot.length) {
+      card._detailKloterServerSnapshot = JSON.parse(
+        JSON.stringify(draft.serverSnapshot)
+      );
+    }
+    const jk = draft.jumlahKloter || String(draft.rows.length || 1);
+    ensureSelectValue(sel, jk);
+    const num = Math.min(
+      MAX_KLOTER,
+      Math.max(1, parseInt(String(jk), 10) || draft.rows.length || 1)
+    );
+    const rowsFor = [];
+    for (let i = 0; i < num; i++) {
+      const dr = draft.rows[i];
+      rowsFor.push({
+        berat: dr?.berat ?? "",
+        keterangan: dr?.keterangan ?? "",
+      });
+    }
+    wrap.style.display = "block";
+    renderKloterRowsFromRowData(tbody, rowsFor);
+    hitungFromKloter();
+  }
 }
 
 function clearProsesBahanUI() {
   legacyKloterOneShotPrefill = null;
+  for (const k of Object.keys(prosesBahanDraftByName)) {
+    delete prosesBahanDraftByName[k];
+  }
+  lastKloterClipboard = null;
   const host = document.getElementById("prosesBahanSectionsHost");
   if (host) host.innerHTML = "";
   document.querySelectorAll(".proses-bahan-cb").forEach((cb) => {
