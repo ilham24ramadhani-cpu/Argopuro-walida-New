@@ -1619,9 +1619,21 @@ function populateProduksiListFilters(bahanById) {
   refillSelect(selTahapan, tahapanSorted, prevTahapan, "Semua tahapan");
 }
 
+/** Kolom hasil randomen: tampil untuk admin/owner; disembunyikan jika body memiliki data-role="karyawan". */
+function showHasilRandomenDiTabelKelolaProduksi() {
+  const role =
+    (typeof document !== "undefined" &&
+      document.body &&
+      document.body.getAttribute("data-role")) ||
+    "";
+  return String(role).trim().toLowerCase() !== "karyawan";
+}
+
 // Fungsi untuk menampilkan data produksi
 async function displayProduksi(options = {}) {
   const reloadData = options.reload !== false;
+  const showRandomenCol = showHasilRandomenDiTabelKelolaProduksi();
+  const tableColspan = showRandomenCol ? 14 : 13;
   console.log("🔄 displayProduksi() called", { reloadData });
 
   if (reloadData) {
@@ -1718,7 +1730,7 @@ async function displayProduksi(options = {}) {
     console.log("⚠️ No produksi data to display (filtered or total)");
     tableBody.innerHTML = `
       <tr>
-        <td colspan="14" class="text-center py-4 text-muted">
+        <td colspan="${tableColspan}" class="text-center py-4 text-muted">
           <i class="bi bi-inbox fs-1 d-block mb-2"></i>
           Tidak ada data produksi
         </td>
@@ -1741,21 +1753,25 @@ async function displayProduksi(options = {}) {
         const catCell = catRaw
           ? `<span class="small text-muted d-inline-block text-truncate" style="max-width: 10rem" title="${attrEscapeProduksi(catRaw)}">${escapeHtmlProduksi(catShort)}</span>`
           : '<span class="text-muted">—</span>';
-        const PR = window.ProduksiRandomen;
-        const cellRandomen = PR ? PR.formatRandomenPerIdCell(p) : "—";
-        const titleRand = PR
-          ? attrEscapeProduksi(
-              [
-                PR.formatRandomenPerIdTooltip(p),
-                String(PR.buildRingkasanPerTahapanText(p) || "").replace(
-                  /\n/g,
-                  " ",
-                ),
-              ]
-                .filter(Boolean)
-                .join(" | "),
-            )
-          : "";
+        let randomenTd = "";
+        if (showRandomenCol) {
+          const PR = window.ProduksiRandomen;
+          const cellRandomen = PR ? PR.formatRandomenPerIdCell(p) : "—";
+          const titleRand = PR
+            ? attrEscapeProduksi(
+                [
+                  PR.formatRandomenPerIdTooltip(p),
+                  String(PR.buildRingkasanPerTahapanText(p) || "").replace(
+                    /\n/g,
+                    " ",
+                  ),
+                ]
+                  .filter(Boolean)
+                  .join(" | "),
+              )
+            : "";
+          randomenTd = `<td class="text-nowrap small" title="${titleRand}">${escapeHtmlProduksi(cellRandomen)}</td>`;
+        }
         const idBahanTampil = (() => {
           const lst = getIdBahanListFromProduksi(p);
           if (lst.length > 1) {
@@ -1773,7 +1789,7 @@ async function displayProduksi(options = {}) {
       <td>${(p.beratAwal || 0).toLocaleString("id-ID")} kg</td>
       <td>${p.beratTerkini ? p.beratTerkini.toLocaleString("id-ID") : "-"} kg</td>
       <td>${p.beratAkhir ? p.beratAkhir.toLocaleString("id-ID") : "-"} kg</td>
-      <td class="text-nowrap small" title="${titleRand}">${escapeHtmlProduksi(cellRandomen)}</td>
+      ${randomenTd}
       <td><span class="badge ${(window.getProsesPengolahanBadgeClass || (() => 'bg-secondary'))(prosesLabel)}">${prosesLabel}</span></td>
       <td>${p.kadarAir || "-"}%</td>
       <td>${p.varietas || "-"}</td>
@@ -1809,7 +1825,7 @@ async function displayProduksi(options = {}) {
     console.error("❌ Error rendering produksi table:", error);
     tableBody.innerHTML = `
       <tr>
-        <td colspan="14" class="text-center py-4 text-danger">
+        <td colspan="${tableColspan}" class="text-center py-4 text-danger">
           <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
           Error menampilkan data: ${error.message}
         </td>
