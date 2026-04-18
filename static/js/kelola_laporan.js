@@ -134,6 +134,17 @@ function escapeHtmlLaporan(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** Path foto tahapan produksi yang aman untuk href/img (hanya upload server). */
+function fotoTahapanUrlLaporanSafe(raw) {
+  if (raw == null || raw === "") return null;
+  const s = String(raw).trim();
+  const prefix = "/static/uploads/produksi_tahapan/";
+  if (!s.startsWith(prefix)) return null;
+  const tail = s.slice(prefix.length);
+  if (!tail || tail.includes("..") || tail.includes("/")) return null;
+  return s;
+}
+
 /** Catatan multi-baris di PDF; mengembalikan posisi y baru. */
 function pdfAppendCatatanProduksi(doc, y, text, leftMargin = 25) {
   const raw = (text && String(text).trim()) || "";
@@ -219,6 +230,7 @@ function buildAlurProduksiTableRows(item, options = {}) {
     const hk = PR
       ? PR.getHasilKgUntukBarisAlur(item, null, "current")
       : 0;
+    const fotoU = fotoTahapanUrlLaporanSafe(item.fotoTahapan);
     rows.push({
       no: "1",
       tahapan: `${item.statusTahapan || "—"} (status saat ini)`,
@@ -228,6 +240,8 @@ function buildAlurProduksiTableRows(item, options = {}) {
       randomen: fmtRandomen(hk),
       kadar: fmtKadar(item.kadarAir),
       catatan: (item.catatan && String(item.catatan).trim()) || "—",
+      fotoSrc: fotoU,
+      fotoPdf: fotoU ? "Ada" : "—",
     });
     return rows;
   }
@@ -239,6 +253,7 @@ function buildAlurProduksiTableRows(item, options = {}) {
       h.statusTahapanSebelumnya ||
       "—";
     const hk = PR ? PR.getHasilKgUntukBarisAlur(item, h, "history") : 0;
+    const fotoU = fotoTahapanUrlLaporanSafe(h.fotoTahapan);
     rows.push({
       no: String(i + 1),
       tahapan,
@@ -248,10 +263,13 @@ function buildAlurProduksiTableRows(item, options = {}) {
       randomen: fmtRandomen(hk),
       kadar: fmtKadar(h.kadarAir),
       catatan: (h.catatan && String(h.catatan).trim()) || "—",
+      fotoSrc: fotoU,
+      fotoPdf: fotoU ? "Ada" : "—",
     });
   });
   const n = hist.length + 1;
   const hkCur = PR ? PR.getHasilKgUntukBarisAlur(item, null, "current") : 0;
+  const fotoCur = fotoTahapanUrlLaporanSafe(item.fotoTahapan);
   rows.push({
     no: String(n),
     tahapan: `${item.statusTahapan || "—"} (status saat ini)`,
@@ -261,6 +279,8 @@ function buildAlurProduksiTableRows(item, options = {}) {
     randomen: fmtRandomen(hkCur),
     kadar: fmtKadar(item.kadarAir),
     catatan: (item.catatan && String(item.catatan).trim()) || "—",
+    fotoSrc: fotoCur,
+    fotoPdf: fotoCur ? "Ada" : "—",
   });
   return rows;
 }
@@ -352,6 +372,7 @@ function pdfRenderAlurProduksiTable(doc, y, rows) {
       "B. akhir",
       "Randomen",
       "Kadar",
+      "Foto",
       "Catatan",
     ],
     ...rows.map((r) => [
@@ -362,11 +383,12 @@ function pdfRenderAlurProduksiTable(doc, y, rows) {
       r.beratAkhir,
       r.randomen != null ? r.randomen : "—",
       r.kadar,
+      r.fotoPdf != null ? r.fotoPdf : "—",
       r.catatan,
     ]),
   ];
   return pdfRenderTableFromMatrix(doc, y, matrix, [
-    6, 38, 26, 15, 15, 14, 12, 44,
+    5, 32, 22, 13, 13, 12, 10, 9, 54,
   ]);
 }
 
@@ -382,11 +404,16 @@ function buildAlurProduksiTableHtml(item) {
     <th scope="col" class="text-nowrap">B. akhir</th>
     <th scope="col" class="text-nowrap" title="N banding 1: kg bahan per 1 kg hasil tahap (dua angka di belakang koma)">Randomen</th>
     <th scope="col" class="text-nowrap">Kadar</th>
+    <th scope="col" class="text-center text-nowrap">Foto</th>
     <th scope="col">Catatan</th>
   </tr>`;
   const tbody = rows
-    .map(
-      (r) => `
+    .map((r) => {
+      const fotoCell =
+        r.fotoSrc != null
+          ? `<a href="${escapeHtmlLaporan(r.fotoSrc)}" target="_blank" rel="noopener noreferrer" class="alur-produksi-foto-link d-inline-block" title="Buka foto"><img src="${escapeHtmlLaporan(r.fotoSrc)}" alt="" class="alur-produksi-foto-thumb rounded border" loading="lazy" width="72" height="72"/></a>`
+          : '<span class="text-muted user-select-none">—</span>';
+      return `
     <tr>
       <td class="text-muted text-nowrap">${escapeHtmlLaporan(r.no)}</td>
       <td>${escapeHtmlLaporan(r.tahapan)}</td>
@@ -395,9 +422,10 @@ function buildAlurProduksiTableHtml(item) {
       <td class="text-nowrap">${escapeHtmlLaporan(r.beratAkhir)}</td>
       <td class="text-nowrap small">${escapeHtmlLaporan(r.randomen != null ? r.randomen : "—")}</td>
       <td class="text-nowrap">${escapeHtmlLaporan(r.kadar)}</td>
+      <td class="text-center align-middle p-2">${fotoCell}</td>
       <td class="small text-break">${escapeHtmlLaporan(r.catatan)}</td>
-    </tr>`
-    )
+    </tr>`;
+    })
     .join("");
   return `
     <div class="mt-3 pt-3 border-top border-light">

@@ -2109,6 +2109,7 @@ window.openModal = async function openModal(mode = "add") {
   if (mode === "add") {
     modalLabel.textContent = "Tambah Produksi";
     form.reset();
+    clearFotoTahapanProduksiInput();
     document.getElementById("produksiId").value = "";
     const today = new Date().toISOString().split("T")[0];
     document.getElementById("tanggalSekarang").value = today;
@@ -2246,6 +2247,7 @@ window.editProduksi = async function editProduksi(id) {
 
     currentEditId = id;
     window._produksiEditSnapshot = p;
+    clearFotoTahapanProduksiInput();
 
     // Pastikan modal element ada sebelum set value
     const modalElement = document.getElementById("modalProduksi");
@@ -2582,6 +2584,11 @@ function getElementChecked(id, defaultValue = false) {
     return defaultValue;
   }
   return element.checked || defaultValue;
+}
+
+function clearFotoTahapanProduksiInput() {
+  const el = document.getElementById("fotoTahapanProduksi");
+  if (el) el.value = "";
 }
 
 // Fungsi untuk menyimpan produksi (tambah/edit) (mendaftarkan ke window)
@@ -3430,6 +3437,32 @@ window.saveProduksi = async function saveProduksi() {
       produksiData.metodeBeratTerkini = me;
       produksiData.beratTerkiniDetailKloter =
         me === "kloter" ? getBeratTerkiniDetailKloterPayload() : null;
+    }
+
+    const fotoInput = document.getElementById("fotoTahapanProduksi");
+    if (fotoInput?.files?.length) {
+      const file = fotoInput.files[0];
+      const maxB = 5 * 1024 * 1024;
+      if (file.size > maxB) {
+        alert("Ukuran foto maksimal 5 MB.");
+        fotoInput.focus();
+        return;
+      }
+      if (!window.API?.Produksi?.uploadFotoTahapan) {
+        alert("Fitur unggah foto tidak tersedia. Muat ulang halaman dan coba lagi.");
+        return;
+      }
+      try {
+        const up = await window.API.Produksi.uploadFotoTahapan(file);
+        if (up?.fotoTahapan) {
+          produksiData.fotoTahapan = up.fotoTahapan;
+        }
+      } catch (e) {
+        const msg =
+          (e && e.data && e.data.error) || e.message || "Gagal mengunggah foto";
+        alert(msg);
+        return;
+      }
     }
 
     console.log("📦 Produksi data prepared for API:", {

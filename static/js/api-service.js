@@ -206,6 +206,29 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
       return await apiCall(`/produksi/${id}`, "PUT", dataWithoutId);
     },
 
+    async uploadFotoTahapan(file) {
+      const fd = new FormData();
+      fd.append("file", file);
+      const response = await fetch(`${API_BASE_URL}/produksi/upload-foto-tahapan`, {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (e) {
+        data = {};
+      }
+      if (!response.ok) {
+        const err = new Error((data && data.error) || "Upload foto gagal");
+        err.data = data;
+        err.status = response.status;
+        throw err;
+      }
+      return data;
+    },
+
     async delete(id) {
       // MONGODB ONLY - NO FALLBACK
       return await apiCall(`/produksi/${id}`, "DELETE");

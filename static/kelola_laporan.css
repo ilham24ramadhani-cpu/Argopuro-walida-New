@@ -153,3 +153,17 @@
   word-break: break-word;
 }
 
+/* Thumbnail foto tahapan di laporan (detail alur produksi) */
+.table-alur-produksi .alur-produksi-foto-thumb {
+  width: 72px;
+  height: 72px;
+  max-width: 72px;
+  max-height: 72px;
+  object-fit: cover;
+  vertical-align: middle;
+}
+
+.table-alur-produksi .alur-produksi-foto-link:hover .alur-produksi-foto-thumb {
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.35);
+}
+
