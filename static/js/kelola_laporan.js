@@ -145,6 +145,112 @@ function fotoTahapanUrlLaporanSafe(raw) {
   return s;
 }
 
+/**
+ * Muat gambar tahapan untuk jsPDF (JPEG data URL).
+ * @returns {Promise<{ dataUrl: string, format: 'JPEG' }|null>}
+ */
+async function loadFotoTahapanForPdfJs(fotoSrc) {
+  const safe = fotoTahapanUrlLaporanSafe(fotoSrc);
+  if (!safe) return null;
+  const absUrl =
+    safe.startsWith("http://") || safe.startsWith("https://")
+      ? safe
+      : `${window.location.origin}${safe}`;
+
+  const toJpegFromBitmap = (bitmap) => {
+    const maxPx = 480;
+    let w = bitmap.width;
+    let h = bitmap.height;
+    if (w > maxPx || h > maxPx) {
+      const scale = maxPx / Math.max(w, h);
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    try {
+      bitmap.close();
+    } catch (e) {
+      /* ignore */
+    }
+    return {
+      dataUrl: canvas.toDataURL("image/jpeg", 0.88),
+      format: "JPEG",
+    };
+  };
+
+  const jpegFromHtmlImage = (img) => {
+    const maxPx = 480;
+    let w = img.naturalWidth;
+    let h = img.naturalHeight;
+    if (!w || !h) return null;
+    if (w > maxPx || h > maxPx) {
+      const scale = maxPx / Math.max(w, h);
+      w = Math.round(w * scale);
+      h = Math.round(h * scale);
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, w, h);
+    return {
+      dataUrl: canvas.toDataURL("image/jpeg", 0.88),
+      format: "JPEG",
+    };
+  };
+
+  try {
+    const res = await fetch(absUrl, { credentials: "include", mode: "cors" });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (typeof createImageBitmap === "function") {
+      try {
+        const bitmap = await createImageBitmap(blob);
+        return toJpegFromBitmap(bitmap);
+      } catch (e) {
+        /* lanjut ke blob URL */
+      }
+    }
+    const objUrl = URL.createObjectURL(blob);
+    return await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(objUrl);
+        try {
+          resolve(jpegFromHtmlImage(img));
+        } catch (err) {
+          resolve(null);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objUrl);
+        resolve(null);
+      };
+      img.src = objUrl;
+    });
+  } catch (e) {
+    console.warn("loadFotoTahapanForPdfJs fetch", e);
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        resolve(jpegFromHtmlImage(img));
+      } catch (err) {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = absUrl;
+  });
+}
+
 /** Catatan multi-baris di PDF; mengembalikan posisi y baru. */
 function pdfAppendCatatanProduksi(doc, y, text, leftMargin = 25) {
   const raw = (text && String(text).trim()) || "";
@@ -360,22 +466,93 @@ function pdfRenderKeyValueTable(doc, y, pairs, options = {}) {
   return pdfRenderTableFromMatrix(doc, rowTop, matrix, [52, 118]);
 }
 
-/** Menggambar tabel alur produksi di PDF. */
-function pdfRenderAlurProduksiTable(doc, y, rows) {
+/**
+ * Menggambar tabel alur produksi di PDF (kolom Foto: thumbnail gambar jika ada).
+ * @returns {Promise<number>} posisi y baru
+ */
+async function pdfRenderAlurProduksiTable(doc, y, rows) {
   if (!rows || rows.length === 0) return y;
-  const matrix = [
-    [
-      "No",
-      "Tahapan",
-      "Tanggal",
-      "B. awal",
-      "B. akhir",
-      "Randomen",
-      "Kadar",
-      "Foto",
-      "Catatan",
-    ],
-    ...rows.map((r) => [
+  const hw = [5, 30, 20, 12, 12, 11, 9, 14, 57];
+  const n = 9;
+  const x = [20];
+  for (let i = 0; i < n; i++) x.push(x[i] + hw[i]);
+  const lineH = 2.75;
+  const padT = 2.5;
+  const fotoBoxMm = 12;
+
+  const fotoImgs = await Promise.all(
+    rows.map((r) => loadFotoTahapanForPdfJs(r.fotoSrc))
+  );
+
+  let rowTop = y;
+  const headerCells = [
+    "No",
+    "Tahapan",
+    "Tanggal",
+    "B. awal",
+    "B. akhir",
+    "Randomen",
+    "Kadar",
+    "Foto",
+    "Catatan",
+  ];
+
+  function renderRow(cells, isHeader, fotoImg) {
+    doc.setFontSize(n > 5 ? 7 : 8);
+    doc.setFont(undefined, isHeader ? "bold" : "normal");
+    doc.setTextColor(0, 0, 0);
+    const cellLines = cells.map((text, i) => {
+      if (i === 7 && fotoImg) {
+        return [""];
+      }
+      return doc.splitTextToSize(String(text ?? "—"), hw[i] - 1.5);
+    });
+    const maxLines = Math.max(1, ...cellLines.map((l) => l.length));
+    let rowH = maxLines * lineH + padT * 2;
+    if (fotoImg) {
+      rowH = Math.max(rowH, fotoBoxMm + padT * 2 + 1);
+    }
+
+    if (rowTop + rowH > 287) {
+      doc.addPage();
+      rowTop = 20;
+    }
+
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.12);
+    for (let i = 0; i < n; i++) {
+      if (isHeader) {
+        doc.setFillColor(243, 244, 246);
+        doc.rect(x[i], rowTop, hw[i], rowH, "FD");
+      } else {
+        doc.rect(x[i], rowTop, hw[i], rowH, "S");
+      }
+      if (i === 7 && fotoImg) {
+        const imgW = Math.min(fotoBoxMm, hw[i] - 2);
+        const imgH = imgW;
+        const ix = x[i] + (hw[i] - imgW) / 2;
+        const iy = rowTop + padT + 0.5;
+        try {
+          doc.addImage(fotoImg.dataUrl, fotoImg.format, ix, iy, imgW, imgH);
+        } catch (err) {
+          doc.setFontSize(7);
+          doc.setFont(undefined, "normal");
+          doc.text("—", x[i] + hw[i] / 2 - 1, rowTop + rowH / 2);
+        }
+      } else {
+        cellLines[i].forEach((line, li) => {
+          doc.text(line, x[i] + 0.7, rowTop + padT + 2.8 + li * lineH);
+        });
+      }
+    }
+    rowTop += rowH;
+  }
+
+  renderRow(headerCells, true, null);
+
+  rows.forEach((r, di) => {
+    const fi = fotoImgs[di];
+    const cells = [
       r.no,
       r.tahapan,
       r.tanggal,
@@ -383,13 +560,15 @@ function pdfRenderAlurProduksiTable(doc, y, rows) {
       r.beratAkhir,
       r.randomen != null ? r.randomen : "—",
       r.kadar,
-      r.fotoPdf != null ? r.fotoPdf : "—",
+      fi ? "\u00a0" : "—",
       r.catatan,
-    ]),
-  ];
-  return pdfRenderTableFromMatrix(doc, y, matrix, [
-    5, 32, 22, 13, 13, 12, 10, 9, 54,
-  ]);
+    ];
+    renderRow(cells, false, fi || null);
+  });
+
+  doc.setFont(undefined, "normal");
+  doc.setTextColor(0, 0, 0);
+  return rowTop + 4;
 }
 
 /** Tabel HTML untuk accordion Detail Alur Produksi di halaman laporan. */
@@ -4262,7 +4441,7 @@ function generateBahanPDF(id) {
 }
 
 // Generate PDF untuk Produksi
-function generateProduksiPDF(id) {
+async function generateProduksiPDF(id) {
   // Data sudah di-load dari MongoDB di loadAllReportData()
   // Tidak perlu reload dari localStorage
 
@@ -4375,7 +4554,16 @@ function generateProduksiPDF(id) {
   const alurRowsPdf = buildAlurProduksiTableRows(item, {
     numericWeightInCells: true,
   });
-  y = pdfRenderAlurProduksiTable(doc, y, alurRowsPdf);
+  try {
+    y = await pdfRenderAlurProduksiTable(doc, y, alurRowsPdf);
+  } catch (err) {
+    console.error("pdfRenderAlurProduksiTable", err);
+    alert(
+      "Gagal menyusun tabel alur produksi di PDF (foto). " +
+        (err && err.message ? err.message : "Coba lagi.")
+    );
+    return;
+  }
 
   if (y > 240) {
     doc.addPage();
@@ -4394,7 +4582,7 @@ function generateProduksiPDF(id) {
 }
 
 // Fungsi generateHasilProduksiPDF dihapus karena laporan hasil produksi sudah tidak digunakan
-function generateHasilProduksiPDF(id) {
+async function generateHasilProduksiPDF(id) {
   console.warn("generateHasilProduksiPDF tidak lagi digunakan");
   return;
   // Data sudah di-load dari MongoDB di loadAllReportData()
@@ -4702,7 +4890,7 @@ function generateHasilProduksiPDF(id) {
     const alurRowsHasilPdf = buildAlurProduksiTableRows(produksiData, {
       numericWeightInCells: true,
     });
-    y = pdfRenderAlurProduksiTable(doc, y, alurRowsHasilPdf);
+    y = await pdfRenderAlurProduksiTable(doc, y, alurRowsHasilPdf);
   }
 
   y += 10;
@@ -5567,7 +5755,7 @@ async function generateDataKemasanPDF(id) {
       detailDoc.setTextColor(0, 0, 0);
       detailDoc.line(20, detailY, 190, detailY);
       detailY += 5;
-      detailY = pdfRenderAlurProduksiTable(
+      detailY = await pdfRenderAlurProduksiTable(
         detailDoc,
         detailY,
         buildAlurProduksiTableRows(produksiData, {
