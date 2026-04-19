@@ -216,6 +216,8 @@ def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_t
         tahapan_status = master_proses.get('tahapanStatus', {})
         
         # Mapping tahapan untuk validasi (nilai kanonik = kunci di tahapanStatus master)
+        # Urutan kunci penting: label yang lebih panjang (Pertama/Kedua) harus sebelum
+        # 'Pengupasan Kulit Tanduk (Hulling)' agar pengecekan `key in status` tidak salah map.
         tahapan_map = {
             'Sortasi Cherry atau Buah Kopi': 'Sortasi',
             'Sortasi Buah': 'Sortasi',  # Kompatibilitas nama lama
@@ -228,6 +230,8 @@ def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_t
             'Pulping 2': 'Pulping 2',
             'Pengeringan Akhir': 'Pengeringan Akhir',
             'Pengeringan Akhir (Pengeringan Lantai)': 'Pengeringan Akhir',
+            'Pengupasan Kulit Tanduk (Hulling) Pertama': 'Pulping 2',
+            'Pengupasan Kulit Tanduk (Hulling) Kedua': 'Hulling',
             'Pengupasan Kulit Tanduk (Hulling)': 'Hulling',
             'Hand Sortasi atau Sortasi Biji Kopi': 'Hand Sortasi',
             'Roasting': 'Roasting',  # legacy (data lama)
@@ -730,7 +734,7 @@ def _last_snapshot_pengeringan_awal(produksi_lama):
     """
     Ambil kadar air & berat terkini acuan dari Pengeringan Awal terakhir
     (dokumen saat ini jika sedang di tahap itu, atau entri history terbaru).
-    Dipakai saat validasi Pengeringan Akhir setelah tahap antara (mis. Pulping 2).
+    Dipakai saat validasi Pengeringan Akhir setelah tahap antara (mis. hulling pertama / Pulping 2).
     """
     if not produksi_lama:
         return None, None
@@ -807,14 +811,18 @@ def validate_pengeringan_tahapan(status_tahapan_baru, kadar_air_baru, berat_terk
                 return True, None  # Biarkan validasi sequential menangani
             
             status_lama = (produksi_lama.get('statusTahapan') or '').strip()
-            # Alur lama: langsung setelah Pengeringan Awal. Alur baru: setelah Pulping 2.
+            # Alur lama: langsung setelah Pengeringan Awal. Alur baru: setelah hulling pertama (Pulping 2).
             sl = status_lama
             boleh_dari_awal = 'Pengeringan Awal' in sl
-            boleh_dari_pulping2 = sl == 'Pulping 2' or 'Pulping 2' in sl
+            boleh_dari_pulping2 = (
+                sl == 'Pulping 2'
+                or 'Pulping 2' in sl
+                or 'Pengupasan Kulit Tanduk (Hulling) Pertama' in sl
+            )
             if not (boleh_dari_awal or boleh_dari_pulping2):
                 return False, (
                     'Pengeringan Akhir hanya dapat dipilih jika tahapan sebelumnya '
-                    'adalah Pengeringan Awal atau Pulping 2 (sesuai alur yang dikonfigurasi).'
+                    'adalah Pengeringan Awal atau Pengupasan Kulit Tanduk (Hulling) Pertama (sesuai alur yang dikonfigurasi).'
                 )
 
             kadar_air_awal, berat_terkini_awal = _last_snapshot_pengeringan_awal(produksi_lama)

@@ -685,9 +685,9 @@ const ALL_TAHAPAN = {
   Pencucian: "Pencucian",
   "Pengeringan Awal": "Pengeringan Awal (Para - Para)",
   "Fermentasi 2": "Fermentasi 2",
-  "Pulping 2": "Pulping 2",
+  "Pulping 2": "Pengupasan Kulit Tanduk (Hulling) Pertama",
   "Pengeringan Akhir": "Pengeringan Akhir (Pengeringan Lantai)",
-  Hulling: "Pengupasan Kulit Tanduk (Hulling)",
+  Hulling: "Pengupasan Kulit Tanduk (Hulling) Kedua",
   "Hand Sortasi": "Hand Sortasi atau Sortasi Biji Kopi",
   Grinding: "Grinding",
   Pengemasan: "Pengemasan (Tahapan Akhir)",
@@ -712,7 +712,8 @@ const URUTAN_TAHAPAN_PRODUKSI = [
 /** Nilai option/value tersimpan di statusTahapan (selainnya sama dengan key). */
 const TAHAPAN_OPTION_VALUE = {
   Sortasi: "Sortasi Cherry atau Buah Kopi",
-  Hulling: "Pengupasan Kulit Tanduk (Hulling)",
+  "Pulping 2": "Pengupasan Kulit Tanduk (Hulling) Pertama",
+  Hulling: "Pengupasan Kulit Tanduk (Hulling) Kedua",
   "Hand Sortasi": "Hand Sortasi atau Sortasi Biji Kopi",
   Pengemasan: "Pengemasan",
 };
@@ -735,6 +736,8 @@ function normalisasiTahapanKeUrutanKey(str) {
     "Pulping 2": "Pulping 2",
     "Pengeringan Akhir": "Pengeringan Akhir",
     "Pengeringan Akhir (Pengeringan Lantai)": "Pengeringan Akhir",
+    "Pengupasan Kulit Tanduk (Hulling) Pertama": "Pulping 2",
+    "Pengupasan Kulit Tanduk (Hulling) Kedua": "Hulling",
     "Pengupasan Kulit Tanduk (Hulling)": "Hulling",
     "Hand Sortasi atau Sortasi Biji Kopi": "Hand Sortasi",
     Roasting: "Roasting",
@@ -787,7 +790,8 @@ function bolehPilihPengeringanAkhirSetelah(statusLama) {
   return (
     s.includes("Pengeringan Awal") ||
     s === "Pulping 2" ||
-    s.includes("Pulping 2")
+    s.includes("Pulping 2") ||
+    s.includes("Pengupasan Kulit Tanduk (Hulling) Pertama")
   );
 }
 
@@ -2843,7 +2847,7 @@ window.saveProduksi = async function saveProduksi() {
         const statusLama = produksiLama.statusTahapan || "";
         if (!bolehPilihPengeringanAkhirSetelah(statusLama)) {
           alert(
-            "Pengeringan Akhir hanya dapat dipilih setelah Pengeringan Awal atau setelah Pulping 2 (sesuai alur).",
+            "Pengeringan Akhir hanya dapat dipilih setelah Pengeringan Awal atau setelah Pengupasan Kulit Tanduk (Hulling) Pertama (sesuai alur).",
           );
           return;
         }
@@ -3002,7 +3006,7 @@ window.saveProduksi = async function saveProduksi() {
         const statusLama = produksiLama.statusTahapan || "";
         if (!bolehPilihPengeringanAkhirSetelah(statusLama)) {
           alert(
-            "Pengeringan Akhir hanya dapat dipilih setelah Pengeringan Awal atau setelah Pulping 2 (sesuai alur).",
+            "Pengeringan Akhir hanya dapat dipilih setelah Pengeringan Awal atau setelah Pengupasan Kulit Tanduk (Hulling) Pertama (sesuai alur).",
           );
           return;
         }

@@ -403,7 +403,7 @@ async function loadTahapanFromMasterProduksi() {
     Fermentasi: "Fermentasi",
     Pencucian: "Pencucian",
     Pengeringan: "Pengeringan",
-    Hulling: "Pengupasan Kulit Tanduk (Hulling)",
+    Hulling: "Pengupasan Kulit Tanduk (Hulling) Kedua",
     Roasting: "Roasting",
     Grinding: "Grinding",
   };
@@ -493,6 +493,8 @@ function validateSequentialTahapan() {
     Fermentasi: "Fermentasi",
     Pencucian: "Pencucian",
     Pengeringan: "Pengeringan",
+    "Pengupasan Kulit Tanduk (Hulling) Pertama": "Pulping 2",
+    "Pengupasan Kulit Tanduk (Hulling) Kedua": "Hulling",
     "Pengupasan Kulit Tanduk (Hulling)": "Hulling",
     Roasting: "Roasting",
     Grinding: "Grinding",
