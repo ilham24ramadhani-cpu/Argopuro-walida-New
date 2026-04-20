@@ -49,6 +49,91 @@ window.getStatusTahapanBadgeClass = function (tahapan) {
   return "bg-secondary";
 };
 
+/** Urutan kanonik tahapan (sinkron dengan backend `get_produksi`). Roasting legacy sebelum Pengemasan. */
+window.URUTAN_TAHAPAN_PRODUKSI_KANON = [
+  "Sortasi",
+  "Fermentasi",
+  "Pulping",
+  "Pencucian",
+  "Pengeringan Awal",
+  "Fermentasi 2",
+  "Pulping 2",
+  "Pengeringan Akhir",
+  "Hulling",
+  "Hand Sortasi",
+  "Grinding",
+  "Roasting",
+  "Pengemasan",
+];
+
+const _TAHAPAN_LABEL_KE_KUNCI_SORT = {
+  "Sortasi Cherry atau Buah Kopi": "Sortasi",
+  "Sortasi Buah": "Sortasi",
+  "Pengeringan Awal (Para - Para)": "Pengeringan Awal",
+  "Pengeringan Akhir (Pengeringan Lantai)": "Pengeringan Akhir",
+  "Pengupasan Kulit Tanduk (Hulling) Pertama": "Pulping 2",
+  "Pengupasan Kulit Tanduk (Hulling) Kedua": "Hulling",
+  "Pengupasan Kulit Tanduk (Hulling)": "Hulling",
+  "Hand Sortasi atau Sortasi Biji Kopi": "Hand Sortasi",
+  Fermentasi: "Fermentasi",
+  Pulping: "Pulping",
+  Pencucian: "Pencucian",
+  "Pengeringan Awal": "Pengeringan Awal",
+  "Fermentasi 2": "Fermentasi 2",
+  "Pulping 2": "Pulping 2",
+  "Pengeringan Akhir": "Pengeringan Akhir",
+  Grinding: "Grinding",
+  Pengemasan: "Pengemasan",
+  Roasting: "Roasting",
+  Hulling: "Hulling",
+  Sortasi: "Sortasi",
+  "Hand Sortasi": "Hand Sortasi",
+};
+for (let _ti = 0; _ti < window.URUTAN_TAHAPAN_PRODUKSI_KANON.length; _ti++) {
+  const _tn = window.URUTAN_TAHAPAN_PRODUKSI_KANON[_ti];
+  if (!Object.prototype.hasOwnProperty.call(_TAHAPAN_LABEL_KE_KUNCI_SORT, _tn)) {
+    _TAHAPAN_LABEL_KE_KUNCI_SORT[_tn] = _tn;
+  }
+}
+const _TAHAPAN_SORT_KEYS_BY_LEN = Object.keys(_TAHAPAN_LABEL_KE_KUNCI_SORT).sort(
+  (a, b) => b.length - a.length,
+);
+
+/**
+ * Urutkan array dokumen produksi: indeks tahapan naik, lalu idProduksi.
+ * Memakai substring terpanjang dulu agar "Pulping 2" tidak tertangkap sebagai "Pulping".
+ */
+window.sortProduksiDocumentsByTahapanThenId = function (arr) {
+  if (!Array.isArray(arr)) return arr;
+  const urutan = window.URUTAN_TAHAPAN_PRODUKSI_KANON;
+  const mapCanon = _TAHAPAN_LABEL_KE_KUNCI_SORT;
+  const keysByLen = _TAHAPAN_SORT_KEYS_BY_LEN;
+  function keKunci(st) {
+    const s = String(st || "").trim();
+    if (!s) return "";
+    if (Object.prototype.hasOwnProperty.call(mapCanon, s)) return mapCanon[s];
+    for (let i = 0; i < keysByLen.length; i++) {
+      const k = keysByLen[i];
+      if (s.includes(k)) return mapCanon[k];
+    }
+    return urutan.includes(s) ? s : "";
+  }
+  function indeks(st) {
+    const k = keKunci(st);
+    const ix = urutan.indexOf(k);
+    return ix === -1 ? 999 : ix;
+  }
+  return [...arr].sort((a, b) => {
+    const c = indeks(a && a.statusTahapan) - indeks(b && b.statusTahapan);
+    if (c !== 0) return c;
+    return String(a && a.idProduksi ? a.idProduksi : "").localeCompare(
+      String(b && b.idProduksi ? b.idProduksi : ""),
+      "id",
+      { numeric: true },
+    );
+  });
+};
+
 // Prevent duplicate execution - jika sudah dieksekusi, langsung return
 // Pemesanan & Ordering wajib dicek untuk halaman kelola pemesanan
 if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users && window.API.Pemesanan && window.API.Ordering) {
@@ -175,7 +260,11 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
   const ProduksiAPI = {
     async getAll() {
       // MONGODB ONLY - NO FALLBACK
-      return await apiCall("/produksi");
+      const data = await apiCall("/produksi");
+      if (!Array.isArray(data)) return data;
+      return typeof window.sortProduksiDocumentsByTahapanThenId === "function"
+        ? window.sortProduksiDocumentsByTahapanThenId(data)
+        : data;
     },
 
     async getNextId() {

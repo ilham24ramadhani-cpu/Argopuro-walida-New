@@ -633,6 +633,12 @@ async function displayProduksi() {
     return;
   }
 
+  if (typeof window.sortProduksiDocumentsByTahapanThenId === "function") {
+    filteredProduksi = window.sortProduksiDocumentsByTahapanThenId(
+      filteredProduksi,
+    );
+  }
+
   try {
     tableBody.innerHTML = filteredProduksi
       .map((p, index) => {

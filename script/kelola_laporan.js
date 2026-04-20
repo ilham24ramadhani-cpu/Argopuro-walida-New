@@ -1608,11 +1608,17 @@ function displayProduksi() {
     return;
   }
 
-  const filteredProduksi = applyTableFilter(
+  let filteredProduksi = applyTableFilter(
     "produksi",
     produksi,
     (item) => item.tanggalMasuk
   );
+
+  if (typeof window.sortProduksiDocumentsByTahapanThenId === "function") {
+    filteredProduksi = window.sortProduksiDocumentsByTahapanThenId(
+      filteredProduksi,
+    );
+  }
 
   if (filteredProduksi.length === 0) {
     tbody.innerHTML = `

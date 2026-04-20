@@ -1126,6 +1126,68 @@ def _upsert_catatan_per_tahapan(existing, nama_tahapan, catatan, tanggal_sekaran
     return existing
 
 
+# Urutan tampilan daftar produksi (GET /api/produksi): grup per tahapan, lalu idProduksi.
+# Roasting disisipkan sebelum Pengemasan untuk data legacy.
+_URUTAN_TAHAPAN_PRODUKSI_SORT = (
+    'Sortasi', 'Fermentasi', 'Pulping', 'Pencucian',
+    'Pengeringan Awal', 'Fermentasi 2', 'Pulping 2', 'Pengeringan Akhir',
+    'Hulling', 'Hand Sortasi', 'Grinding', 'Roasting', 'Pengemasan',
+)
+_URUTAN_TAHAPAN_PRODUKSI_SORT_INDEX = {n: i for i, n in enumerate(_URUTAN_TAHAPAN_PRODUKSI_SORT)}
+_PRODUKSI_STATUS_LABEL_KE_KANON_SORT = {
+    'Sortasi Cherry atau Buah Kopi': 'Sortasi',
+    'Sortasi Buah': 'Sortasi',
+    'Pengeringan Awal (Para - Para)': 'Pengeringan Awal',
+    'Pengeringan Akhir (Pengeringan Lantai)': 'Pengeringan Akhir',
+    'Pengupasan Kulit Tanduk (Hulling) Pertama': 'Pulping 2',
+    'Pengupasan Kulit Tanduk (Hulling) Kedua': 'Hulling',
+    'Pengupasan Kulit Tanduk (Hulling)': 'Hulling',
+    'Hand Sortasi atau Sortasi Biji Kopi': 'Hand Sortasi',
+    'Fermentasi': 'Fermentasi',
+    'Pulping': 'Pulping',
+    'Pencucian': 'Pencucian',
+    'Pengeringan Awal': 'Pengeringan Awal',
+    'Fermentasi 2': 'Fermentasi 2',
+    'Pulping 2': 'Pulping 2',
+    'Pengeringan Akhir': 'Pengeringan Akhir',
+    'Grinding': 'Grinding',
+    'Pengemasan': 'Pengemasan',
+    'Roasting': 'Roasting',
+    'Hulling': 'Hulling',
+    'Sortasi': 'Sortasi',
+    'Hand Sortasi': 'Hand Sortasi',
+}
+for _n in _URUTAN_TAHAPAN_PRODUKSI_SORT:
+    _PRODUKSI_STATUS_LABEL_KE_KANON_SORT.setdefault(_n, _n)
+_TAHAPAN_SORT_KEYS_BY_LEN = sorted(
+    _PRODUKSI_STATUS_LABEL_KE_KANON_SORT.keys(),
+    key=len,
+    reverse=True,
+)
+
+
+def _canonical_tahapan_produksi_sort(status_tahapan):
+    """Normalisasi statusTahapan (label panjang atau kunci) ke nama kanonik untuk indeks urutan."""
+    s = (status_tahapan or '').strip()
+    if not s:
+        return None
+    m = _PRODUKSI_STATUS_LABEL_KE_KANON_SORT
+    if s in m:
+        return m[s]
+    for k in _TAHAPAN_SORT_KEYS_BY_LEN:
+        if k in s:
+            return m[k]
+    return None
+
+
+def _produksi_sort_key(doc):
+    """Kunci sort: urutan tahapan naik, lalu idProduksi leksikografis."""
+    canon = _canonical_tahapan_produksi_sort(doc.get('statusTahapan'))
+    idx = _URUTAN_TAHAPAN_PRODUKSI_SORT_INDEX.get(canon, 999)
+    idp = str(doc.get('idProduksi') or '')
+    return (idx, idp)
+
+
 # ==================== PRODUKSI ENDPOINTS ====================
 
 @app.route('/api/produksi/next-id', methods=['GET'])
@@ -1142,7 +1204,8 @@ def get_next_id_produksi():
 def get_produksi():
     """Get all produksi data"""
     try:
-        produksi = list(db.produksi.find().sort('id', 1))
+        produksi = list(db.produksi.find())
+        produksi.sort(key=_produksi_sort_key)
         print(f"📊 [PRODUKSI GET] Retrieved {len(produksi)} documents from MongoDB collection 'produksi'")
         return jsonify(json_serialize(produksi)), 200
     except Exception as e:

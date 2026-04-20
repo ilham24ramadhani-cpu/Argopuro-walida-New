@@ -2176,6 +2176,9 @@ function getProduksiFilteredForDisplay() {
       (p) => normalizeLaporanFilterStr(p.statusTahapan) === ftn
     );
   }
+  if (typeof window.sortProduksiDocumentsByTahapanThenId === "function") {
+    return window.sortProduksiDocumentsByTahapanThenId(data);
+  }
   return data;
 }
 

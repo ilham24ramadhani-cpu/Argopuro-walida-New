@@ -1730,6 +1730,12 @@ async function displayProduksi(options = {}) {
     );
   }
 
+  if (typeof window.sortProduksiDocumentsByTahapanThenId === "function") {
+    filteredProduksi = window.sortProduksiDocumentsByTahapanThenId(
+      filteredProduksi,
+    );
+  }
+
   if (filteredProduksi.length === 0) {
     console.log("⚠️ No produksi data to display (filtered or total)");
     tableBody.innerHTML = `
