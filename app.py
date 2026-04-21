@@ -477,34 +477,46 @@ def _sync_produksi_proses_pengolahan_after_bahan_update(id_bahan, old_proses_row
     Menyamakan prosesPengolahan pada dokumen produksi ketika baris proses di kelola bahan
     diubah (nama/urutan). Produksi menyimpan salinan string proses saat dibuat; tanpa
     sinkron ini data produksi tetap memakai nama lama walau master bahan sudah diperbarui.
+
+    Penting: jangan men-set SEMUA produksi ke satu proses hanya karena master bahan kini
+    punya satu baris proses (mis. setelah menggabungkan / memindahkan berat ke jalur lain).
+    Itu akan menimpa batch lama (mis. Anaerob) yang masih benar secara historis.
     """
     id_bahan = str(id_bahan or '').strip()
     if not id_bahan or not new_proses_rows:
         return
     old_list = old_proses_rows if isinstance(old_proses_rows, list) else []
     new_list = new_proses_rows if isinstance(new_proses_rows, list) else []
-    if len(new_list) == 1:
-        only = (new_list[0].get('prosesPengolahan') or '').strip()
-        if only:
+    # Hanya rename satu-jalur → satu-jalur: update produksi yang masih memakai nama lama.
+    if len(new_list) == 1 and len(old_list) == 1:
+        o = (old_list[0].get('prosesPengolahan') or '').strip()
+        nn = (new_list[0].get('prosesPengolahan') or '').strip()
+        if o and nn and o != nn:
             r = db.produksi.update_many(
-                _produksi_filter_by_bahan_id(id_bahan),
-                {'$set': {'prosesPengolahan': only}}
+                {**_produksi_filter_by_bahan_id(id_bahan), 'prosesPengolahan': o},
+                {'$set': {'prosesPengolahan': nn}},
             )
             if r.matched_count and not r.modified_count:
                 print(
-                    f"ℹ️ [SYNC PROSES] idBahan={id_bahan}: produksi sudah '{only}' "
-                    f"({r.matched_count} dokumen)"
+                    f"ℹ️ [SYNC PROSES] idBahan={id_bahan}: tidak ada produksi dengan prosesPengolahan '{o}' "
+                    f"({r.matched_count} dokumen cocok tanpa perubahan)"
                 )
             elif r.modified_count:
                 print(
-                    f"✅ [SYNC PROSES] idBahan={id_bahan}: semua produksi → '{only}' "
-                    f"({r.modified_count} dokumen)"
+                    f"✅ [SYNC PROSES] idBahan={id_bahan}: rename '{o}' → '{nn}' "
+                    f"pada {r.modified_count} dokumen produksi"
                 )
             elif r.matched_count == 0:
                 print(
-                    f"⚠️ [SYNC PROSES] idBahan={id_bahan}: tidak ada produksi dengan idBahan ini. "
-                    "Periksa konsistensi penulisan idBahan di data produksi."
+                    f"⚠️ [SYNC PROSES] idBahan={id_bahan}: tidak ada produksi dengan idBahan + proses '{o}'."
                 )
+        return
+    if len(new_list) == 1 and len(old_list) != 1:
+        print(
+            f"ℹ️ [SYNC PROSES] idBahan={id_bahan}: master bahan kini satu jalur proses "
+            f"(sebelumnya {len(old_list)} baris). Proses pada dokumen produksi tidak diubah otomatis "
+            'agar batch lama (jalur berbeda) tidak tertimpa.'
+        )
         return
     n = min(len(old_list), len(new_list))
     changes = []
@@ -2332,8 +2344,8 @@ def update_bahan(bahan_id):
 def post_sync_produksi_proses_from_bahan_master(bahan_id):
     """
     Menyelaraskan ulang prosesPengolahan pada produksi dari dokumen bahan terkini.
-    Berguna jika data produksi sempat tidak ikut ter-update. Untuk bahan dengan satu
-    baris proses, semua produksi dengan idBahan tersebut diset ke nama proses itu.
+    Hanya rename posisi-per posisi (sama seperti setelah update bahan); tidak lagi
+    men-set semua produksi ke satu proses hanya karena master bahan satu jalur.
     """
     try:
         try:
