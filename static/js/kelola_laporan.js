@@ -37,7 +37,10 @@ function formatRandemenCell(totalBahanKg, totalPengemasanKg) {
 
 function ringkasanProsesBahanLaporan(item) {
   const lines = item && Array.isArray(item.prosesBahan) ? item.prosesBahan : [];
-  const s = lines.map((x) => x.prosesPengolahan).filter(Boolean).join(", ");
+  const s = lines
+    .map((x) => x.prosesPengolahan)
+    .filter(Boolean)
+    .join(", ");
   return s || "—";
 }
 
@@ -110,10 +113,8 @@ function buildMatrixSumberBahanProduksiPdf(item) {
  * Menghindari selisih antara dokumen produksi (string lama) vs kelola bahan/produksi.
  */
 function getProsesPengolahanTampilanLaporan(prod, bahanById) {
-  const map =
-    bahanById instanceof Map ? bahanById : getBahanMapForLaporan();
-  const b =
-    prod?.idBahan && map instanceof Map ? map.get(prod.idBahan) : null;
+  const map = bahanById instanceof Map ? bahanById : getBahanMapForLaporan();
+  const b = prod?.idBahan && map instanceof Map ? map.get(prod.idBahan) : null;
   const lines = b?.prosesBahan;
   if (
     Array.isArray(lines) &&
@@ -301,10 +302,7 @@ function pdfAppendCatatanPerTahapanList(doc, y, item) {
   doc.setFont(undefined, "bold");
   doc.text("Catatan per tahapan produksi", 20, y);
   y += 7;
-  const matrix = [
-    ["No", "Tahapan", "Tanggal", "Catatan"],
-    ...dataRows,
-  ];
+  const matrix = [["No", "Tahapan", "Tanggal", "Catatan"], ...dataRows];
   return pdfRenderTableFromMatrix(doc, y, matrix, [8, 44, 28, 90]);
 }
 
@@ -333,9 +331,7 @@ function buildAlurProduksiTableRows(item, options = {}) {
   };
 
   if (hist.length === 0) {
-    const hk = PR
-      ? PR.getHasilKgUntukBarisAlur(item, null, "current")
-      : 0;
+    const hk = PR ? PR.getHasilKgUntukBarisAlur(item, null, "current") : 0;
     const fotoU = fotoTahapanUrlLaporanSafe(item.fotoTahapan);
     rows.push({
       no: "1",
@@ -354,10 +350,7 @@ function buildAlurProduksiTableRows(item, options = {}) {
 
   hist.forEach((h, i) => {
     const tahapan =
-      h.statusTahapan ||
-      h.namaTahapan ||
-      h.statusTahapanSebelumnya ||
-      "—";
+      h.statusTahapan || h.namaTahapan || h.statusTahapanSebelumnya || "—";
     const hk = PR ? PR.getHasilKgUntukBarisAlur(item, h, "history") : 0;
     const fotoU = fotoTahapanUrlLaporanSafe(h.fotoTahapan);
     rows.push({
@@ -411,7 +404,7 @@ function pdfRenderTableFromMatrix(doc, y, matrix, hw) {
     doc.setFont(undefined, isHeader ? "bold" : "normal");
     doc.setTextColor(0, 0, 0);
     const cellLines = cells.map((text, i) =>
-      doc.splitTextToSize(String(text ?? "—"), hw[i] - 1.5)
+      doc.splitTextToSize(String(text ?? "—"), hw[i] - 1.5),
     );
     const maxLines = Math.max(1, ...cellLines.map((l) => l.length));
     const rowH = maxLines * lineH + padT * 2;
@@ -481,7 +474,7 @@ async function pdfRenderAlurProduksiTable(doc, y, rows) {
   const fotoBoxMm = 12;
 
   const fotoImgs = await Promise.all(
-    rows.map((r) => loadFotoTahapanForPdfJs(r.fotoSrc))
+    rows.map((r) => loadFotoTahapanForPdfJs(r.fotoSrc)),
   );
 
   let rowTop = y;
@@ -648,7 +641,7 @@ async function waitForAPI() {
           console.error("❌ window.API:", window.API);
           console.error(
             "Available APIs:",
-            window.API ? Object.keys(window.API) : "undefined"
+            window.API ? Object.keys(window.API) : "undefined",
           );
         }
         resolve(available);
@@ -666,7 +659,7 @@ async function waitForAPI() {
           window.API &&
             window.API.Bahan &&
             window.API.Produksi &&
-            window.API.Keuangan
+            window.API.Keuangan,
         );
       }
     };
@@ -706,7 +699,7 @@ async function loadAllReportData() {
   const startTime = performance.now();
   try {
     console.log(
-      "🔄 Loading all report data from MongoDB (parallel loading)..."
+      "🔄 Loading all report data from MongoDB (parallel loading)...",
     );
 
     // Wait for API to be ready
@@ -738,7 +731,7 @@ async function loadAllReportData() {
           .catch((err) => {
             console.warn("⚠️ Error loading bahan:", err);
             bahan = [];
-          })
+          }),
       );
     } else {
       bahan = [];
@@ -750,13 +743,13 @@ async function loadAllReportData() {
           .then((data) => {
             produksi = Array.isArray(data) ? data : [];
             console.log(
-              `✅ Loaded ${produksi.length} produksi records from MongoDB`
+              `✅ Loaded ${produksi.length} produksi records from MongoDB`,
             );
           })
           .catch((err) => {
             console.warn("⚠️ Error loading produksi:", err);
             produksi = [];
-          })
+          }),
       );
     } else {
       produksi = [];
@@ -768,13 +761,13 @@ async function loadAllReportData() {
           .then((data) => {
             hasilProduksi = Array.isArray(data) ? data : [];
             console.log(
-              `✅ Loaded ${hasilProduksi.length} hasil produksi records from MongoDB`
+              `✅ Loaded ${hasilProduksi.length} hasil produksi records from MongoDB`,
             );
           })
           .catch((err) => {
             console.warn("⚠️ Error loading hasil produksi:", err);
             hasilProduksi = [];
-          })
+          }),
       );
     } else {
       hasilProduksi = [];
@@ -787,13 +780,13 @@ async function loadAllReportData() {
           .then((data) => {
             sanitasi = Array.isArray(data) ? data : [];
             console.log(
-              `✅ Loaded ${sanitasi.length} sanitasi records from MongoDB (fotos excluded)`
+              `✅ Loaded ${sanitasi.length} sanitasi records from MongoDB (fotos excluded)`,
             );
           })
           .catch((err) => {
             console.warn("⚠️ Error loading sanitasi:", err);
             sanitasi = [];
-          })
+          }),
       );
     } else {
       sanitasi = [];
@@ -805,13 +798,13 @@ async function loadAllReportData() {
           .then((data) => {
             pemasok = Array.isArray(data) ? data : [];
             console.log(
-              `✅ Loaded ${pemasok.length} pemasok records from MongoDB`
+              `✅ Loaded ${pemasok.length} pemasok records from MongoDB`,
             );
           })
           .catch((err) => {
             console.warn("⚠️ Error loading pemasok:", err);
             pemasok = [];
-          })
+          }),
       );
     } else {
       pemasok = [];
@@ -823,13 +816,13 @@ async function loadAllReportData() {
           .then((data) => {
             keuangan = Array.isArray(data) ? data : [];
             console.log(
-              `✅ Loaded ${keuangan.length} keuangan records from MongoDB`
+              `✅ Loaded ${keuangan.length} keuangan records from MongoDB`,
             );
           })
           .catch((err) => {
             console.warn("⚠️ Error loading keuangan:", err);
             keuangan = [];
-          })
+          }),
       );
     } else {
       keuangan = [];
@@ -842,13 +835,13 @@ async function loadAllReportData() {
           .then((data) => {
             pemesanan = Array.isArray(data) ? data : [];
             console.log(
-              `✅ Loaded ${pemesanan.length} pemesanan records from MongoDB`
+              `✅ Loaded ${pemesanan.length} pemesanan records from MongoDB`,
             );
           })
           .catch((err) => {
             console.warn("⚠️ Error loading pemesanan:", err);
             pemesanan = [];
-          })
+          }),
       );
     } else {
       console.warn("⚠️ API.Pemesanan not available");
@@ -869,11 +862,12 @@ async function loadAllReportData() {
 
     refreshBahanPemasokFilterOptions();
     refreshLaporanProsesTahapanFilterOptions();
+    refreshKeuanganJenisFilterOptions();
 
     const endTime = performance.now();
     const loadTime = ((endTime - startTime) / 1000).toFixed(2);
     console.log(
-      `✅ All report data loaded from MongoDB in ${loadTime}s (parallel loading)`
+      `✅ All report data loaded from MongoDB in ${loadTime}s (parallel loading)`,
     );
   } catch (error) {
     console.error("❌ Error loading report data from API:", error);
@@ -1124,10 +1118,10 @@ function safeNumber(value) {
 function computeRendemenAggregatForBahanItems(bahanItems) {
   const totalBahanKg = (bahanItems || []).reduce(
     (s, e) => s + safeNumber(e.jumlah),
-    0
+    0,
   );
   const idSet = new Set(
-    (bahanItems || []).map((b) => b.idBahan).filter(Boolean)
+    (bahanItems || []).map((b) => b.idBahan).filter(Boolean),
   );
   if (idSet.size === 0) {
     return { totalBahanKg, totalPengemasanKg: 0 };
@@ -1205,7 +1199,7 @@ const tableFilters = {
   },
   hasil: { mode: "all", value: "" },
   sanitasi: { mode: "all", value: "" },
-  keuangan: { mode: "all", value: "" },
+  keuangan: { mode: "all", value: "", jenisPengeluaran: "" },
   stok: { mode: "all", value: "" },
 };
 
@@ -1320,8 +1314,7 @@ const LAPORAN_REKAP_CONFIG = {
         },
       },
       {
-        label:
-          "Rata-rata Harga/Kg (Rp) — total pengeluaran ÷ total berat (kg)",
+        label: "Rata-rata Harga/Kg (Rp) — total pengeluaran ÷ total berat (kg)",
         compute: (items) => {
           if (!items || items.length === 0) return "-";
           let totalPengeluaran = 0;
@@ -1346,14 +1339,14 @@ const LAPORAN_REKAP_CONFIG = {
     extraSummary: (items) => {
       if (!items.length) return [];
       const maxItem = items.reduce((prev, curr) =>
-        safeNumber(curr.hargaPerKg) > safeNumber(prev.hargaPerKg) ? curr : prev
+        safeNumber(curr.hargaPerKg) > safeNumber(prev.hargaPerKg) ? curr : prev,
       );
       const minItem = items.reduce((prev, curr) =>
-        safeNumber(curr.hargaPerKg) < safeNumber(prev.hargaPerKg) ? curr : prev
+        safeNumber(curr.hargaPerKg) < safeNumber(prev.hargaPerKg) ? curr : prev,
       );
       const totalBerat = items.reduce(
         (sum, entry) => sum + safeNumber(entry.jumlah),
-        0
+        0,
       );
       const totalPengeluaranRp = items.reduce((sum, entry) => {
         const tp = safeNumber(entry.totalPengeluaran);
@@ -1382,9 +1375,7 @@ const LAPORAN_REKAP_CONFIG = {
         {
           label: "Total pengeluaran terkait bahan masuk",
           value:
-            totalPengeluaranRp > 0
-              ? formatCurrency(totalPengeluaranRp)
-              : "—",
+            totalPengeluaranRp > 0 ? formatCurrency(totalPengeluaranRp) : "—",
         },
         (() => {
           const { totalBahanKg, totalPengemasanKg } =
@@ -1393,7 +1384,7 @@ const LAPORAN_REKAP_CONFIG = {
           const detail =
             totalPengemasanKg > 0
               ? `${rasio} | bahan ${formatKgValue(
-                  totalBahanKg
+                  totalBahanKg,
                 )}, Σ GB (randomen) ${formatKgValue(totalPengemasanKg)}`
               : `${rasio} | belum ada berat green beans / berat akhir pengemasan untuk ID bahan pada filter ini`;
           return {
@@ -1461,7 +1452,10 @@ const LAPORAN_REKAP_CONFIG = {
         value: (item) => (item.kadarAir ? `${item.kadarAir}%` : "-"),
         excelValue: (item) => {
           if (item.kadarAir == null || item.kadarAir === "") return null;
-          if (typeof item.kadarAir === "number" && Number.isFinite(item.kadarAir)) {
+          if (
+            typeof item.kadarAir === "number" &&
+            Number.isFinite(item.kadarAir)
+          ) {
             return item.kadarAir > 0 ? item.kadarAir : null;
           }
           const raw = String(item.kadarAir).replace(/%/g, "").trim();
@@ -1488,8 +1482,7 @@ const LAPORAN_REKAP_CONFIG = {
       },
       {
         label: "Catatan (tahap berjalan)",
-        value: (item) =>
-          (item.catatan && String(item.catatan).trim()) || "-",
+        value: (item) => (item.catatan && String(item.catatan).trim()) || "-",
       },
       {
         label: "Riwayat catatan per tahapan",
@@ -1500,7 +1493,7 @@ const LAPORAN_REKAP_CONFIG = {
             .filter((r) => r && String(r.catatan || "").trim())
             .map(
               (r) =>
-                `${r.namaTahapan || r.tahapan || "?"}: ${String(r.catatan).trim()}`
+                `${r.namaTahapan || r.tahapan || "?"}: ${String(r.catatan).trim()}`,
             );
           return parts.length ? parts.join(" | ") : "-";
         },
@@ -1515,13 +1508,13 @@ const LAPORAN_REKAP_CONFIG = {
       // Total Berat Awal
       const totalBeratAwal = items.reduce(
         (sum, entry) => sum + safeNumber(entry.beratAwal),
-        0
+        0,
       );
 
       // Total Berat Akhir
       const totalBeratAkhir = items.reduce(
         (sum, entry) => sum + safeNumber(entry.beratAkhir),
-        0
+        0,
       );
 
       // Agregat Σ berat awal per proses (= bahan masuk ke produksi per baris rekap)
@@ -1620,7 +1613,7 @@ const LAPORAN_REKAP_CONFIG = {
         label: "Rata-rata Output",
         compute: (items) => {
           const avg = averageNumber(items, (entry) =>
-            safeNumber(entry.beratSaatIni)
+            safeNumber(entry.beratSaatIni),
           );
           return avg === null ? "-" : formatKgValue(avg);
         },
@@ -1641,7 +1634,7 @@ const LAPORAN_REKAP_CONFIG = {
       // Total Berat yang Diproses
       const totalBeratDiproses = items.reduce(
         (sum, entry) => sum + safeNumber(entry.beratSaatIni),
-        0
+        0,
       );
 
       return [
@@ -1680,7 +1673,7 @@ const LAPORAN_REKAP_CONFIG = {
         compute: (items) => {
           if (!items.length) return "-";
           const selesai = items.filter(
-            (entry) => entry.status === "Complete"
+            (entry) => entry.status === "Complete",
           ).length;
           const percentage = (selesai / items.length) * 100;
           return `${percentage.toFixed(1)}%`;
@@ -1700,8 +1693,7 @@ const LAPORAN_REKAP_CONFIG = {
       {
         label: "Nilai (Rp)",
         align: "right",
-        value: (item) =>
-          item.nilai ? formatCurrencyNumeric(item.nilai) : "-",
+        value: (item) => (item.nilai ? formatCurrencyNumeric(item.nilai) : "-"),
         excelValue: (item) => {
           if (item.nilai == null || item.nilai === "") return null;
           const n = safeNumber(item.nilai);
@@ -1717,11 +1709,11 @@ const LAPORAN_REKAP_CONFIG = {
     extraSummary: (items) => {
       if (!items.length) return [];
       const maxItem = items.reduce((prev, curr) =>
-        safeNumber(curr.nilai) > safeNumber(prev.nilai) ? curr : prev
+        safeNumber(curr.nilai) > safeNumber(prev.nilai) ? curr : prev,
       );
       const totalPengeluaran = items.reduce(
         (sum, entry) => sum + safeNumber(entry.nilai),
-        0
+        0,
       );
       return [
         {
@@ -1784,7 +1776,7 @@ const LAPORAN_REKAP_CONFIG = {
           if (!items.length) return "-";
           const totalBerat = items.reduce(
             (sum, item) => sum + safeNumber(item.totalBerat || 0),
-            0
+            0,
           );
           const avg = totalBerat / items.length;
           return formatKgValue(avg);
@@ -1796,7 +1788,7 @@ const LAPORAN_REKAP_CONFIG = {
 
       const totalBerat = items.reduce(
         (sum, item) => sum + safeNumber(item.totalBerat || 0),
-        0
+        0,
       );
 
       return [
@@ -1829,7 +1821,8 @@ const LAPORAN_REKAP_CONFIG = {
       {
         label: "Proses pengolahan",
         value: (item) =>
-          (item.prosesPengolahan && String(item.prosesPengolahan).trim()) || "-",
+          (item.prosesPengolahan && String(item.prosesPengolahan).trim()) ||
+          "-",
       },
       {
         label: "Jumlah (kg)",
@@ -1914,7 +1907,8 @@ const LAPORAN_REKAP_CONFIG = {
       {
         label: "Catatan",
         value: (item) =>
-          (item.catatanPemesanan && String(item.catatanPemesanan).trim()) || "-",
+          (item.catatanPemesanan && String(item.catatanPemesanan).trim()) ||
+          "-",
       },
     ],
     filterKey: "pemesanan",
@@ -1924,11 +1918,11 @@ const LAPORAN_REKAP_CONFIG = {
       if (!items.length) return [];
       const totalKg = items.reduce(
         (sum, p) => sum + safeNumber(p.jumlahPesananKg),
-        0
+        0,
       );
       const totalHarga = items.reduce(
         (sum, p) => sum + safeNumber(p.totalHarga),
-        0
+        0,
       );
       return [
         {
@@ -2072,6 +2066,14 @@ function initializeTableFilters() {
           const th = document.getElementById("produksiFilterTahapan");
           if (ps) ps.value = "";
           if (th) th.value = "";
+        } else if (category === "keuangan") {
+          tableFilters[category] = {
+            mode: "all",
+            value: "",
+            jenisPengeluaran: "",
+          };
+          const jSel = document.getElementById("keuanganFilterJenis");
+          if (jSel) jSel.value = "";
         } else {
           tableFilters[category] = { mode: "all", value: "" };
         }
@@ -2124,7 +2126,9 @@ function applyTableFilter(category, data, dateGetter) {
 }
 
 function normalizeLaporanFilterStr(s) {
-  return String(s || "").trim().toLowerCase();
+  return String(s || "")
+    .trim()
+    .toLowerCase();
 }
 
 /** Bahan masuk: filter waktu + pemasok + opsional proses pengolahan (untuk tabel & rekap). */
@@ -2141,8 +2145,7 @@ function getBahanFilteredForDisplay() {
     data = data.filter((item) => {
       const lines = Array.isArray(item.prosesBahan) ? item.prosesBahan : [];
       return lines.some(
-        (l) =>
-          normalizeLaporanFilterStr(l && l.prosesPengolahan) === pn
+        (l) => normalizeLaporanFilterStr(l && l.prosesPengolahan) === pn,
       );
     });
   }
@@ -2154,7 +2157,7 @@ function getProduksiFilteredForDisplay() {
   let data = applyTableFilter(
     "produksi",
     produksi,
-    (item) => item.tanggalMasuk
+    (item) => item.tanggalMasuk,
   );
   const pf = tableFilters.produksi;
   if (!pf) return data;
@@ -2165,15 +2168,15 @@ function getProduksiFilteredForDisplay() {
     data = data.filter(
       (p) =>
         normalizeLaporanFilterStr(
-          getProsesPengolahanTampilanLaporan(p, bahanMap)
-        ) === fpn
+          getProsesPengolahanTampilanLaporan(p, bahanMap),
+        ) === fpn,
     );
   }
   const ft = pf.statusTahapan;
   if (ft) {
     const ftn = normalizeLaporanFilterStr(ft);
     data = data.filter(
-      (p) => normalizeLaporanFilterStr(p.statusTahapan) === ftn
+      (p) => normalizeLaporanFilterStr(p.statusTahapan) === ftn,
     );
   }
   if (typeof window.sortProduksiDocumentsByTahapanThenId === "function") {
@@ -2182,11 +2185,67 @@ function getProduksiFilteredForDisplay() {
   return data;
 }
 
+/** Keuangan: filter waktu + opsional jenis pengeluaran (tabel & rekap export). */
+function getKeuanganFilteredForDisplay() {
+  let data = applyTableFilter("keuangan", keuangan, (item) => item.tanggal);
+  const kf = tableFilters.keuangan;
+  const jenis = kf && kf.jenisPengeluaran;
+  if (jenis) {
+    data = data.filter((item) => (item.jenisPengeluaran || "") === jenis);
+  }
+  return data;
+}
+
+function refreshKeuanganJenisFilterOptions() {
+  const sel = document.getElementById("keuanganFilterJenis");
+  if (!sel) return;
+  const prev =
+    tableFilters.keuangan &&
+    Object.prototype.hasOwnProperty.call(
+      tableFilters.keuangan,
+      "jenisPengeluaran",
+    )
+      ? tableFilters.keuangan.jenisPengeluaran
+      : "";
+  const names = new Set();
+  (keuangan || []).forEach((k) => {
+    if (k && k.jenisPengeluaran)
+      names.add(String(k.jenisPengeluaran).trim());
+  });
+  sel.innerHTML = "";
+  const optAll = document.createElement("option");
+  optAll.value = "";
+  optAll.textContent = "Semua jenis";
+  sel.appendChild(optAll);
+  [...names]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "id"))
+    .forEach((n) => {
+      const o = document.createElement("option");
+      o.value = n;
+      o.textContent = n;
+      sel.appendChild(o);
+    });
+  if (!tableFilters.keuangan)
+    tableFilters.keuangan = { mode: "all", value: "", jenisPengeluaran: "" };
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      tableFilters.keuangan,
+      "jenisPengeluaran",
+    )
+  )
+    tableFilters.keuangan.jenisPengeluaran = "";
+  const keep = prev && names.has(prev) ? prev : "";
+  tableFilters.keuangan.jenisPengeluaran = keep;
+  sel.value = keep;
+}
+
 function refreshBahanPemasokFilterOptions() {
   const sel = document.getElementById("bahanFilterPemasok");
   if (!sel) return;
   const prev =
-    tableFilters.bahan && Object.prototype.hasOwnProperty.call(tableFilters.bahan, "pemasok")
+    tableFilters.bahan &&
+    Object.prototype.hasOwnProperty.call(tableFilters.bahan, "pemasok")
       ? tableFilters.bahan.pemasok
       : "";
   const names = new Set();
@@ -2232,7 +2291,12 @@ function refreshLaporanProsesTahapanFilterOptions() {
         pemasok: "",
         prosesPengolahan: "",
       };
-    if (!Object.prototype.hasOwnProperty.call(tableFilters.bahan, "prosesPengolahan"))
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        tableFilters.bahan,
+        "prosesPengolahan",
+      )
+    )
       tableFilters.bahan.prosesPengolahan = "";
   };
   const ensureProduksiFilter = () => {
@@ -2243,9 +2307,19 @@ function refreshLaporanProsesTahapanFilterOptions() {
         prosesPengolahan: "",
         statusTahapan: "",
       };
-    if (!Object.prototype.hasOwnProperty.call(tableFilters.produksi, "prosesPengolahan"))
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        tableFilters.produksi,
+        "prosesPengolahan",
+      )
+    )
       tableFilters.produksi.prosesPengolahan = "";
-    if (!Object.prototype.hasOwnProperty.call(tableFilters.produksi, "statusTahapan"))
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        tableFilters.produksi,
+        "statusTahapan",
+      )
+    )
       tableFilters.produksi.statusTahapan = "";
   };
 
@@ -2275,7 +2349,11 @@ function refreshLaporanProsesTahapanFilterOptions() {
   const prosesBahanNames = [];
   (bahan || []).forEach((b) => {
     (b.prosesBahan || []).forEach((line) => {
-      const n = (line && line.prosesPengolahan && String(line.prosesPengolahan).trim()) || "";
+      const n =
+        (line &&
+          line.prosesPengolahan &&
+          String(line.prosesPengolahan).trim()) ||
+        "";
       if (n) prosesBahanNames.push(n);
     });
   });
@@ -2284,7 +2362,7 @@ function refreshLaporanProsesTahapanFilterOptions() {
     "Semua proses pengolahan",
     prosesBahanNames,
     tableFilters.bahan,
-    "prosesPengolahan"
+    "prosesPengolahan",
   );
 
   ensureProduksiFilter();
@@ -2302,14 +2380,14 @@ function refreshLaporanProsesTahapanFilterOptions() {
     "Semua proses pengolahan",
     prosesProdNames,
     tableFilters.produksi,
-    "prosesPengolahan"
+    "prosesPengolahan",
   );
   fillSelect(
     document.getElementById("produksiFilterTahapan"),
     "Semua tahapan",
     tahapanNames,
     tableFilters.produksi,
-    "statusTahapan"
+    "statusTahapan",
   );
 }
 
@@ -2361,6 +2439,25 @@ function initializeLaporanProsesTahapanFilterListeners() {
   }
 }
 
+function initializeKeuanganJenisFilterListener() {
+  const sel = document.getElementById("keuanganFilterJenis");
+  if (!sel || sel.dataset.laporanBound === "1") return;
+  sel.dataset.laporanBound = "1";
+  sel.addEventListener("change", () => {
+    if (!tableFilters.keuangan)
+      tableFilters.keuangan = { mode: "all", value: "", jenisPengeluaran: "" };
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        tableFilters.keuangan,
+        "jenisPengeluaran",
+      )
+    )
+      tableFilters.keuangan.jenisPengeluaran = "";
+    tableFilters.keuangan.jenisPengeluaran = sel.value;
+    renderTableByCategory("keuangan");
+  });
+}
+
 function initializeBahanPemasokFilterListener() {
   const sel = document.getElementById("bahanFilterPemasok");
   if (!sel || sel.dataset.laporanBound === "1") return;
@@ -2386,7 +2483,7 @@ function updateBahanPemasokInsight() {
   if (pemFilter) {
     const kg = filtered.reduce((s, i) => s + safeNumber(i.jumlah), 0);
     el.innerHTML = `<span class="text-dark fw-semibold">${pemFilter}</span> — total masuk <strong>${formatKgValue(
-      kg
+      kg,
     )}</strong> dari <strong>${filtered.length}</strong> transaksi (sesuai filter).`;
     return;
   }
@@ -2402,7 +2499,7 @@ function updateBahanPemasokInsight() {
   }
   const [topName, topKg] = ranked[0];
   el.innerHTML = `Pemasok dengan total berat terbanyak (sesuai filter waktu): <span class="text-success fw-semibold">${topName}</span> — <strong>${formatKgValue(
-    topKg
+    topKg,
   )}</strong>.`;
 }
 
@@ -2417,7 +2514,7 @@ function getFilteredDataForCategory(category) {
     case "sanitasi":
       return applyTableFilter("sanitasi", sanitasi, (item) => item.tanggal);
     case "keuangan":
-      return applyTableFilter("keuangan", keuangan, (item) => item.tanggal);
+      return getKeuanganFilteredForDisplay();
     case "stok":
       // Gunakan cached stok array dari displayStok() atau fallback ke empty array
       return window.cachedStokArray || [];
@@ -2441,7 +2538,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
   }
   const bahanMap = getBahanMapForLaporan();
   const agg = PR.summarizeRandomenAgregat(items, (p) =>
-    getProsesPengolahanTampilanLaporan(p, bahanMap)
+    getProsesPengolahanTampilanLaporan(p, bahanMap),
   );
   const keys = Object.keys(agg.byProses || {}).sort();
   const fmtKg = (n) =>
@@ -2484,9 +2581,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       <td><strong>${totalBatch}</strong></td>
       <td><strong>${fmtKg(agg.sumBahan)}</strong></td>
       <td><strong>${fmtKg(agg.sumHasil)}</strong></td>
-      <td><strong>${PR.formatRandomenBanding1(
-        agg.totalRatio
-      )}</strong></td>
+      <td><strong>${PR.formatRandomenBanding1(agg.totalRatio)}</strong></td>
     </tr>`
       : "";
 
@@ -2575,7 +2670,7 @@ function htmlRekapPemesananAggPerProses(items) {
       <td>${escapeHtmlLaporan(r.nama)}</td>
       <td>${r.n}</td>
       <td>${fmtKg(r.kg)}</td>
-    </tr>`
+    </tr>`,
     )
     .join("");
   const totalN = rows.reduce((s, r) => s + r.n, 0);
@@ -2660,8 +2755,13 @@ function getFilterDescription(category) {
     const parts = [timePart];
     if (filter.prosesPengolahan)
       parts.push(`Proses: ${filter.prosesPengolahan}`);
-    if (filter.statusTahapan)
-      parts.push(`Tahapan: ${filter.statusTahapan}`);
+    if (filter.statusTahapan) parts.push(`Tahapan: ${filter.statusTahapan}`);
+    return parts.join(" | ");
+  }
+  if (category === "keuangan" && filter) {
+    const parts = [timePart];
+    if (filter.jenisPengeluaran)
+      parts.push(`Jenis pengeluaran: ${filter.jenisPengeluaran}`);
     return parts.join(" | ");
   }
   return timePart;
@@ -2734,7 +2834,7 @@ function buildRandomenPerProsesSheetMatrix(items) {
   }
   const bahanMap = getBahanMapForLaporan();
   const agg = PR.summarizeRandomenAgregat(items, (p) =>
-    getProsesPengolahanTampilanLaporan(p, bahanMap)
+    getProsesPengolahanTampilanLaporan(p, bahanMap),
   );
   const keys = Object.keys(agg.byProses || {}).sort();
   const header = [
@@ -2816,8 +2916,7 @@ function buildRekapReportFragments(config, data) {
     .join("");
   const avgWrap =
     config.averageSummaryWrapClass || "summary rekap-summary-panel";
-  const avgHeading =
-    config.averageSummaryHeading || "Ringkasan Rata-rata";
+  const avgHeading = config.averageSummaryHeading || "Ringkasan Rata-rata";
   const summaryHtml =
     config.averages && config.averages.length
       ? `
@@ -2827,7 +2926,7 @@ function buildRekapReportFragments(config, data) {
             ${config.averages
               .map(
                 (avg) =>
-                  `<li><strong>${avg.label}:</strong> ${avg.compute(data)}</li>`
+                  `<li><strong>${avg.label}:</strong> ${avg.compute(data)}</li>`,
               )
               .join("")}
           </ul>
@@ -2842,8 +2941,7 @@ function buildRekapReportFragments(config, data) {
           const wrapClass =
             config.extraSummaryWrapClass ||
             "summary rekap-summary-panel rekap-summary-extra";
-          const h2 =
-            config.extraSummaryHeading || "Ringkasan Tambahan";
+          const h2 = config.extraSummaryHeading || "Ringkasan Tambahan";
           return `
         <div class="${wrapClass}">
           <h2>${h2}</h2>
@@ -2851,7 +2949,7 @@ function buildRekapReportFragments(config, data) {
             ${rows
               .map(
                 (item) =>
-                  `<li><strong>${item.label}:</strong> ${item.value}</li>`
+                  `<li><strong>${item.label}:</strong> ${item.value}</li>`,
               )
               .join("")}
           </ul>
@@ -3173,7 +3271,7 @@ async function exportRekapView(category) {
     reportWindow.document.close();
   } else {
     alert(
-      "Pop-up diblokir oleh browser. Mohon izinkan pop-up untuk melihat rekap."
+      "Pop-up diblokir oleh browser. Mohon izinkan pop-up untuk melihat rekap.",
     );
   }
 }
@@ -3366,7 +3464,7 @@ async function exportRekapPdf(category) {
     reportWindow.document.close();
   } else {
     alert(
-      "Pop-up diblokir oleh browser. Mohon izinkan pop-up untuk membuka rekap PDF."
+      "Pop-up diblokir oleh browser. Mohon izinkan pop-up untuk membuka rekap PDF.",
     );
   }
 }
@@ -3377,9 +3475,7 @@ async function exportRekapPdf(category) {
 async function exportRekapExcel(category) {
   const ExcelJS = window.ExcelJS;
   if (!ExcelJS) {
-    alert(
-      "Library Excel belum dimuat. Muat ulang halaman ini lalu coba lagi."
-    );
+    alert("Library Excel belum dimuat. Muat ulang halaman ini lalu coba lagi.");
     return;
   }
 
@@ -3458,7 +3554,7 @@ async function exportRekapExcel(category) {
     kvRing("Sistem", "Argopuro Walida");
     kvRing(
       "Struktur berkas",
-      "Lembar «Data» = tabel utama. Produksi: lembar «Randomen». Pemesanan: lembar «Per proses»."
+      "Lembar «Data» = tabel utama. Produksi: lembar «Randomen». Pemesanan: lembar «Per proses».",
     );
 
     if (config.averages && config.averages.length) {
@@ -3549,7 +3645,11 @@ async function exportRekapExcel(category) {
           c.alignment = {
             vertical: "top",
             horizontal:
-              col.align === "center" ? "center" : col.align === "left" ? "left" : "right",
+              col.align === "center"
+                ? "center"
+                : col.align === "left"
+                  ? "left"
+                  : "right",
             wrapText: true,
           };
         } else {
@@ -3585,7 +3685,7 @@ async function exportRekapExcel(category) {
       const L = String(labels[i]).length;
       wsData.getColumn(i + 1).width = Math.min(
         48,
-        Math.max(12, Math.round(L * 0.85 + 8))
+        Math.max(12, Math.round(L * 0.85 + 8)),
       );
     }
 
@@ -3615,16 +3715,12 @@ async function exportRekapExcel(category) {
         }
       };
 
-      mergeBorderRow(
-        rr,
-        "Rekap randomen per proses pengolahan",
-        11
-      );
+      mergeBorderRow(rr, "Rekap randomen per proses pengolahan", 11);
       rr += 1;
       mergeBorderRow(
         rr,
         "N banding 1 (kg bahan per 1 kg green beans), dua desimal. Hanya batch pengemasan dengan berat valid.",
-        10
+        10,
       );
       rr += 1;
 
@@ -3716,13 +3812,13 @@ async function exportRekapExcel(category) {
       mergeBorderRowPp(
         pr,
         "Ringkasan jumlah pesanan & total kg per proses pengolahan",
-        11
+        11,
       );
       pr += 1;
       mergeBorderRowPp(
         pr,
         "Jumlah pesanan = banyaknya baris pada filter; total kg = jumlah kolom kg per proses.",
-        10
+        10,
       );
       pr += 1;
 
@@ -3801,7 +3897,7 @@ async function exportRekapExcel(category) {
   } catch (err) {
     console.error("exportRekapExcel:", err);
     alert(
-      "Gagal membuat file Excel. Coba muat ulang halaman atau gunakan browser lain."
+      "Gagal membuat file Excel. Coba muat ulang halaman atau gunakan browser lain.",
     );
   }
 }
@@ -3880,24 +3976,24 @@ function renderBahanPriceStats() {
     totalBeratAgg > 0 ? totalPengeluaranAgg / totalBeratAgg : 0;
 
   const maxEntry = validEntries.reduce((prev, curr) =>
-    safeNumber(curr.hargaPerKg) > safeNumber(prev.hargaPerKg) ? curr : prev
+    safeNumber(curr.hargaPerKg) > safeNumber(prev.hargaPerKg) ? curr : prev,
   );
 
   const minT = Math.min(...validEntries.map((e) => e.date.getTime()));
   const maxT = Math.max(...validEntries.map((e) => e.date.getTime()));
 
   avgElement.textContent = formatCurrencyNumeric(
-    Math.round(avgHargaTertimbang)
+    Math.round(avgHargaTertimbang),
   );
   maxElement.textContent = formatCurrencyNumeric(
-    safeNumber(maxEntry.hargaPerKg)
+    safeNumber(maxEntry.hargaPerKg),
   );
   supplierElement.textContent = `${maxEntry.pemasok || "Tanpa pemasok"}${
     maxEntry.idBahan ? ` (${maxEntry.idBahan})` : ""
   }`;
   rangeElement.textContent = `${formatShortDate(
     new Date(minT),
-    true
+    true,
   )} - ${formatShortDate(new Date(maxT), true)} • ${
     validEntries.length
   } transaksi`;
@@ -3930,7 +4026,7 @@ function renderProduksiTimeline() {
 
   wrapper.innerHTML = sortedProduksi
     .map((item, index) =>
-      buildTimelineItem(item, index === 0, index, bahanById)
+      buildTimelineItem(item, index === 0, index, bahanById),
     )
     .join("");
 }
@@ -3945,7 +4041,7 @@ function buildTimelineItem(item, isFirst, index = 0, bahanById) {
         </div>
         <p class="small text-muted mt-2 mb-1 fw-semibold">Randomen per tahapan (N banding 1, dua desimal)</p>
         <pre class="small text-muted mb-0 bg-body-secondary rounded p-2" style="white-space:pre-wrap;font-family:inherit">${escapeHtmlLaporan(
-          PR.buildRingkasanPerTahapanText(item)
+          PR.buildRingkasanPerTahapanText(item),
         )}</pre>`
     : `<div class="alert alert-light border small mt-3 mb-0 py-2 text-muted">
           <strong>Randomen</strong>: modul perhitungan tidak dimuat
@@ -3963,7 +4059,7 @@ function buildTimelineItem(item, isFirst, index = 0, bahanById) {
           <p class="text-muted small mb-0">${step.details}</p>
         </div>
       </li>
-    `
+    `,
     )
     .join("");
 
@@ -3983,14 +4079,14 @@ function buildTimelineItem(item, isFirst, index = 0, bahanById) {
               <span class="badge bg-primary-subtle text-primary fw-semibold"
                 >${item.idProduksi || "ID Tidak tersedia"}</span
               >
-              <span class="badge ${(window.getStatusTahapanBadgeClass || (() => 'bg-secondary'))(item.statusTahapan)}"
+              <span class="badge ${(window.getStatusTahapanBadgeClass || (() => "bg-secondary"))(item.statusTahapan)}"
                 >${item.statusTahapan || "-"}</span
               >
             </div>
             <small class="text-muted">
               ${formatDate(item.tanggalMasuk)} - ${formatDate(
-    item.tanggalSekarang
-  )}
+                item.tanggalSekarang,
+              )}
             </small>
           </div>
         </button>
@@ -4151,7 +4247,7 @@ function displayBahan() {
             ? formatCurrencyNumeric(item.totalPengeluaran)
             : "-"
         }</td>
-      <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => 'bg-secondary'))(item.jenisKopi)}">${item.jenisKopi || "-"}</span></td>
+      <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => "bg-secondary"))(item.jenisKopi)}">${item.jenisKopi || "-"}</span></td>
       <td>${formatDate(item.tanggalMasuk)}</td>
       <td><small class="text-muted">${ringkasanProsesBahanLaporan(item)}</small></td>
       <td>${
@@ -4219,7 +4315,7 @@ function displayProduksi() {
     .map((item, index) => {
       const prosesTampilan = getProsesPengolahanTampilanLaporan(
         item,
-        bahanByIdTable
+        bahanByIdTable,
       );
       const PR = window.ProduksiRandomen;
       const cellRandomenId = PR ? PR.formatRandomenPerIdCell(item) : "—";
@@ -4229,11 +4325,11 @@ function displayProduksi() {
               PR.formatRandomenPerIdTooltip(item),
               String(PR.buildRingkasanPerTahapanText(item) || "").replace(
                 /\n/g,
-                " "
+                " ",
               ),
             ]
               .filter(Boolean)
-              .join(" | ")
+              .join(" | "),
           )
         : "";
       return `
@@ -4248,22 +4344,22 @@ function displayProduksi() {
           item.beratAkhir ? item.beratAkhir.toLocaleString("id-ID") : "-"
         } kg</td>
       <td class="text-nowrap small" title="${titleR}">${escapeHtmlLaporan(cellRandomenId)}</td>
-      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || (() => 'bg-secondary'))(prosesTampilan)}">${prosesTampilan}</span></td>
+      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || (() => "bg-secondary"))(prosesTampilan)}">${prosesTampilan}</span></td>
       <td>${item.kadarAir ? item.kadarAir + "%" : "-"}</td>
       <td>${item.varietas || "-"}</td>
       <td>${formatDate(item.tanggalMasuk)}</td>
       <td>${formatDate(item.tanggalSekarang)}</td>
-        <td><span class="badge ${(window.getStatusTahapanBadgeClass || (() => 'bg-secondary'))(item.statusTahapan)}">${
+        <td><span class="badge ${(window.getStatusTahapanBadgeClass || (() => "bg-secondary"))(item.statusTahapan)}">${
           item.statusTahapan || "-"
         }</span></td>
       <td class="small" style="max-width: 14rem;" title="${escapeHtmlLaporan(
-        String(item.catatan || "").replace(/\n/g, " ")
+        String(item.catatan || "").replace(/\n/g, " "),
       )}">${
         item.catatan && String(item.catatan).trim()
           ? escapeHtmlLaporan(
               String(item.catatan).trim().length > 80
                 ? `${String(item.catatan).trim().slice(0, 80)}…`
-                : String(item.catatan).trim()
+                : String(item.catatan).trim(),
             )
           : "—"
       }</td>
@@ -4308,7 +4404,7 @@ function displaySanitasi() {
   const filteredSanitasi = applyTableFilter(
     "sanitasi",
     sanitasi,
-    (item) => item.tanggal
+    (item) => item.tanggal,
   );
 
   if (filteredSanitasi.length === 0) {
@@ -4404,10 +4500,7 @@ function generateBahanPDF(id) {
   const pairsBahan = [
     ["ID Bahan", item.idBahan || "—"],
     ["Pemasok", item.pemasok || "—"],
-    [
-      "Jumlah (kg)",
-      item.jumlah ? item.jumlah.toLocaleString("id-ID") : "—",
-    ],
+    ["Jumlah (kg)", item.jumlah ? item.jumlah.toLocaleString("id-ID") : "—"],
     ["Varietas", item.varietas || "—"],
     [
       "Harga per Kg (Rp)",
@@ -4518,7 +4611,7 @@ async function generateProduksiPDF(id) {
   doc.text(
     "Alokasi = berat bahan awal per ID yang dipakai untuk produksi ini (sesuai Kelola Produksi). Pemasok diambil dari data bahan masuk.",
     20,
-    y
+    y,
   );
   y += 5;
   doc.setTextColor(0, 0, 0);
@@ -4548,7 +4641,7 @@ async function generateProduksiPDF(id) {
   doc.text(
     "Tiap baris: randomen = N banding 1 (dua desimal), bahan per 1 kg green beans (pengemasan); pixel tidak di penyebut; kadar air, catatan.",
     20,
-    y
+    y,
   );
   y += 6;
   doc.setTextColor(0, 0, 0);
@@ -4563,7 +4656,7 @@ async function generateProduksiPDF(id) {
     console.error("pdfRenderAlurProduksiTable", err);
     alert(
       "Gagal menyusun tabel alur produksi di PDF (foto). " +
-        (err && err.message ? err.message : "Coba lagi.")
+        (err && err.message ? err.message : "Coba lagi."),
     );
     return;
   }
@@ -4667,7 +4760,7 @@ async function generateHasilProduksiPDF(id) {
   doc.text(
     `${item.beratSaatIni ? item.beratSaatIni.toLocaleString("id-ID") : "-"} kg`,
     60,
-    y
+    y,
   );
 
   y += 10;
@@ -4715,7 +4808,7 @@ async function generateHasilProduksiPDF(id) {
     doc.text(
       bahanData.jumlah ? bahanData.jumlah.toLocaleString("id-ID") : "-",
       60,
-      y
+      y,
     );
     y += 10;
 
@@ -4729,11 +4822,9 @@ async function generateHasilProduksiPDF(id) {
     doc.text("Harga per Kg (Rp):", 20, y);
     doc.setFont(undefined, "normal");
     doc.text(
-      bahanData.hargaPerKg
-        ? formatCurrencyNumeric(bahanData.hargaPerKg)
-        : "-",
+      bahanData.hargaPerKg ? formatCurrencyNumeric(bahanData.hargaPerKg) : "-",
       60,
-      y
+      y,
     );
     y += 10;
 
@@ -4745,7 +4836,7 @@ async function generateHasilProduksiPDF(id) {
         ? formatCurrencyNumeric(bahanData.totalPengeluaran)
         : "-",
       60,
-      y
+      y,
     );
     y += 10;
 
@@ -4817,7 +4908,7 @@ async function generateHasilProduksiPDF(id) {
           : "-"
       } kg`,
       60,
-      y
+      y,
     );
     y += 10;
 
@@ -4831,18 +4922,14 @@ async function generateHasilProduksiPDF(id) {
           : "-"
       } kg`,
       60,
-      y
+      y,
     );
     y += 10;
 
     doc.setFont(undefined, "bold");
     doc.text("Proses Pengolahan:", 20, y);
     doc.setFont(undefined, "normal");
-    doc.text(
-      getProsesPengolahanTampilanLaporan(produksiData),
-      60,
-      y
-    );
+    doc.text(getProsesPengolahanTampilanLaporan(produksiData), 60, y);
     y += 10;
 
     doc.setFont(undefined, "bold");
@@ -4851,7 +4938,7 @@ async function generateHasilProduksiPDF(id) {
     doc.text(
       `${produksiData.kadarAir ? produksiData.kadarAir + "%" : "-"}`,
       60,
-      y
+      y,
     );
     y += 10;
 
@@ -4951,10 +5038,7 @@ function generateSanitasiPDF(id) {
     } else if (Array.isArray(item.checklist)) {
       item.checklist.forEach((check) => {
         const label = check.item || check || "—";
-        chkRows.push([
-          String(label),
-          check.checked ? "Selesai" : "Belum",
-        ]);
+        chkRows.push([String(label), check.checked ? "Selesai" : "Belum"]);
       });
     }
     if (chkRows.length > 1) {
@@ -5060,11 +5144,7 @@ function displayKeuangan() {
     return;
   }
 
-  const filteredKeuangan = applyTableFilter(
-    "keuangan",
-    keuangan,
-    (item) => item.tanggal
-  );
+  const filteredKeuangan = getKeuanganFilteredForDisplay();
 
   if (filteredKeuangan.length === 0) {
     tbody.innerHTML = `
@@ -5123,7 +5203,7 @@ async function displayStok() {
 
   try {
     let stokArray = [];
-    
+
     // Gunakan API Stok.getAll() seperti di kelola_stok.js
     if (window.API && window.API.Stok && window.API.Stok.getAll) {
       const res = await window.API.Stok.getAll({});
@@ -5156,7 +5236,7 @@ async function displayStok() {
     // Hitung total berat
     const totalBerat = stokArray.reduce(
       (sum, item) => sum + safeNumber(item.totalBerat || 0),
-      0
+      0,
     );
 
     // Update total summary
@@ -5167,18 +5247,22 @@ async function displayStok() {
     // Tampilkan tabel detail - sesuai dengan struktur di kelola_stok (tanpa kemasan, level roasting, total jumlah)
     if (tbody) {
       tbody.innerHTML = stokArray
-        .map((s, index) => `
+        .map(
+          (s, index) => `
           <tr>
             <td class="text-muted">${index + 1}</td>
             <td><span class="badge bg-info">${s.tipeProduk || "-"}</span></td>
             <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => "bg-secondary"))(s.jenisKopi)}">${s.jenisKopi || "-"}</span></td>
             <td>${s.prosesPengolahan || "-"}</td>
-            <td class="text-end"><strong class="text-primary">${safeNumber(s.totalBerat || 0).toLocaleString("id-ID", {
+            <td class="text-end"><strong class="text-primary">${safeNumber(
+              s.totalBerat || 0,
+            ).toLocaleString("id-ID", {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             })} kg</strong></td>
           </tr>
-        `)
+        `,
+        )
         .join("");
     }
 
@@ -5243,7 +5327,7 @@ function generateStokPDF(itemKey) {
           s.kemasan === kemasan &&
           s.jenisKopi === jenisKopi &&
           s.prosesPengolahan === prosesPengolahan &&
-          (s.levelRoasting || "") === (levelRoasting || "")
+          (s.levelRoasting || "") === (levelRoasting || ""),
       );
     }
 
@@ -5258,7 +5342,7 @@ function generateStokPDF(itemKey) {
           s.kemasan === kemasan &&
           s.jenisKopi === jenisKopi &&
           s.prosesPengolahan === prosesPengolahan &&
-          (s.levelRoasting || "") === (levelRoasting || "")
+          (s.levelRoasting || "") === (levelRoasting || ""),
       );
     }
 
@@ -5371,7 +5455,7 @@ function generateStokPDF(itemKey) {
       doc.text(
         "Tidak ada detail hasil produksi untuk kombinasi produk ini",
         20,
-        y
+        y,
       );
       y += 8;
     }
@@ -5385,13 +5469,13 @@ function generateStokPDF(itemKey) {
         `Halaman ${i} dari ${pageCount}`,
         105,
         doc.internal.pageSize.height - 10,
-        { align: "center" }
+        { align: "center" },
       );
       doc.text(
         `Dicetak pada: ${new Date().toLocaleString("id-ID")}`,
         105,
         doc.internal.pageSize.height - 5,
-        { align: "center" }
+        { align: "center" },
       );
     }
 
@@ -5432,7 +5516,7 @@ async function generateDataKemasanPDFWithQRCode(
   item,
   produksiData,
   bahanData,
-  pdfUrl
+  pdfUrl,
 ) {
   // Fungsi ini akan menambahkan QR Code dan Link ke PDF yang sudah dibuat
   // pdfUrl adalah URL backend yang sudah di-upload
@@ -5494,12 +5578,12 @@ async function generateDataKemasanPDFWithQRCode(
                 console.log("✓ QRCode generated successfully with backend URL");
                 resolve();
               }
-            }
+            },
           );
         } catch (syncError) {
           console.error(
             "❌ Synchronous error in QRCode generation:",
-            syncError
+            syncError,
           );
           drawQRCodePlaceholder(canvas.getContext("2d"), qrSize);
           resolve();
@@ -5663,9 +5747,7 @@ async function generateDataKemasanPDF(id) {
         ["Pemasok", bahanData.pemasok || "—"],
         [
           "Jumlah (kg)",
-          bahanData.jumlah
-            ? bahanData.jumlah.toLocaleString("id-ID")
-            : "—",
+          bahanData.jumlah ? bahanData.jumlah.toLocaleString("id-ID") : "—",
         ],
         ["Varietas", bahanData.varietas || "—"],
         [
@@ -5720,10 +5802,7 @@ async function generateDataKemasanPDF(id) {
               : "—"
           } kg`,
         ],
-        [
-          "Proses Pengolahan",
-          getProsesPengolahanTampilanLaporan(produksiData),
-        ],
+        ["Proses Pengolahan", getProsesPengolahanTampilanLaporan(produksiData)],
         [
           "Kadar Air",
           produksiData.kadarAir ? `${produksiData.kadarAir}%` : "—",
@@ -5737,7 +5816,11 @@ async function generateDataKemasanPDF(id) {
       detailY = pdfRenderKeyValueTable(detailDoc, detailY, pairsPrdKm, {
         title: "Data produksi",
       });
-      detailY = pdfAppendCatatanPerTahapanList(detailDoc, detailY, produksiData);
+      detailY = pdfAppendCatatanPerTahapanList(
+        detailDoc,
+        detailY,
+        produksiData,
+      );
       if (detailY > 200) {
         detailDoc.addPage();
         detailY = 20;
@@ -5752,7 +5835,7 @@ async function generateDataKemasanPDF(id) {
       detailDoc.text(
         "Tiap baris: tahapan, tanggal, berat, kadar, catatan.",
         20,
-        detailY
+        detailY,
       );
       detailY += 6;
       detailDoc.setTextColor(0, 0, 0);
@@ -5763,7 +5846,7 @@ async function generateDataKemasanPDF(id) {
         detailY,
         buildAlurProduksiTableRows(produksiData, {
           numericWeightInCells: true,
-        })
+        }),
       );
     }
 
@@ -5778,7 +5861,7 @@ async function generateDataKemasanPDF(id) {
     detailDoc.text(
       `Dicetak pada: ${new Date().toLocaleString("id-ID")}`,
       20,
-      detailY + 10
+      detailY + 10,
     );
 
     // Upload PDF detail ke backend
@@ -5786,7 +5869,7 @@ async function generateDataKemasanPDF(id) {
 
     if (!window.API || !window.API.Laporan) {
       throw new Error(
-        "API.Laporan tidak tersedia. Pastikan api-service.js sudah di-load."
+        "API.Laporan tidak tersedia. Pastikan api-service.js sudah di-load.",
       );
     }
 
@@ -5794,7 +5877,7 @@ async function generateDataKemasanPDF(id) {
     const detailUploadResult = await window.API.Laporan.uploadPdf(
       detailPdfBase64,
       "hasil-produksi-detail",
-      id
+      id,
     );
 
     if (
@@ -5804,7 +5887,7 @@ async function generateDataKemasanPDF(id) {
     ) {
       throw new Error(
         "Upload PDF detail gagal: " +
-          (detailUploadResult?.error || "Unknown error")
+          (detailUploadResult?.error || "Unknown error"),
       );
     }
 
@@ -5825,7 +5908,7 @@ async function generateDataKemasanPDF(id) {
 
     if (!detailPdfUrl.startsWith("http")) {
       throw new Error(
-        `Invalid PDF URL from backend: ${detailPdfUrl}. URL must start with http:// or https://`
+        `Invalid PDF URL from backend: ${detailPdfUrl}. URL must start with http:// or https://`,
       );
     }
 
@@ -5835,7 +5918,7 @@ async function generateDataKemasanPDF(id) {
     alert(
       "Error mengupload PDF detail: " +
         (error.message || "Unknown error") +
-        "\n\nSistem akan menggunakan URL fallback."
+        "\n\nSistem akan menggunakan URL fallback.",
     );
     // Jika upload gagal, throw error (TIDAK ada fallback)
     throw error;
@@ -5848,7 +5931,7 @@ async function generateDataKemasanPDF(id) {
 
   if (!detailPdfUrl.startsWith("http")) {
     throw new Error(
-      `Detail PDF URL tidak valid: ${detailPdfUrl}. URL harus dimulai dengan http:// atau https://`
+      `Detail PDF URL tidak valid: ${detailPdfUrl}. URL harus dimulai dengan http:// atau https://`,
     );
   }
 
@@ -5873,10 +5956,7 @@ async function generateDataKemasanPDF(id) {
   const pairsKmCover = [
     ["Jenis Kopi", item.jenisKopi || "—"],
     ["Proses Pengolahan", item.prosesPengolahan || "—"],
-    [
-      "Varietas",
-      bahanData && bahanData.varietas ? bahanData.varietas : "—",
-    ],
+    ["Varietas", bahanData && bahanData.varietas ? bahanData.varietas : "—"],
     ["Tipe Produk", item.tipeProduk || "—"],
     [
       "Tanggal bahan masuk",
@@ -5914,7 +5994,7 @@ async function generateDataKemasanPDF(id) {
 
   if (!qrCodeUrl.startsWith("http")) {
     throw new Error(
-      `Invalid QR Code URL: ${qrCodeUrl}. URL must start with http:// or https://`
+      `Invalid QR Code URL: ${qrCodeUrl}. URL must start with http:// or https://`,
     );
   }
 
@@ -5961,7 +6041,7 @@ async function generateDataKemasanPDF(id) {
       attempts++;
       if (attempts < maxAttempts) {
         console.log(
-          `⏳ Waiting for QRCode library... (attempt ${attempts}/${maxAttempts})`
+          `⏳ Waiting for QRCode library... (attempt ${attempts}/${maxAttempts})`,
         );
         await new Promise((resolve) => setTimeout(resolve, 100)); // Tunggu 100ms
       }
@@ -5970,7 +6050,7 @@ async function generateDataKemasanPDF(id) {
     // Validasi URL - HARUS absolute URL
     if (!qrCodeUrl.startsWith("http")) {
       throw new Error(
-        "QR Code URL invalid - must start with http:// or https://"
+        "QR Code URL invalid - must start with http:// or https://",
       );
     }
 
@@ -5985,7 +6065,7 @@ async function generateDataKemasanPDF(id) {
         attempts: attempts,
       });
       throw new Error(
-        "QRCode library not found. Please ensure qrcode.min.js is loaded from CDN."
+        "QRCode library not found. Please ensure qrcode.min.js is loaded from CDN.",
       );
     }
 
@@ -6021,7 +6101,7 @@ async function generateDataKemasanPDF(id) {
             console.log("✅ QR Code generated successfully");
             console.log("✅ QR Code URL encoded:", qrCodeUrl);
             resolve();
-          }
+          },
         );
       } catch (syncError) {
         console.error("❌ Synchronous error in QRCode.toCanvas:", syncError);
@@ -6152,7 +6232,7 @@ async function generateDataKemasanPDF(id) {
     "Dokumen ini dibuat secara otomatis oleh sistem Argopuro Walida",
     105,
     y,
-    { align: "center" }
+    { align: "center" },
   );
   y += 6;
   const printDate = new Date().toLocaleDateString("id-ID", {
@@ -6175,7 +6255,7 @@ async function generateDataKemasanPDF(id) {
     // Upload PDF ke backend
     if (!window.API || !window.API.Laporan) {
       throw new Error(
-        "API.Laporan tidak tersedia. Pastikan api-service.js sudah di-load."
+        "API.Laporan tidak tersedia. Pastikan api-service.js sudah di-load.",
       );
     }
 
@@ -6183,12 +6263,12 @@ async function generateDataKemasanPDF(id) {
     const uploadResult = await window.API.Laporan.uploadPdf(
       pdfBase64,
       "data-kemasan",
-      id
+      id,
     );
 
     if (!uploadResult || !uploadResult.success || !uploadResult.url) {
       throw new Error(
-        "Upload PDF gagal: " + (uploadResult?.error || "Unknown error")
+        "Upload PDF gagal: " + (uploadResult?.error || "Unknown error"),
       );
     }
 
@@ -6211,7 +6291,7 @@ async function generateDataKemasanPDF(id) {
     if (!finalPdfUrl.startsWith("http")) {
       console.error("❌ Invalid PDF URL format:", finalPdfUrl);
       alert(
-        `Error: URL PDF tidak valid. URL harus dimulai dengan http:// atau https://\n\nURL yang diterima: ${finalPdfUrl}`
+        `Error: URL PDF tidak valid. URL harus dimulai dengan http:// atau https://\n\nURL yang diterima: ${finalPdfUrl}`,
       );
       return;
     }
@@ -6265,12 +6345,12 @@ async function generateDataKemasanPDF(id) {
     alert(
       "Error mengupload PDF: " +
         (error.message || "Unknown error") +
-        "\n\nSilakan coba lagi atau hubungi administrator."
+        "\n\nSilakan coba lagi atau hubungi administrator.",
     );
 
     // TIDAK ADA FALLBACK KE BLOB URL - SEMUA HARUS DARI SERVER
     console.error(
-      "❌ Tidak dapat membuka PDF. Upload gagal dan tidak ada PDF yang tersedia di server."
+      "❌ Tidak dapat membuka PDF. Upload gagal dan tidak ada PDF yang tersedia di server.",
     );
   }
 }
@@ -6374,7 +6454,7 @@ function generateKeuanganPDF(id) {
     [
       "Catatan / notes",
       item.notes && String(item.notes).trim() ? item.notes : "—",
-    ]
+    ],
   );
   y = pdfRenderKeyValueTable(doc, y, pairsKeu, { title: "Ringkasan" });
 
@@ -6414,7 +6494,7 @@ function generateKeuanganPDF(id) {
       window.dispatchEvent(
         new CustomEvent("localStorageUpdated", {
           detail: { key: key, value: value },
-        })
+        }),
       );
     }
   };
@@ -6455,6 +6535,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // Initialize hashes
       await initializeHashes();
       initializeTableFilters();
+      initializeKeuanganJenisFilterListener();
       initializeBahanPemasokFilterListener();
       initializeLaporanProsesTahapanFilterListeners();
 
@@ -6550,8 +6631,7 @@ function getPemesananFilteredForLaporan() {
     ? document.getElementById("pemesananFilterTipe").value
     : "";
   return pemesanan.filter((p) => {
-    const matchTanggal =
-      !filterTanggal || p.tanggalPemesanan === filterTanggal;
+    const matchTanggal = !filterTanggal || p.tanggalPemesanan === filterTanggal;
     const matchStatus = !filterStatus || p.statusPemesanan === filterStatus;
     const matchTipe = !filterTipe || p.tipePemesanan === filterTipe;
     return matchTanggal && matchStatus && matchTipe;
@@ -6634,7 +6714,7 @@ function displayPemesananLaporan() {
           </button>
         </td>
       </tr>
-    `
+    `,
       )
       .join("");
   } catch (error) {
@@ -6675,7 +6755,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
         item.idPembelian === idPembelian ||
         item.id === parseInt(idPembelian) ||
         item._id === idPembelian ||
-        String(item.id) === String(idPembelian)
+        String(item.id) === String(idPembelian),
     );
 
     if (!p) {
@@ -6709,10 +6789,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     let y = 50;
     const invPairs1 = [
       ["ID Pembelian", p.idPembelian || "—"],
-      [
-        "Tanggal",
-        formatDate(p.tanggalPemesanan || new Date().toISOString()),
-      ],
+      ["Tanggal", formatDate(p.tanggalPemesanan || new Date().toISOString())],
       ["Status", p.statusPemesanan || "—"],
     ];
     y = pdfRenderKeyValueTable(doc, y, invPairs1, { title: "Invoice" });
@@ -6735,18 +6812,9 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     y = pdfRenderKeyValueTable(doc, y, prodPairs, { title: "Data produk" });
 
     const hargaPairs = [
-      [
-        "Jumlah Pesanan (kg)",
-        (p.jumlahPesananKg || 0).toLocaleString("id-ID"),
-      ],
-      [
-        "Harga per Kg (Rp)",
-        (p.hargaPerKg || 0).toLocaleString("id-ID"),
-      ],
-      [
-        "Total Harga (Rp)",
-        (p.totalHarga || 0).toLocaleString("id-ID"),
-      ],
+      ["Jumlah Pesanan (kg)", (p.jumlahPesananKg || 0).toLocaleString("id-ID")],
+      ["Harga per Kg (Rp)", (p.hargaPerKg || 0).toLocaleString("id-ID")],
+      ["Total Harga (Rp)", (p.totalHarga || 0).toLocaleString("id-ID")],
     ];
     y = pdfRenderKeyValueTable(doc, y, hargaPairs, { title: "Rincian harga" });
 
@@ -6769,7 +6837,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     if (!window.API || !window.API.Laporan || !window.API.Laporan.uploadPdf) {
       // Fallback: Save PDF directly without upload
       console.warn(
-        "⚠️ API.Laporan.uploadPdf not available, saving PDF directly"
+        "⚠️ API.Laporan.uploadPdf not available, saving PDF directly",
       );
       const fileName = `Invoice_${p.idPembelian}_${new Date().getTime()}.pdf`;
       doc.save(fileName);
@@ -6795,7 +6863,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     const uploadResult = await window.API.Laporan.uploadPdf(
       `data:application/pdf;base64,${pdfBase64Data}`,
       "invoice-pemesanan",
-      p.idPembelian
+      p.idPembelian,
     );
 
     if (!uploadResult || !uploadResult.success) {
@@ -6831,10 +6899,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     let yQR = 50;
     const invPairsQr1 = [
       ["ID Pembelian", p.idPembelian || "—"],
-      [
-        "Tanggal",
-        formatDate(p.tanggalPemesanan || new Date().toISOString()),
-      ],
+      ["Tanggal", formatDate(p.tanggalPemesanan || new Date().toISOString())],
       ["Status", p.statusPemesanan || "—"],
     ];
     yQR = pdfRenderKeyValueTable(docWithQR, yQR, invPairsQr1, {
@@ -6863,18 +6928,9 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     });
 
     const hargaPairsQr = [
-      [
-        "Jumlah Pesanan (kg)",
-        (p.jumlahPesananKg || 0).toLocaleString("id-ID"),
-      ],
-      [
-        "Harga per Kg (Rp)",
-        (p.hargaPerKg || 0).toLocaleString("id-ID"),
-      ],
-      [
-        "Total Harga (Rp)",
-        (p.totalHarga || 0).toLocaleString("id-ID"),
-      ],
+      ["Jumlah Pesanan (kg)", (p.jumlahPesananKg || 0).toLocaleString("id-ID")],
+      ["Harga per Kg (Rp)", (p.hargaPerKg || 0).toLocaleString("id-ID")],
+      ["Total Harga (Rp)", (p.totalHarga || 0).toLocaleString("id-ID")],
     ];
     yQR = pdfRenderKeyValueTable(docWithQR, yQR, hargaPairsQr, {
       title: "Rincian harga",
@@ -6924,7 +6980,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
                 console.log("✅ QR Code generated successfully");
                 resolve();
               }
-            }
+            },
           );
         });
 
@@ -6953,13 +7009,13 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
         `Halaman ${i} dari ${pageCount}`,
         105,
         docWithQR.internal.pageSize.height - 10,
-        { align: "center" }
+        { align: "center" },
       );
       docWithQR.text(
         `Dicetak pada: ${new Date().toLocaleString("id-ID")}`,
         105,
         docWithQR.internal.pageSize.height - 5,
-        { align: "center" }
+        { align: "center" },
       );
     }
 
@@ -6976,7 +7032,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
       const finalUploadResult = await window.API.Laporan.uploadPdf(
         `data:application/pdf;base64,${finalPdfBase64Data}`,
         "invoice-pemesanan",
-        p.idPembelian
+        p.idPembelian,
       );
 
       if (finalUploadResult && finalUploadResult.success) {
@@ -6991,7 +7047,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
 
         // Tampilkan alert seperti di kelola_pemesanan.js
         alert(
-          `Invoice PDF berhasil di-generate!\n\nURL: ${finalUploadResult.fullUrl}\n\nQR Code dapat di-scan untuk membuka invoice.`
+          `Invoice PDF berhasil di-generate!\n\nURL: ${finalUploadResult.fullUrl}\n\nQR Code dapat di-scan untuk membuka invoice.`,
         );
       } else {
         throw new Error("Failed to upload final PDF");
@@ -6999,7 +7055,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     } catch (uploadError) {
       console.warn(
         "⚠️ Failed to upload PDF, saving locally instead:",
-        uploadError
+        uploadError,
       );
       // Fallback: Save PDF directly
       const fileName = `Invoice_${p.idPembelian}_${new Date().getTime()}.pdf`;
@@ -7050,14 +7106,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Filter change listeners
   const pemesananFilterTanggal = document.getElementById(
-    "pemesananFilterTanggal"
+    "pemesananFilterTanggal",
   );
   if (pemesananFilterTanggal) {
     pemesananFilterTanggal.addEventListener("change", displayPemesananLaporan);
   }
 
   const pemesananFilterStatus = document.getElementById(
-    "pemesananFilterStatus"
+    "pemesananFilterStatus",
   );
   if (pemesananFilterStatus) {
     pemesananFilterStatus.addEventListener("change", displayPemesananLaporan);
