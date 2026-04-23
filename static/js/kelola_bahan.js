@@ -117,6 +117,15 @@ function toInputDateValue(raw) {
   return "";
 }
 
+/** Tampilan tanggal masuk di tabel; data kosong/tidak valid → "—". */
+function formatTanggalMasukCell(raw) {
+  if (raw == null || raw === "") return "—";
+  const v = toInputDateValue(raw);
+  if (!v) return "—";
+  const d = new Date(`${v}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("id-ID");
+}
+
 /**
  * Set nilai select; jika nilai tidak ada di master, tambahkan opsi agar edit tetap konsisten.
  */
@@ -681,27 +690,47 @@ async function displayBahan() {
   const filterPemasok = filterPemasokEl
     ? String(filterPemasokEl.value || "").trim()
     : "";
+  const filterTglEl = document.getElementById("filterTanggalMasukBahan");
+  const filterTanggalMasuk = filterTglEl
+    ? String(filterTglEl.value || "").trim()
+    : "";
 
   // Filter data berdasarkan search
   let filteredBahan = bahan;
   if (searchTerm) {
-    filteredBahan = bahan.filter(
-      (b) =>
+    filteredBahan = bahan.filter((b) => {
+      const tglNorm = toInputDateValue(b.tanggalMasuk);
+      const tglLabel =
+        tglNorm && !Number.isNaN(new Date(`${tglNorm}T12:00:00`).getTime())
+          ? new Date(`${tglNorm}T12:00:00`)
+              .toLocaleDateString("id-ID")
+              .toLowerCase()
+          : "";
+      return (
         (b.idBahan && b.idBahan.toLowerCase().includes(searchTerm)) ||
         (b.pemasok && b.pemasok.toLowerCase().includes(searchTerm)) ||
         (b.varietas && b.varietas.toLowerCase().includes(searchTerm)) ||
         (b.jenisKopi && b.jenisKopi.toLowerCase().includes(searchTerm)) ||
-        ((b.prosesBahan || []).some(
+        (tglNorm && tglNorm.includes(searchTerm)) ||
+        (tglLabel && tglLabel.includes(searchTerm)) ||
+        (b.prosesBahan || []).some(
           (x) =>
             x.prosesPengolahan &&
             String(x.prosesPengolahan).toLowerCase().includes(searchTerm)
-        ))
-    );
+        )
+      );
+    });
   }
   if (filterPemasok) {
     filteredBahan = filteredBahan.filter(
       (b) => (b.pemasok || "").trim() === filterPemasok
     );
+  }
+  if (filterTanggalMasuk) {
+    filteredBahan = filteredBahan.filter((b) => {
+      const v = toInputDateValue(b.tanggalMasuk);
+      return v === filterTanggalMasuk;
+    });
   }
 
   if (filteredBahan.length === 0) {
@@ -727,8 +756,7 @@ async function displayBahan() {
         const hargaPerKg = b.hargaPerKg || 0;
         const totalPengeluaran = b.totalPengeluaran || jumlah * hargaPerKg;
         const jenisKopi = b.jenisKopi || "-";
-        const tanggalMasuk =
-          b.tanggalMasuk || new Date().toISOString().split("T")[0];
+        const tanggalMasukTampilan = formatTanggalMasukCell(b.tanggalMasuk);
         const prosesLabel =
           (b.prosesBahan || [])
             .map((x) => x.prosesPengolahan)
@@ -746,7 +774,7 @@ async function displayBahan() {
       <td>Rp ${hargaPerKg.toLocaleString("id-ID")}</td>
       <td>Rp ${totalPengeluaran.toLocaleString("id-ID")}</td>
       <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => 'bg-secondary'))(jenisKopi)}">${jenisKopi}</span></td>
-      <td>${new Date(tanggalMasuk).toLocaleDateString("id-ID")}</td>
+      <td>${tanggalMasukTampilan}</td>
       <td><small class="text-muted">${prosesLabel}</small></td>
       <td>${
         b.lunas
@@ -869,6 +897,10 @@ async function openModal() {
   const hargaPerKgGlobalEl = document.getElementById("hargaPerKgGlobal");
   if (hargaPerKgGlobalEl) hargaPerKgGlobalEl.value = "";
   if (hasilContainer) hasilContainer.style.display = "none";
+  const tanggalMasukEl = document.getElementById("tanggalMasuk");
+  if (tanggalMasukEl) {
+    tanggalMasukEl.value = new Date().toISOString().split("T")[0];
+  }
 
   await loadProsesMasterUntukBahan();
   clearProsesBahanUI();
@@ -1206,7 +1238,12 @@ async function saveBahan() {
   const pemasok = document.getElementById("pemasok").value;
   const varietas = document.getElementById("varietas").value;
   const jenisKopi = document.getElementById("jenisKopi").value;
-  const tanggalMasuk = document.getElementById("tanggalMasuk").value;
+  const tanggalMasuk = document.getElementById("tanggalMasuk")?.value?.trim();
+  if (!tanggalMasuk) {
+    alert("Tanggal masuk wajib diisi.");
+    document.getElementById("tanggalMasuk")?.focus();
+    return;
+  }
 
   if (!window.API || !window.API.Bahan) {
     alert("❌ API.Bahan tidak tersedia. Pastikan backend aktif.");
@@ -1511,6 +1548,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const filterPemasokBahan = document.getElementById("filterPemasokBahan");
   if (filterPemasokBahan) {
     filterPemasokBahan.addEventListener("change", displayBahan);
+  }
+
+  const filterTanggalMasukBahan = document.getElementById(
+    "filterTanggalMasukBahan",
+  );
+  if (filterTanggalMasukBahan) {
+    filterTanggalMasukBahan.addEventListener("change", displayBahan);
   }
 
   // Event listener untuk form search
