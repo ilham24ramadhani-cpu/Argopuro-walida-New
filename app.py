@@ -472,87 +472,6 @@ def _sisa_bahan_line(bahan_doc, id_bahan, proses_pengolahan):
     return max(0.0, cap - used), None
 
 
-def _sync_produksi_proses_pengolahan_after_bahan_update(id_bahan, old_proses_rows, new_proses_rows):
-    """
-    Menyamakan prosesPengolahan pada dokumen produksi ketika baris proses di kelola bahan
-    diubah (nama/urutan). Produksi menyimpan salinan string proses saat dibuat; tanpa
-    sinkron ini data produksi tetap memakai nama lama walau master bahan sudah diperbarui.
-
-    Penting: jangan men-set SEMUA produksi ke satu proses hanya karena master bahan kini
-    punya satu baris proses (mis. setelah menggabungkan / memindahkan berat ke jalur lain).
-    Itu akan menimpa batch lama (mis. Anaerob) yang masih benar secara historis.
-    """
-    id_bahan = str(id_bahan or '').strip()
-    if not id_bahan or not new_proses_rows:
-        return
-    old_list = old_proses_rows if isinstance(old_proses_rows, list) else []
-    new_list = new_proses_rows if isinstance(new_proses_rows, list) else []
-    # Hanya rename satu-jalur → satu-jalur: update produksi yang masih memakai nama lama.
-    if len(new_list) == 1 and len(old_list) == 1:
-        o = (old_list[0].get('prosesPengolahan') or '').strip()
-        nn = (new_list[0].get('prosesPengolahan') or '').strip()
-        if o and nn and o != nn:
-            r = db.produksi.update_many(
-                {**_produksi_filter_by_bahan_id(id_bahan), 'prosesPengolahan': o},
-                {'$set': {'prosesPengolahan': nn}},
-            )
-            if r.matched_count and not r.modified_count:
-                print(
-                    f"ℹ️ [SYNC PROSES] idBahan={id_bahan}: tidak ada produksi dengan prosesPengolahan '{o}' "
-                    f"({r.matched_count} dokumen cocok tanpa perubahan)"
-                )
-            elif r.modified_count:
-                print(
-                    f"✅ [SYNC PROSES] idBahan={id_bahan}: rename '{o}' → '{nn}' "
-                    f"pada {r.modified_count} dokumen produksi"
-                )
-            elif r.matched_count == 0:
-                print(
-                    f"⚠️ [SYNC PROSES] idBahan={id_bahan}: tidak ada produksi dengan idBahan + proses '{o}'."
-                )
-        return
-    if len(new_list) == 1 and len(old_list) != 1:
-        print(
-            f"ℹ️ [SYNC PROSES] idBahan={id_bahan}: master bahan kini satu jalur proses "
-            f"(sebelumnya {len(old_list)} baris). Proses pada dokumen produksi tidak diubah otomatis "
-            'agar batch lama (jalur berbeda) tidak tertimpa.'
-        )
-        return
-    n = min(len(old_list), len(new_list))
-    changes = []
-    for i in range(n):
-        o = (old_list[i].get('prosesPengolahan') or '').strip()
-        nn = (new_list[i].get('prosesPengolahan') or '').strip()
-        if o and nn and o != nn:
-            changes.append((o, nn))
-    if not changes:
-        return
-    # Dua fase agar swap nama antar baris tidak saling menimpa
-    TEMP = '__sync_proses_pp__'
-    for idx, (o, _) in enumerate(changes):
-        mid = f'{TEMP}{idx}'
-        db.produksi.update_many(
-            {**_produksi_filter_by_bahan_id(id_bahan), 'prosesPengolahan': o},
-            {'$set': {'prosesPengolahan': mid}}
-        )
-    for idx, (_, nn) in enumerate(changes):
-        mid = f'{TEMP}{idx}'
-        r = db.produksi.update_many(
-            {**_produksi_filter_by_bahan_id(id_bahan), 'prosesPengolahan': mid},
-            {'$set': {'prosesPengolahan': nn}}
-        )
-        if r.modified_count:
-            print(
-                f"✅ [SYNC PROSES] idBahan={id_bahan}: '{nn}' "
-                f"({r.modified_count} dokumen)"
-            )
-    if len(old_list) > len(new_list):
-        print(
-            f"⚠️ [SYNC PROSES] idBahan={id_bahan}: jumlah baris proses berkurang; "
-            "produksi yang memakai nama proses yang dihapus tidak diubah otomatis."
-        )
-
-
 def _proses_bahan_stok_equivalent(old_lines, new_lines):
     """True jika setiap jalur punya nama proses + jumlahBeratProses yang sama (abaikan detail kloter)."""
     def norm(lst):
@@ -2295,17 +2214,10 @@ def update_bahan(bahan_id):
 
         db.bahan.update_one({'_id': bahan['_id']}, update_op)
 
-        if 'prosesBahan' in update_data:
-            eff_id_bahan = str(
-                (update_data.get('idBahan') if update_data.get('idBahan') is not None else None)
-                or bahan.get('idBahan')
-                or ''
-            ).strip()
-            _sync_produksi_proses_pengolahan_after_bahan_update(
-                eff_id_bahan,
-                bahan.get('prosesBahan'),
-                update_data['prosesBahan']
-            )
+        # Catatan: prosesPengolahan pada dokumen produksi TIDAK disamakan dengan master bahan.
+        # Produksi tetap mencerminkan pilihan saat dibuat. Jika struktur/berat proses bahan
+        # berubah (bukan ekuivalen stok), cascade di bawah melepaskan idBahan dari produksi
+        # agar batch lama tidak tertimpa dan bahan bisa dialokasikan ulang sesuai master baru.
 
         # Ubahan stok/master: lepaskan ID bahan dari semua produksi (centang terbuka / pilih ulang)
         cascade_stok = False
@@ -2343,9 +2255,9 @@ def update_bahan(bahan_id):
 @app.route('/api/bahan/<bahan_id>/sync-produksi-proses', methods=['POST'])
 def post_sync_produksi_proses_from_bahan_master(bahan_id):
     """
-    Menyelaraskan ulang prosesPengolahan pada produksi dari dokumen bahan terkini.
-    Hanya rename posisi-per posisi (sama seperti setelah update bahan); tidak lagi
-    men-set semua produksi ke satu proses hanya karena master bahan satu jalur.
+    Dinonaktifkan: proses pada dokumen produksi tidak lagi diselaraskan dari master bahan.
+    Renama master dilakukan lewat alur master data; alokasi bahan ke produksi diatur ulang
+    lepas otomatis saat master bahan berubah (cascade) bila perlu.
     """
     try:
         try:
@@ -2356,12 +2268,17 @@ def post_sync_produksi_proses_from_bahan_master(bahan_id):
             bahan = db.bahan.find_one({'idBahan': bahan_id})
         if not bahan:
             return jsonify({'error': 'Bahan not found'}), 404
-        lines = bahan.get('prosesBahan') or []
-        if not lines:
-            return jsonify({'error': 'Bahan tidak memiliki prosesBahan'}), 400
         eff_id = str(bahan.get('idBahan') or '').strip()
-        _sync_produksi_proses_pengolahan_after_bahan_update(eff_id, lines, lines)
-        return jsonify({'ok': True, 'idBahan': eff_id}), 200
+        return jsonify({
+            'ok': True,
+            'skipped': True,
+            'idBahan': eff_id,
+            'message': (
+                'Sinkron proses produksi dari master bahan tidak dilakukan. '
+                'Proses pada ID produksi tetap sesuai saat dibuat; id bahan yang terdampak '
+                'ubahan master dilepas otomatis bila struktur/berat proses tidak ekuivalen.'
+            ),
+        }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

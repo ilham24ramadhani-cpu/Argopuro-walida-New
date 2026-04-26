@@ -431,7 +431,10 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
       return res?.idBahan || null;
     },
 
-    /** Sinkronkan prosesPengolahan di produksi dari master bahan (panggil setelah edit bahan). */
+    /**
+     * Legacy: backend tidak lagi mengubah prosesPengolahan pada produksi dari master bahan.
+     * Tetap ada agar kode lama tidak error; respons biasanya { skipped: true }.
+     */
     async syncProduksiProses(bahanDocId) {
       return await apiCall(
         `/bahan/${encodeURIComponent(bahanDocId)}/sync-produksi-proses`,

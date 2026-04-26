@@ -198,6 +198,33 @@ function parseCurrencyValue(value) {
   return parseInt(value.replace(/\D/g, "")) || 0;
 }
 
+function syncKeuanganJenisFilterOptions() {
+  const sel = document.getElementById("filterJenisPengeluaranKeuangan");
+  if (!sel) return;
+  const prev = String(sel.value || "").trim();
+  const names = new Set();
+  (keuangan || []).forEach((k) => {
+    if (k && k.jenisPengeluaran)
+      names.add(String(k.jenisPengeluaran).trim());
+  });
+  sel.innerHTML = "";
+  const optAll = document.createElement("option");
+  optAll.value = "";
+  optAll.textContent = "Semua jenis";
+  sel.appendChild(optAll);
+  [...names]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "id"))
+    .forEach((n) => {
+      const o = document.createElement("option");
+      o.value = n;
+      o.textContent = n;
+      sel.appendChild(o);
+    });
+  const keep = prev && names.has(prev) ? prev : "";
+  sel.value = keep;
+}
+
 // Fungsi untuk menampilkan data keuangan
 async function displayKeuangan() {
   try {
@@ -211,15 +238,30 @@ async function displayKeuangan() {
   const searchInput = document.getElementById("searchInput");
   const searchTerm = searchInput ? searchInput.value.toLowerCase() : "";
 
+  syncKeuanganJenisFilterOptions();
+  const jenisFilterEl = document.getElementById("filterJenisPengeluaranKeuangan");
+  const filterJenisEff = jenisFilterEl
+    ? String(jenisFilterEl.value || "").trim()
+    : "";
+
   // Filter data berdasarkan search
   let filteredKeuangan = keuangan;
   if (searchTerm) {
-    filteredKeuangan = keuangan.filter(
-      (k) =>
-        k.tanggal.toLowerCase().includes(searchTerm) ||
-        k.jenisPengeluaran.toLowerCase().includes(searchTerm) ||
-        (k.idBahanBaku && k.idBahanBaku.toLowerCase().includes(searchTerm)) ||
-        (k.notes && k.notes.toLowerCase().includes(searchTerm))
+    filteredKeuangan = keuangan.filter((k) => {
+      const tglRaw = k.tanggal != null ? String(k.tanggal) : "";
+      const jenis = (k.jenisPengeluaran && String(k.jenisPengeluaran)) || "";
+      return (
+        tglRaw.toLowerCase().includes(searchTerm) ||
+        jenis.toLowerCase().includes(searchTerm) ||
+        (k.idBahanBaku &&
+          String(k.idBahanBaku).toLowerCase().includes(searchTerm)) ||
+        (k.notes && String(k.notes).toLowerCase().includes(searchTerm))
+      );
+    });
+  }
+  if (filterJenisEff) {
+    filteredKeuangan = filteredKeuangan.filter(
+      (k) => (k.jenisPengeluaran || "") === filterJenisEff
     );
   }
 
@@ -496,6 +538,13 @@ document.addEventListener("DOMContentLoaded", function () {
   const searchInput = document.getElementById("searchInput");
   if (searchInput) {
     searchInput.addEventListener("input", async () => {
+      await displayKeuangan();
+    });
+  }
+
+  const filterJenis = document.getElementById("filterJenisPengeluaranKeuangan");
+  if (filterJenis) {
+    filterJenis.addEventListener("change", async () => {
       await displayKeuangan();
     });
   }
