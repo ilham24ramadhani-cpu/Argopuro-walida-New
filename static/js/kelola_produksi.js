@@ -138,15 +138,29 @@ window.onProsesPengolahanProduksiChange = async function onProsesPengolahanProdu
     beratAwalInput.value = "";
   }
 
+  // Ganti proses: jangan biarkan varietas / tanggal dari pilihan bahan sebelumnya
+  // (mengacu id bahan lain proses) — isi ulang setelah user centang bahan di jalur baru
+  if (!currentEditId) {
+    const vEl = document.getElementById("varietas");
+    const tEl = document.getElementById("tanggalMasuk");
+    if (vEl) vEl.value = "";
+    if (tEl) tEl.value = "";
+  }
+
   if (!proses) {
     if (ph) {
       ph.classList.remove("d-none");
       ph.textContent = "Pilih proses pengolahan terlebih dahulu.";
     }
+    await loadTahapanFromMasterProduksi();
     return;
   }
 
   if (ph) ph.classList.add("d-none");
+
+  // Tahapan master harus mengikuti proses yang dipilih (sebelumnya hanya
+  // di-refresh saat user centang ID Bahan, sehingga terlihat "tidak sesuai proses")
+  await loadTahapanFromMasterProduksi(proses);
 
   if (!window.API?.Bahan?.getUntukProduksi) {
     if (ph) {
