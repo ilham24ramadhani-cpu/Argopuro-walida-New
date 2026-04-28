@@ -73,6 +73,22 @@ def _extract_db_name_from_mongodb_uri(uri: str):
     tail = u.rsplit('/', 1)[-1].strip()
     return tail or None
 
+def _sanitize_db_name(name: str):
+    """
+    MongoDB db name tidak boleh mengandung spasi.
+    Railway kadang menyuntikkan env dengan spasi/quote tak sengaja.
+    """
+    if name is None:
+        return None
+    s = str(name).strip().strip('"').strip("'").strip()
+    if not s:
+        return None
+    if " " in s:
+        fixed = "_".join(s.split())
+        print(f"⚠️ DB_NAME mengandung spasi: {s!r}. Menggunakan: {fixed!r}")
+        s = fixed
+    return s
+
 # Pastikan DB_NAME konsisten dengan nama db di URI (MongoDB sensitif case untuk create DB).
 _db_from_uri = _extract_db_name_from_mongodb_uri(MONGODB_URI) if MONGODB_URI else None
 if _db_from_uri:
@@ -83,6 +99,9 @@ if _db_from_uri:
         if str(DB_NAME).strip().lower() == str(_db_from_uri).strip().lower() and str(DB_NAME).strip() != str(_db_from_uri).strip():
             print(f"⚠️ DB_NAME beda case dengan URI: DB_NAME={DB_NAME} URI_DB={_db_from_uri}. Menggunakan URI_DB.")
             DB_NAME = _db_from_uri
+
+# Sanitasi akhir (trim + hilangkan spasi) sebelum dipakai di client[DB_NAME]
+DB_NAME = _sanitize_db_name(DB_NAME)
 
 client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=8080)
 db = client[DB_NAME]
