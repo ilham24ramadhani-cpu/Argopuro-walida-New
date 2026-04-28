@@ -1166,6 +1166,27 @@ function formatMonthYear(date) {
   });
 }
 
+/** Nama bulan Indonesia untuk angka 1–12 (filter "bulan saja"). */
+function formatBulanIndonesia(monthNum) {
+  const n = parseInt(String(monthNum), 10);
+  if (!Number.isFinite(n) || n < 1 || n > 12) return String(monthNum ?? "");
+  const names = [
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+  ];
+  return names[n - 1];
+}
+
 function getPeriodMeta(date, range) {
   if (!date) return null;
   const year = date.getFullYear();
@@ -2003,6 +2024,17 @@ function updateFilterInputAppearance(input, mode) {
     input.placeholder = "";
     input.disabled = false;
     input.value = tableFilters[input.dataset.category]?.value || "";
+  } else if (mode === "month_only") {
+    input.type = "number";
+    input.min = "1";
+    input.max = "12";
+    input.step = "1";
+    input.placeholder = "1–12 (mis. 4 = April)";
+    input.disabled = false;
+    const v = tableFilters[input.dataset.category]?.value;
+    const n = v != null && String(v).trim() !== "" ? parseInt(String(v), 10) : NaN;
+    input.value =
+      Number.isFinite(n) && n >= 1 && n <= 12 ? String(n) : "";
   } else if (mode === "yearly") {
     input.type = "number";
     input.min = "2000";
@@ -2107,6 +2139,11 @@ function matchesDateFilter(dateValue, filter) {
       .toString()
       .padStart(2, "0")}`;
     return monthValue === filter.value;
+  }
+  if (filter.mode === "month_only") {
+    const want = parseInt(String(filter.value).trim(), 10);
+    if (!Number.isFinite(want) || want < 1 || want > 12) return true;
+    return date.getMonth() + 1 === want;
   }
   if (filter.mode === "yearly") {
     return date.getFullYear().toString() === filter.value;
@@ -2624,12 +2661,20 @@ function getFilterDescription(category) {
   if (category === "pemesanan") {
     const parts = [];
     const elT = document.getElementById("pemesananFilterTanggal");
+    const elB = document.getElementById("pemesananFilterBulan");
     const elS = document.getElementById("pemesananFilterStatus");
     const elTip = document.getElementById("pemesananFilterTipe");
     const ft = elT && elT.value;
+    const fb = elB && elB.value;
     const fs = elS && elS.value;
     const ftip = elTip && elTip.value;
     if (ft) parts.push(`Tanggal: ${formatDate(ft)}`);
+    if (fb) {
+      const m = parseInt(String(fb), 10);
+      if (Number.isFinite(m) && m >= 1 && m <= 12) {
+        parts.push(`Bulan: ${formatBulanIndonesia(m)} (semua tahun)`);
+      }
+    }
     if (fs) parts.push(`Status: ${fs}`);
     if (ftip) parts.push(`Tipe: ${ftip}`);
     return parts.length ? parts.join(" | ") : "Filter: semua pemesanan";
@@ -2645,6 +2690,12 @@ function getFilterDescription(category) {
     } else if (filter.mode === "monthly") {
       const date = new Date(`${filter.value}-01`);
       timePart = `Periode: Bulanan (${formatMonthYear(date)})`;
+    } else if (filter.mode === "month_only") {
+      const m = parseInt(String(filter.value), 10);
+      timePart =
+        Number.isFinite(m) && m >= 1 && m <= 12
+          ? `Periode: ${formatBulanIndonesia(m)} (semua tahun)`
+          : "Periode: Bulan (semua tahun)";
     } else if (filter.mode === "yearly") {
       timePart = `Periode: Tahunan (${filter.value})`;
     }
@@ -6543,6 +6594,10 @@ function getPemesananFilteredForLaporan() {
   const filterTanggal = document.getElementById("pemesananFilterTanggal")
     ? document.getElementById("pemesananFilterTanggal").value
     : "";
+  const filterBulanRaw = document.getElementById("pemesananFilterBulan")
+    ? document.getElementById("pemesananFilterBulan").value.trim()
+    : "";
+  const filterBulan = filterBulanRaw ? parseInt(filterBulanRaw, 10) : NaN;
   const filterStatus = document.getElementById("pemesananFilterStatus")
     ? document.getElementById("pemesananFilterStatus").value
     : "";
@@ -6552,9 +6607,14 @@ function getPemesananFilteredForLaporan() {
   return pemesanan.filter((p) => {
     const matchTanggal =
       !filterTanggal || p.tanggalPemesanan === filterTanggal;
+    let matchBulan = true;
+    if (Number.isFinite(filterBulan) && filterBulan >= 1 && filterBulan <= 12) {
+      const d = parseValidDate(p.tanggalPemesanan);
+      matchBulan = !!(d && d.getMonth() + 1 === filterBulan);
+    }
     const matchStatus = !filterStatus || p.statusPemesanan === filterStatus;
     const matchTipe = !filterTipe || p.tipePemesanan === filterTipe;
-    return matchTanggal && matchStatus && matchTipe;
+    return matchTanggal && matchBulan && matchStatus && matchTipe;
   });
 }
 
@@ -7066,5 +7126,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const pemesananFilterTipe = document.getElementById("pemesananFilterTipe");
   if (pemesananFilterTipe) {
     pemesananFilterTipe.addEventListener("change", displayPemesananLaporan);
+  }
+  const pemesananFilterBulan = document.getElementById("pemesananFilterBulan");
+  if (pemesananFilterBulan) {
+    pemesananFilterBulan.addEventListener("change", displayPemesananLaporan);
   }
 });

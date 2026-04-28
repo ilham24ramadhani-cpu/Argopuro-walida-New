@@ -6,6 +6,25 @@
 (function (global) {
   function safeNum(v) {
     if (v === null || v === undefined) return 0;
+    if (typeof v === "string") {
+      const raw = v.trim().replace(/\s/g, "");
+      // Normalisasi angka format Indonesia:
+      // - "2.218,85" -> "2218.85"
+      // - "319,59" -> "319.59"
+      // - "1,234.56" (tidak lazim id-ID) tetap aman: "," dianggap desimal jika tidak ada "."
+      let s = raw;
+      const looksId =
+        /^[+-]?\d{1,3}(\.\d{3})*(,\d+)?$/.test(raw) ||
+        /^[+-]?\d+(,\d+)$/.test(raw);
+      if (looksId) {
+        s = raw.replace(/\./g, "").replace(",", ".");
+      } else {
+        // fallback ringan: ganti koma menjadi titik (untuk input sederhana)
+        s = raw.replace(",", ".");
+      }
+      const nStr = parseFloat(s);
+      return Number.isFinite(nStr) ? nStr : 0;
+    }
     const n = typeof v === "number" ? v : parseFloat(v);
     return Number.isFinite(n) ? n : 0;
   }

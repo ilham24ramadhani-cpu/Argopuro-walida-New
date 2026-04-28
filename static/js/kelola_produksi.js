@@ -3242,7 +3242,8 @@ window.saveProduksi = async function saveProduksi() {
           );
           return;
         }
-        beratAkhir = parseFloat(beratAkhirValue);
+        // Pakai parser lokal (koma→titik) agar konsisten dengan input pengguna.
+        beratAkhir = parseBeratProduksiLocal(beratAkhirValue);
         console.log("📝 Parsed beratAkhir:", beratAkhir);
         if (isNaN(beratAkhir) || beratAkhir <= 0) {
           console.error("❌ Berat akhir harus lebih dari 0!");
@@ -3271,27 +3272,31 @@ window.saveProduksi = async function saveProduksi() {
 
     // Validasi: berat green beans wajib saat Pengemasan, berat pixel opsional
     if (isPengemasan) {
-      const beratGreenBeans = parseFloat(getElementValue("beratGreenBeans")) || 0;
+      const beratGreenBeans = parseBeratProduksiLocal(
+        getElementValue("beratGreenBeans"),
+      );
       if (!beratGreenBeans || beratGreenBeans <= 0) {
         alert("Berat Green Beans wajib diisi untuk tahap Pengemasan.");
         document.getElementById("beratGreenBeans")?.focus();
         return;
       }
       // Validasi berat green beans tidak boleh lebih besar dari berat akhir
-      if (beratGreenBeans > beratAkhir) {
+      if (beratGreenBeans > beratAkhir + 1e-6) {
         alert("Berat Green Beans tidak boleh lebih besar dari berat akhir!");
         document.getElementById("beratGreenBeans")?.focus();
         return;
       }
       // Berat pixel opsional, tapi jika diisi harus valid
-      const beratPixel = parseFloat(getElementValue("beratPixel")) || 0;
+      const beratPixel = parseBeratProduksiLocal(getElementValue("beratPixel"));
       if (beratPixel < 0) {
         alert("Berat Produk Pixel tidak boleh bernilai negatif.");
         document.getElementById("beratPixel")?.focus();
         return;
       }
       // Total berat green beans + pixel tidak boleh lebih dari berat akhir
-      if ((beratGreenBeans + beratPixel) > beratAkhir) {
+      const totalGbPixel = beratGreenBeans + beratPixel;
+      // Hindari false-positive dari floating point (contoh 240.58 + 26.7 = 267.28000000000003)
+      if (totalGbPixel > beratAkhir + 1e-6) {
         alert("Total berat Green Beans + Pixel tidak boleh lebih besar dari berat akhir!");
         return;
       }
@@ -3452,8 +3457,13 @@ window.saveProduksi = async function saveProduksi() {
       ).trim(),
     };
     if (isPengemasan) {
-      produksiData.beratGreenBeans = parseFloat(getElementValue("beratGreenBeans")) || 0;
-      produksiData.beratPixel = parseFloat(getElementValue("beratPixel")) || 0;
+      // Pakai parser lokal agar koma desimal tidak terpotong (contoh "319,59" → 319.59).
+      produksiData.beratGreenBeans = parseBeratProduksiLocal(
+        getElementValue("beratGreenBeans"),
+      );
+      produksiData.beratPixel = parseBeratProduksiLocal(
+        getElementValue("beratPixel"),
+      );
     }
 
     if (!isPengemasan) {
