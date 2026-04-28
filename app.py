@@ -55,6 +55,35 @@ if MONGODB_URI:
         except:
             pass
 
+def _extract_db_name_from_mongodb_uri(uri: str):
+    """
+    Ambil nama database dari MongoDB URI (bagian setelah '/' sebelum '?').
+    Contoh:
+      mongodb+srv://.../DB_Walida?retryWrites=true -> DB_Walida
+    """
+    if not uri:
+        return None
+    u = str(uri).strip()
+    # buang fragment/query dulu
+    if '?' in u:
+        u = u.split('?', 1)[0]
+    # jika tidak ada '/', tidak ada db name eksplisit
+    if '/' not in u:
+        return None
+    tail = u.rsplit('/', 1)[-1].strip()
+    return tail or None
+
+# Pastikan DB_NAME konsisten dengan nama db di URI (MongoDB sensitif case untuk create DB).
+_db_from_uri = _extract_db_name_from_mongodb_uri(MONGODB_URI) if MONGODB_URI else None
+if _db_from_uri:
+    if not DB_NAME:
+        DB_NAME = _db_from_uri
+    else:
+        # Jika hanya beda huruf besar/kecil, pakai yang dari URI agar tidak memicu DatabaseDifferCase.
+        if str(DB_NAME).strip().lower() == str(_db_from_uri).strip().lower() and str(DB_NAME).strip() != str(_db_from_uri).strip():
+            print(f"⚠️ DB_NAME beda case dengan URI: DB_NAME={DB_NAME} URI_DB={_db_from_uri}. Menggunakan URI_DB.")
+            DB_NAME = _db_from_uri
+
 client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=8080)
 db = client[DB_NAME]
 try:
