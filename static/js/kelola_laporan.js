@@ -1158,6 +1158,24 @@ function averageNumber(items, getter) {
   return total / count;
 }
 
+/** Rata-rata randomen keseluruhan (mean dari randomen per ID, bukan tertimbang). */
+function computeAverageRandomenOverall(items) {
+  const PR = typeof window !== "undefined" && window.ProduksiRandomen;
+  if (!PR || typeof PR.computeRandomenPerId !== "function") return null;
+  if (!Array.isArray(items) || items.length === 0) return null;
+  let sum = 0;
+  let n = 0;
+  items.forEach((p) => {
+    const r = PR.computeRandomenPerId(p);
+    if (Number.isFinite(r) && r > 0) {
+      sum += r;
+      n += 1;
+    }
+  });
+  if (n === 0) return null;
+  return { avgRatio: sum / n, counted: n };
+}
+
 function formatMonthYear(date) {
   if (!date) return "-";
   return date.toLocaleDateString("id-ID", {
@@ -1572,6 +1590,8 @@ const LAPORAN_REKAP_CONFIG = {
         }
       });
 
+      const avgRnd = computeAverageRandomenOverall(items);
+
       return [
         {
           label: "Total Berat Awal",
@@ -1580,6 +1600,14 @@ const LAPORAN_REKAP_CONFIG = {
         {
           label: "Total Berat Akhir",
           value: formatKgValue(totalBeratAkhir),
+        },
+        {
+          label: "Rata-rata randomen keseluruhan",
+          value: (() => {
+            const PR = window.ProduksiRandomen;
+            if (!avgRnd || !PR) return "—";
+            return `${PR.formatRandomenBanding1(avgRnd.avgRatio)} (dari ${avgRnd.counted} batch pengemasan)`;
+          })(),
         },
         {
           label: "Proses pengolahan paling banyak (berdasarkan bahan masuk)",
@@ -3979,7 +4007,20 @@ function renderProduksiTimeline() {
     return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
   });
 
-  wrapper.innerHTML = sortedProduksi
+  const avgRnd = computeAverageRandomenOverall(sortedProduksi);
+  const avgBanner = (() => {
+    const PR = window.ProduksiRandomen;
+    if (!avgRnd || !PR) return "";
+    return `<div class="alert alert-light border small mb-3 py-2">
+      <strong>Rata-rata randomen keseluruhan</strong>:
+      <span class="fw-semibold">${escapeHtmlLaporan(
+        PR.formatRandomenBanding1(avgRnd.avgRatio)
+      )}</span>
+      <span class="text-muted">— mean dari ${avgRnd.counted} batch pengemasan (sesuai filter)</span>
+    </div>`;
+  })();
+
+  wrapper.innerHTML = `${avgBanner}` + sortedProduksi
     .map((item, index) =>
       buildTimelineItem(item, index === 0, index, bahanById)
     )
