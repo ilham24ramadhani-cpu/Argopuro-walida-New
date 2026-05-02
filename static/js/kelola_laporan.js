@@ -4498,7 +4498,8 @@ function generateBahanPDF(id) {
     ["Pemasok", item.pemasok || "—"],
     [
       "Jumlah (kg)",
-      item.jumlah ? item.jumlah.toLocaleString("id-ID") : "—",
+      // Jangan “terlihat dibulatkan” di invoice: tampilkan presisi sampai 4 desimal.
+      formatBeratKgLaporanPdf(item.jumlah),
     ],
     ["Varietas", item.varietas || "—"],
     [
