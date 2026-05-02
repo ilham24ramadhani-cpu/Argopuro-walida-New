@@ -1109,6 +1109,13 @@ function cetakInvoiceBahan(idBahan) {
     year: "numeric",
   });
   const fmtRp = (v) => "Rp" + Math.round(v).toLocaleString("id-ID");
+  const fmtKg2 = (v) => {
+    const n = Number(v) || 0;
+    return n.toLocaleString("id-ID", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
 
   doc.setFillColor(0, 102, 93);
   doc.rect(0, 0, PAGE_W, 18, "F");
@@ -1161,7 +1168,7 @@ function cetakInvoiceBahan(idBahan) {
     const hargaPerKg = row.hargaPerKg > 0 ? row.hargaPerKg : (b.hargaPerKg || 0);
     doc.setFontSize(5);
     doc.text(String(row.no), MARGIN, yPos);
-    doc.text(row.berat.toFixed(1), MARGIN + 6, yPos);
+    doc.text(fmtKg2(row.berat), MARGIN + 6, yPos);
     doc.text(fmtRp(hargaPerKg), MARGIN + 18, yPos);
     doc.text(fmtRp(row.hargaKloter), MARGIN + 30, yPos);
     yPos += 3;
@@ -1174,7 +1181,7 @@ function cetakInvoiceBahan(idBahan) {
   doc.setFontSize(6);
   doc.setFont("helvetica", "bold");
   doc.text("Total Berat:", MARGIN, yPos);
-  doc.text(`${totalBerat.toFixed(2)} kg`, PAGE_W - MARGIN, yPos, { align: "right" });
+  doc.text(`${fmtKg2(totalBerat)} kg`, PAGE_W - MARGIN, yPos, { align: "right" });
   yPos += 4;
   doc.text("Total Harga:", MARGIN, yPos);
   doc.text(fmtRp(totalHarga), PAGE_W - MARGIN, yPos, { align: "right" });
