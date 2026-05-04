@@ -941,7 +941,23 @@
                       <option value="Ordering">Ordering</option>
                       <option value="Complete">Complete</option>
                     </select>
+                    <small class="text-muted d-block mt-1" id="hintStatusPemesananForm">
+                      Pilih <strong>Complete</strong> di sini untuk menyelesaikan pesanan (stok dikurangi), sama seperti lewat <strong>Proses Ordering</strong>.
+                    </small>
                   </div>
+                </div>
+                <div
+                  class="mt-3 pt-3 border-top border-secondary border-opacity-25"
+                  id="wrapSelectIdProduksiPemesanan"
+                  style="display: none"
+                >
+                  <label for="selectIdProduksiPemesanan" class="form-label"
+                    >ID Produksi <span class="text-muted fw-normal small">(opsional)</span></label
+                  >
+                  <select class="form-select" id="selectIdProduksiPemesanan">
+                    <option value="">Otomatis (FIFO)</option>
+                  </select>
+                  <small class="text-muted d-block mt-1" id="hintSelectIdProduksiPemesanan"></small>
                 </div>
               </div>
 

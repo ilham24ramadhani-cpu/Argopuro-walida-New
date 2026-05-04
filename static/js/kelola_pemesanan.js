@@ -978,18 +978,17 @@ async function openModal(mode = "add") {
     form.reset();
     document.getElementById("pemesananId").value = "";
 
-    // Enable semua field saat add
     const statusField = document.getElementById("statusPemesanan");
     if (statusField) {
       statusField.disabled = false;
-      // Pastikan option "Complete" ada
-      if (!statusField.querySelector('option[value="Complete"]')) {
-        const completeOption = document.createElement("option");
-        completeOption.value = "Complete";
-        completeOption.textContent = "Complete";
-        statusField.appendChild(completeOption);
-      }
+      const completeOption = statusField.querySelector(
+        'option[value="Complete"]',
+      );
+      if (completeOption) completeOption.remove();
+      statusField.value = "Ordering";
     }
+    const htAdd = document.getElementById("hintStatusPemesananForm");
+    if (htAdd) htAdd.style.display = "none";
 
     const idPembelianField = document.getElementById("idPembelian");
     if (idPembelianField) {
@@ -1028,6 +1027,11 @@ async function openModal(mode = "add") {
 
     const btnCetak = document.getElementById("btnSimpanCetakInvoice");
     if (btnCetak) btnCetak.style.display = "";
+
+    const wPem = document.getElementById("wrapSelectIdProduksiPemesanan");
+    if (wPem) wPem.style.display = "none";
+    const selPem = document.getElementById("selectIdProduksiPemesanan");
+    if (selPem) selPem.innerHTML = '<option value="">Otomatis (FIFO)</option>';
 
     await loadMasterDataOptions();
     renderKloterTable([{}]);
@@ -1097,8 +1101,8 @@ async function editPemesanan(id) {
 
     const statusField = document.getElementById("statusPemesanan");
     if (statusField) {
-      statusField.disabled = true;
       if (currentEditPreservesComplete) {
+        statusField.disabled = true;
         if (!statusField.querySelector('option[value="Complete"]')) {
           const o = document.createElement("option");
           o.value = "Complete";
@@ -1107,12 +1111,24 @@ async function editPemesanan(id) {
         }
         statusField.value = "Complete";
       } else {
-        const completeOption = statusField.querySelector(
-          'option[value="Complete"]',
-        );
-        if (completeOption) completeOption.remove();
+        statusField.disabled = false;
+        if (!statusField.querySelector('option[value="Complete"]')) {
+          const o = document.createElement("option");
+          o.value = "Complete";
+          o.textContent = "Complete";
+          statusField.appendChild(o);
+        }
       }
     }
+
+    await refreshSelectIdProduksiPemesananForm(p);
+    if (currentEditPreservesComplete) {
+      const wP = document.getElementById("wrapSelectIdProduksiPemesanan");
+      if (wP) wP.style.display = "none";
+    }
+    const htEdit = document.getElementById("hintStatusPemesananForm");
+    if (htEdit)
+      htEdit.style.display = currentEditPreservesComplete ? "none" : "";
 
     // Disable ID Pembelian saat edit (tidak bisa diubah)
     const idPembelianField = document.getElementById("idPembelian");
@@ -1245,28 +1261,109 @@ async function savePemesanan(cetakInvoice) {
     if (alamatPembeli) pemesananData.alamatPembeli = alamatPembeli;
 
     if (pemesananId) {
-      // Edit mode — Complete dari form tidak diizinkan kecuali menyimpan pemesanan yang memang sudah Complete
       if (currentEditPreservesComplete) {
         pemesananData.statusPemesanan = "Complete";
+        console.log(`🔄 Updating pemesanan ID: ${pemesananId}`);
+        await window.API.Pemesanan.update(pemesananId, pemesananData);
+        if (window.showNotification) {
+          window.showNotification("update", "Pemesanan", "success");
+        } else {
+          alert("Data pemesanan berhasil diupdate!");
+        }
       } else if (statusPemesanan === "Complete") {
-        alert(
-          "❌ Status Complete tidak dapat diatur melalui edit. Gunakan fitur 'Proses Ordering' untuk mengurangi stok dan menyelesaikan pemesanan.",
+        const idProdForm = (
+          document.getElementById("selectIdProduksiPemesanan")?.value || ""
+        ).trim();
+        const beforeProses = { ...pemesananData, statusPemesanan: "Ordering" };
+        console.log(`🔄 Simpan sebagai Ordering lalu proses stok → Complete: ${pemesananId}`);
+        await window.API.Pemesanan.update(pemesananId, beforeProses);
+
+        let pFromApi = await window.API.Pemesanan.getById(pemesananId);
+        pFromApi = unwrapPemesananResponse(pFromApi);
+        if (!pFromApi || !pFromApi.idPembelian) {
+          throw new Error("Gagal memuat data pemesanan setelah simpan");
+        }
+        await loadStokData();
+        const stokErr = await validateOrderingStok(pFromApi, idProdForm);
+        if (stokErr) {
+          alert(
+            `${stokErr}\n\nPerubahan data telah disimpan sebagai **Ordering**. Lengkapi stok lalu selesaikan lagi (Edit → Complete atau Proses Ordering).`,
+          );
+          if (window.showNotification) {
+            window.showNotification(
+              "update",
+              "Pemesanan",
+              "warning",
+              "Disimpan sebagai Ordering — stok belum mencukupi untuk Complete.",
+            );
+          }
+          await loadPemesanan();
+          const modal = bootstrap.Modal.getInstance(
+            document.getElementById("modalPemesanan"),
+          );
+          modal?.hide();
+          return;
+        }
+
+        const tanggalOrdering =
+          tanggalPemesanan ||
+          new Date().toISOString().split("T")[0];
+        const orderingPayload = buildOrderingProsesPayload(
+          pFromApi,
+          tanggalOrdering,
+          idProdForm,
         );
+        await window.API.Ordering.proses(orderingPayload);
+
+        await window.API.Pemesanan.update(pemesananId, {
+          ...pemesananData,
+          statusPemesanan: "Complete",
+        });
+
+        if (window.showNotification) {
+          window.showNotification(
+            "update",
+            "Pemesanan",
+            "success",
+            "Pemesanan Complete — stok telah dikurangi (sama seperti Proses Ordering).",
+          );
+        } else {
+          alert("Pemesanan diselesaikan (Complete) dan stok telah dikurangi.");
+        }
+
+        await loadPemesanan();
+        await loadStokProduksi();
+        await loadStokData();
+        await loadOrderingData();
+        window.dispatchEvent(new CustomEvent("hasilProduksiUpdated"));
+        window.dispatchEvent(
+          new CustomEvent("dataUpdated", {
+            detail: { type: "hasilProduksi" },
+          }),
+        );
+
+        const modal = bootstrap.Modal.getInstance(
+          document.getElementById("modalPemesanan"),
+        );
+        modal?.hide();
         return;
       } else {
         pemesananData.statusPemesanan = "Ordering";
-      }
-
-      console.log(`🔄 Updating pemesanan ID: ${pemesananId}`);
-      await window.API.Pemesanan.update(pemesananId, pemesananData);
-      
-      // Tampilkan notifikasi update
-      if (window.showNotification) {
-        window.showNotification('update', 'Pemesanan', 'success');
-      } else {
-        alert("Data pemesanan berhasil diupdate!");
+        console.log(`🔄 Updating pemesanan ID: ${pemesananId}`);
+        await window.API.Pemesanan.update(pemesananId, pemesananData);
+        if (window.showNotification) {
+          window.showNotification("update", "Pemesanan", "success");
+        } else {
+          alert("Data pemesanan berhasil diupdate!");
+        }
       }
     } else {
+      if (statusPemesanan === "Complete") {
+        alert(
+          "Pemesanan baru tidak bisa langsung **Complete**. Simpan sebagai **Ordering** dulu, lalu selesaikan lewat **Edit → pilih Complete** atau tombol **Proses Ordering**.",
+        );
+        return;
+      }
       // Add mode - Create via API
       console.log("🔄 Creating new pemesanan");
       const created = await window.API.Pemesanan.create(pemesananData);
@@ -1597,18 +1694,158 @@ function isHasilFromOrderingFlag(h) {
   return v === true || v === 1 || v === "true" || v === "True";
 }
 
+function unwrapPemesananResponse(res) {
+  if (res == null) return null;
+  if (
+    typeof res === "object" &&
+    res.data != null &&
+    typeof res.data === "object" &&
+    !Array.isArray(res.data)
+  ) {
+    return res.data;
+  }
+  return res;
+}
+
 /**
- * Isi dropdown ID Produksi (satu kloter) agar user bisa memilih batch pengemasan
- * selain alokasi FIFO otomatis — selaras backend POST /api/ordering/proses + idProduksi.
+ * Validasi stok sebelum POST /api/ordering/proses.
+ * @returns {Promise<string|null>} pesan error, atau null jika OK
  */
-async function refreshSelectIdProduksiOrdering(pemesananDoc) {
-  const wrap = document.getElementById("wrapSelectIdProduksiOrdering");
-  const sel = document.getElementById("selectIdProduksiOrdering");
-  const hint = document.getElementById("hintSelectIdProduksiOrdering");
+async function validateOrderingStok(pemesananDoc, idProduksiPilihan) {
+  const linesCheck = getPemesananKloterLinesFromDoc(pemesananDoc);
+  const multiStok =
+    linesCheck.length > 1 ||
+    new Set(
+      linesCheck.map(
+        (L) =>
+          `${(L.tipeProduk || "").trim()}|${(L.jenisKopi || "").trim()}|${(L.prosesPengolahan || "").trim()}`,
+      ),
+    ).size > 1;
+
+  const idP = (idProduksiPilihan || "").trim();
+
+  if (idP) {
+    if (multiStok || linesCheck.length !== 1) {
+      return "Pemilihan ID produksi hanya untuk pemesanan satu kloter. Kosongkan pilihan untuk alokasi otomatis (FIFO).";
+    }
+    const L0 = linesCheck[0];
+    const tipeL0 = (L0.tipeProduk || "").trim();
+    if (!window.API?.Produksi?.getSisa) {
+      return "API Produksi tidak tersedia.";
+    }
+    let sisaRes;
+    try {
+      sisaRes = await window.API.Produksi.getSisa(idP);
+    } catch (e) {
+      return e.data?.error || e.message || "Gagal mengecek sisa stok batch";
+    }
+    const need = parseFloat(L0.beratKg) || 0;
+    const avail =
+      tipeL0 === "Pixel"
+        ? parseFloat(sisaRes?.sisaTersediaPixel) || 0
+        : parseFloat(sisaRes?.sisaTersedia) || 0;
+    if (avail < need - 1e-9) {
+      return `Stok pada batch ${idP} tidak mencukupi.\nTersedia: ${avail.toLocaleString(
+        "id-ID",
+      )} kg\nDibutuhkan: ${need.toLocaleString("id-ID")} kg`;
+    }
+    return null;
+  }
+
+  if (!multiStok) {
+    let stokRow = findStokRowForPemesanan(pemesananDoc);
+    if (!stokRow) {
+      try {
+        await loadStokData();
+        stokRow = findStokRowForPemesanan(pemesananDoc);
+      } catch (_) {
+        /* noop */
+      }
+    }
+    const stokTersedia = stokRow
+      ? parseFloat(stokRow.stokTersedia ?? stokRow.totalBerat ?? 0) || 0
+      : 0;
+    const jumlahPesanan = totalBeratKloterFromDoc(pemesananDoc);
+
+    if (!stokRow) {
+      return "Tidak ada stok hasil produksi yang cocok dengan pemesanan ini.\nPastikan kombinasi tipe produk, jenis kopi, dan proses pengolahan sama dengan baris di Kelola Stok.";
+    }
+
+    if (stokTersedia < jumlahPesanan) {
+      return `Stok tidak mencukupi!\n\nStok tersedia (agregat): ${stokTersedia.toLocaleString(
+        "id-ID",
+      )} kg\nJumlah pesanan: ${jumlahPesanan.toLocaleString(
+        "id-ID",
+      )} kg\nKekurangan: ${(jumlahPesanan - stokTersedia).toLocaleString(
+        "id-ID",
+      )} kg`;
+    }
+    return null;
+  }
+
+  try {
+    await loadStokData();
+  } catch (_) {
+    /* noop */
+  }
+  for (let i = 0; i < linesCheck.length; i++) {
+    const L = linesCheck[i];
+    const pseudo = {
+      tipeProduk: L.tipeProduk,
+      jenisKopi: L.jenisKopi,
+      prosesPengolahan: L.prosesPengolahan,
+    };
+    const stokRow = findStokRowForPemesanan(pseudo);
+    const need = parseFloat(L.beratKg) || 0;
+    const ada = stokRow
+      ? parseFloat(stokRow.stokTersedia ?? stokRow.totalBerat ?? 0) || 0
+      : 0;
+    if (!stokRow || ada < need - 1e-9) {
+      return `Kloter ${i + 1} (${L.tipeProduk || "-"} · ${L.jenisKopi || "-"} · ${L.prosesPengolahan || "-"}): stok tidak mencukupi atau kombinasi tidak ada di Kelola Stok.\nTersedia: ${ada.toLocaleString("id-ID")} kg, dibutuhkan: ${need.toLocaleString("id-ID")} kg`;
+    }
+  }
+  return null;
+}
+
+function buildOrderingProsesPayload(
+  pemesananDoc,
+  tanggalOrdering,
+  idProduksiPilihan,
+) {
+  const linesForTipe = getPemesananKloterLinesFromDoc(pemesananDoc);
+  const tipeReq =
+    (linesForTipe[0] && linesForTipe[0].tipeProduk) ||
+    pemesananDoc.tipeProduk ||
+    "";
+  const out = {
+    idPembelian: pemesananDoc.idPembelian,
+    tanggalOrdering,
+    tipeProduk: tipeReq,
+  };
+  const idp = (idProduksiPilihan || "").trim();
+  if (idp) out.idProduksi = idp;
+  return out;
+}
+
+/**
+ * Isi dropdown ID Produksi (satu kloter) — dipakai modal Ordering & form Edit Pemesanan.
+ */
+async function fillSelectIdProduksiUntukPemesanan(
+  pemesananDoc,
+  wrapId,
+  selectId,
+  hintId,
+) {
+  const wrap = document.getElementById(wrapId);
+  const sel = document.getElementById(selectId);
+  const hint = hintId ? document.getElementById(hintId) : null;
   if (!wrap || !sel) return;
 
-  sel.innerHTML =
-    '<option value="">Otomatis (FIFO — sistem memilih batch)</option>';
+  const optFifo =
+    wrapId === "wrapSelectIdProduksiPemesanan"
+      ? '<option value="">Otomatis (FIFO)</option>'
+      : '<option value="">Otomatis (FIFO — sistem memilih batch)</option>';
+  sel.innerHTML = optFifo;
 
   const lines = getPemesananKloterLinesFromDoc(pemesananDoc);
   const multi =
@@ -1650,7 +1887,7 @@ async function refreshSelectIdProduksiOrdering(pemesananDoc) {
   wrap.style.display = "block";
   if (hint) {
     hint.textContent =
-      "Pilih batch pengemasan tertentu untuk mengurangi stok dari ID produksi itu, atau biarkan otomatis (FIFO).";
+      "Pilih batch pengemasan tertentu, atau biarkan otomatis (FIFO).";
   }
 
   try {
@@ -1729,9 +1966,27 @@ async function refreshSelectIdProduksiOrdering(pemesananDoc) {
       sel.appendChild(opt);
     }
   } catch (e) {
-    console.warn("[refreshSelectIdProduksiOrdering]", e);
+    console.warn("[fillSelectIdProduksiUntukPemesanan]", e);
     wrap.style.display = "none";
   }
+}
+
+async function refreshSelectIdProduksiOrdering(pemesananDoc) {
+  await fillSelectIdProduksiUntukPemesanan(
+    pemesananDoc,
+    "wrapSelectIdProduksiOrdering",
+    "selectIdProduksiOrdering",
+    "hintSelectIdProduksiOrdering",
+  );
+}
+
+async function refreshSelectIdProduksiPemesananForm(pemesananDoc) {
+  await fillSelectIdProduksiUntukPemesanan(
+    pemesananDoc,
+    "wrapSelectIdProduksiPemesanan",
+    "selectIdProduksiPemesanan",
+    "hintSelectIdProduksiPemesanan",
+  );
 }
 
 // Save ordering
@@ -1756,126 +2011,22 @@ async function saveOrdering() {
     return;
   }
 
-  const linesCheck = getPemesananKloterLinesFromDoc(pemesananData);
-  const multiStok =
-    linesCheck.length > 1 ||
-    new Set(
-      linesCheck.map(
-        (L) =>
-          `${(L.tipeProduk || "").trim()}|${(L.jenisKopi || "").trim()}|${(L.prosesPengolahan || "").trim()}`,
-      ),
-    ).size > 1;
-
   const idProduksiPilihan = (
     document.getElementById("selectIdProduksiOrdering")?.value || ""
   ).trim();
 
-  if (idProduksiPilihan) {
-    if (multiStok || linesCheck.length !== 1) {
-      alert(
-        "Pemilihan ID produksi hanya untuk pemesanan satu kloter. Kosongkan pilihan untuk alokasi otomatis (FIFO).",
-      );
-      return;
-    }
-    const L0 = linesCheck[0];
-    const tipeL0 = (L0.tipeProduk || "").trim();
-    if (!window.API?.Produksi?.getSisa) {
-      alert("API Produksi tidak tersedia.");
-      return;
-    }
-    let sisaRes;
-    try {
-      sisaRes = await window.API.Produksi.getSisa(idProduksiPilihan);
-    } catch (e) {
-      alert(e.data?.error || e.message || "Gagal mengecek sisa stok batch");
-      return;
-    }
-    const need = parseFloat(L0.beratKg) || 0;
-    const avail =
-      tipeL0 === "Pixel"
-        ? parseFloat(sisaRes?.sisaTersediaPixel) || 0
-        : parseFloat(sisaRes?.sisaTersedia) || 0;
-    if (avail < need - 1e-9) {
-      alert(
-        `Stok pada batch ${idProduksiPilihan} tidak mencukupi.\nTersedia: ${avail.toLocaleString(
-          "id-ID",
-        )} kg\nDibutuhkan: ${need.toLocaleString("id-ID")} kg`,
-      );
-      return;
-    }
-  } else if (!multiStok) {
-    let stokRow = findStokRowForPemesanan(pemesananData);
-    if (!stokRow) {
-      try {
-        await loadStokData();
-        stokRow = findStokRowForPemesanan(pemesananData);
-      } catch (_) {
-        /* noop */
-      }
-    }
-    const stokTersedia = stokRow
-      ? parseFloat(stokRow.stokTersedia ?? stokRow.totalBerat ?? 0) || 0
-      : 0;
-    const jumlahPesanan = totalBeratKloterFromDoc(pemesananData);
-
-    if (!stokRow) {
-      alert(
-        "Tidak ada stok hasil produksi yang cocok dengan pemesanan ini.\nPastikan kombinasi tipe produk, jenis kopi, dan proses pengolahan sama dengan baris di Kelola Stok.",
-      );
-      return;
-    }
-
-    if (stokTersedia < jumlahPesanan) {
-      alert(
-        `Stok tidak mencukupi!\n\nStok tersedia (agregat): ${stokTersedia.toLocaleString(
-          "id-ID",
-        )} kg\nJumlah pesanan: ${jumlahPesanan.toLocaleString(
-          "id-ID",
-        )} kg\nKekurangan: ${(jumlahPesanan - stokTersedia).toLocaleString(
-          "id-ID",
-        )} kg`,
-      );
-      return;
-    }
-  } else {
-    try {
-      await loadStokData();
-    } catch (_) {
-      /* noop */
-    }
-    for (let i = 0; i < linesCheck.length; i++) {
-      const L = linesCheck[i];
-      const pseudo = {
-        tipeProduk: L.tipeProduk,
-        jenisKopi: L.jenisKopi,
-        prosesPengolahan: L.prosesPengolahan,
-      };
-      const stokRow = findStokRowForPemesanan(pseudo);
-      const need = parseFloat(L.beratKg) || 0;
-      const ada = stokRow
-        ? parseFloat(stokRow.stokTersedia ?? stokRow.totalBerat ?? 0) || 0
-        : 0;
-      if (!stokRow || ada < need - 1e-9) {
-        alert(
-          `Kloter ${i + 1} (${L.tipeProduk || "-"} · ${L.jenisKopi || "-"} · ${L.prosesPengolahan || "-"}): stok tidak mencukupi atau kombinasi tidak ada di Kelola Stok.\nTersedia: ${ada.toLocaleString("id-ID")} kg, dibutuhkan: ${need.toLocaleString("id-ID")} kg`,
-        );
-        return;
-      }
-    }
+  const stokErr = await validateOrderingStok(pemesananData, idProduksiPilihan);
+  if (stokErr) {
+    alert(stokErr);
+    return;
   }
 
   try {
-    const linesForTipe = getPemesananKloterLinesFromDoc(pemesananData);
-    const tipeReq =
-      (linesForTipe[0] && linesForTipe[0].tipeProduk) ||
-      pemesananData.tipeProduk ||
-      "";
-    const orderingData = {
-      idPembelian,
+    const orderingData = buildOrderingProsesPayload(
+      pemesananData,
       tanggalOrdering,
-      tipeProduk: tipeReq,
-    };
-    if (idProduksiPilihan) orderingData.idProduksi = idProduksiPilihan;
+      idProduksiPilihan,
+    );
 
     console.log("🔄 Memproses ordering:", orderingData);
     const result = await window.API.Ordering.proses(orderingData);
