@@ -4600,12 +4600,6 @@ def update_pemesanan(pemesanan_id):
         if not pemesanan:
             return jsonify({'error': 'Pemesanan not found'}), 404
         
-        # Validasi: Jika pemesanan sudah Complete (sudah diproses ordering), tidak boleh diubah
-        if pemesanan.get('statusPemesanan') == 'Complete':
-            return jsonify({
-                'error': 'Pemesanan yang sudah Complete tidak dapat diubah. Stok sudah dikurangi melalui proses ordering.'
-            }), 400
-        
         # Validate if updating idPembelian
         if 'idPembelian' in data:
             existing = db.pemesanan.find_one({

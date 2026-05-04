@@ -1143,6 +1143,19 @@
                   required
                 />
               </div>
+
+              <div class="mb-3" id="wrapSelectIdProduksiOrdering" style="display: none">
+                <label for="selectIdProduksiOrdering" class="form-label"
+                  >ID Produksi <span class="text-muted fw-normal small">(opsional)</span></label
+                >
+                <select class="form-select" id="selectIdProduksiOrdering">
+                  <option value="">Otomatis (FIFO — sistem memilih batch)</option>
+                </select>
+                <small class="text-muted d-block mt-1" id="hintSelectIdProduksiOrdering">
+                  Hanya untuk pemesanan <strong>satu kloter</strong>: pilih batch pengemasan tertentu
+                  untuk mengurangi stok dari ID produksi itu dan menyelesaikan pesanan.
+                </small>
+              </div>
             </form>
           </div>
           <div class="modal-footer">
