@@ -36,9 +36,37 @@
   font-weight: 500;
 }
 
-/* Warna ke-8 untuk pemisahan visual proses pengolahan di tabel (selaras getProsesPengolahanBadgeClass) */
-.badge.badge-proses-warna-8 {
+/* Palet 8 warna proses pengolahan — selaras getProsesPengolahanBadgeClass (api-service.js) */
+.badge.badge-proses-palet-1 {
+  background-color: #6c757d;
+  color: #fff;
+}
+.badge.badge-proses-palet-2 {
+  background-color: #0dcaf0;
+  color: #212529;
+}
+.badge.badge-proses-palet-3 {
+  background-color: #0d6efd;
+  color: #fff;
+}
+.badge.badge-proses-palet-4 {
   background-color: #6f42c1;
+  color: #fff;
+}
+.badge.badge-proses-palet-5 {
+  background-color: #fd7e14;
+  color: #fff;
+}
+.badge.badge-proses-palet-6 {
+  background-color: #ffc107;
+  color: #212529;
+}
+.badge.badge-proses-palet-7 {
+  background-color: #198754;
+  color: #fff;
+}
+.badge.badge-proses-palet-8 {
+  background-color: #dc3545;
   color: #fff;
 }
 
