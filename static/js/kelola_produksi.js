@@ -47,6 +47,46 @@ async function loadProduksiData() {
 }
 
 // Sisa berat per kombinasi idBahan + proses (atah legacy tanpa proses di query)
+function getIdProsesDariSelectProduksi() {
+  const sel = document.getElementById("prosesPengolahan");
+  if (!sel?.value) return null;
+  const v = String(sel.value).trim();
+  if (!/^\d+$/.test(v)) return null;
+  return parseInt(v, 10);
+}
+
+function getNamaProsesDariSelectProduksi() {
+  const sel = document.getElementById("prosesPengolahan");
+  if (!sel || sel.selectedIndex < 0) return "";
+  const o = sel.options[sel.selectedIndex];
+  return (o?.dataset?.namaProses || "").trim();
+}
+
+/** Setelah options proses dimuat: pilih dari idProses produksi atau fallback nama */
+function syncProsesSelectDariProduksi(p) {
+  const sel = document.getElementById("prosesPengolahan");
+  if (!sel || !p) return;
+  const idPv = p.idProses;
+  if (idPv != null && String(idPv).trim() !== "") {
+    const idStr = String(idPv).trim();
+    if (Array.from(sel.options).some((op) => op.value === idStr)) {
+      sel.value = idStr;
+      return;
+    }
+  }
+  const nama = (p.prosesPengolahan || "").trim();
+  if (nama) {
+    const hit = Array.from(sel.options).find(
+      (op) => (op.dataset?.namaProses || "").trim() === nama,
+    );
+    if (hit) {
+      sel.value = hit.value;
+      return;
+    }
+    setElementValue("prosesPengolahan", nama);
+  }
+}
+
 async function calculateSisaBahan(idBahan, prosesPengolahan) {
   try {
     if (!window.API || !window.API.Bahan) {
@@ -359,12 +399,14 @@ async function renderIdBahanEditMode(p) {
   if (
     !kunciTambahBahan &&
     window.API?.Bahan?.getUntukProduksi &&
-    p.prosesPengolahan &&
+    (p.idProses != null || p.prosesPengolahan) &&
     p.idProduksi
   ) {
     try {
+      const prosesQ =
+        p.idProses != null ? String(p.idProses) : String(p.prosesPengolahan);
       const extra = await window.API.Bahan.getUntukProduksi(
-        p.prosesPengolahan,
+        prosesQ,
         p.idProduksi,
       );
       const list = Array.isArray(extra) ? extra : [];
@@ -908,16 +950,19 @@ async function loadProsesPengolahanOptions() {
 
     dataProses.forEach((item) => {
       const option = document.createElement("option");
-      option.value = item.nama;
-      option.textContent = item.nama;
-      // Simpan data master termasuk tahapanStatus
+      const sid = item.id != null ? String(item.id) : "";
+      option.value = sid || (item.nama || "");
+      option.textContent = item.nama || sid;
+      option.dataset.prosesId = sid;
+      option.dataset.namaProses = item.nama || "";
       option.dataset.master = JSON.stringify({
+        id: item.id,
         nama: item.nama,
         tahapanStatus: item.tahapanStatus || {},
       });
       select.appendChild(option);
       console.log(
-        `➕ Menambahkan option: ${item.nama}`,
+        `➕ Menambahkan option: id=${sid} ${item.nama}`,
         item.tahapanStatus || {},
       );
     });
@@ -939,7 +984,7 @@ async function loadProsesPengolahanOptions() {
 let currentMasterTahapanProduksi = null;
 let currentProduksiTahapanAktif = null;
 
-async function loadTahapanFromMasterProduksi(overrideProsesNama) {
+async function loadTahapanFromMasterProduksi(overrideProsesRef) {
   console.log("🔵 loadTahapanFromMasterProduksi() dipanggil");
 
   const prosesSelect = document.getElementById("prosesPengolahan");
@@ -952,22 +997,37 @@ async function loadTahapanFromMasterProduksi(overrideProsesNama) {
     return;
   }
 
-  let selectedValue =
-    overrideProsesNama != null && String(overrideProsesNama).trim() !== ""
-      ? String(overrideProsesNama).trim()
-      : null;
-  if (!selectedValue) {
-    const selectedOption = prosesSelect.options[prosesSelect.selectedIndex];
-    selectedValue = selectedOption ? selectedOption.value : null;
-  } else if (prosesSelect) {
-    prosesSelect.value = selectedValue;
+  let refId = null;
+  let refNama = null;
+  if (overrideProsesRef != null && String(overrideProsesRef).trim() !== "") {
+    const r = String(overrideProsesRef).trim();
+    if (/^\d+$/.test(r)) refId = r;
+    else refNama = r;
+  }
+  if (!refId && !refNama && prosesSelect.selectedIndex >= 0) {
+    const o = prosesSelect.options[prosesSelect.selectedIndex];
+    if (o?.dataset?.prosesId)
+      refId = String(o.dataset.prosesId).trim();
+    if (!refId && o?.value && /^\d+$/.test(String(o.value).trim()))
+      refId = String(o.value).trim();
+    if (!refId) refNama = (o?.dataset?.namaProses || "").trim();
+  }
+  if (refId) {
+    prosesSelect.value = refId;
+  } else if (refNama) {
+    const hit = Array.from(prosesSelect.options).find(
+      (op) => (op.dataset?.namaProses || "").trim() === refNama,
+    );
+    if (hit) prosesSelect.value = hit.value;
   }
 
-  const selectedOption = selectedValue
-    ? Array.from(prosesSelect.options).find((o) => o.value === selectedValue)
-    : null;
+  const selectedOption =
+    prosesSelect.selectedIndex >= 0
+      ? prosesSelect.options[prosesSelect.selectedIndex]
+      : null;
+  const selectedValue = selectedOption ? selectedOption.value : null;
 
-  console.log("📋 Proses yang dipilih:", selectedValue);
+  console.log("📋 Proses yang dipilih (value=id):", selectedValue, "refNama:", refNama);
 
   if (!selectedValue) {
     // Reset jika tidak ada yang dipilih
@@ -983,10 +1043,9 @@ async function loadTahapanFromMasterProduksi(overrideProsesNama) {
     return;
   }
 
-  // Ambil data master dari dataset option atau fetch dari API
   let masterData = null;
   try {
-    const masterDataStr = selectedOption.dataset.master;
+    const masterDataStr = selectedOption?.dataset?.master;
     console.log("📦 Data master dari dataset:", masterDataStr);
 
     if (masterDataStr) {
@@ -997,88 +1056,38 @@ async function loadTahapanFromMasterProduksi(overrideProsesNama) {
     console.warn("⚠️ Gagal parse dataset.master:", e);
   }
 
-  // Jika tidak ada di dataset, fetch dari API
   if (!masterData || !masterData.tahapanStatus) {
     console.log("🔄 Fetching dari API...");
     try {
+      let allProses = [];
       if (window.API && window.API.MasterData && window.API.MasterData.proses) {
-        console.log("✅ Menggunakan window.API.MasterData.proses");
-        const allProses = await window.API.MasterData.proses.getAll();
-        console.log("📊 Total proses dari API:", allProses.length);
-        console.log(
-          "📋 Semua proses:",
-          allProses.map((p) => p.nama),
-        );
-
-        const prosesData = allProses.find((p) => p.nama === selectedValue);
-        console.log("🔍 Mencari proses:", selectedValue);
-        console.log("📦 Data proses ditemukan:", prosesData);
-
-        if (prosesData) {
-          masterData = { tahapanStatus: prosesData.tahapanStatus || {} };
-          console.log("✅ Tahapan status:", masterData.tahapanStatus);
-        } else {
-          console.warn(
-            "⚠️ Proses tidak ditemukan di API. Mencoba dengan nama yang berbeda...",
-          );
-          // Coba dengan nama yang lebih fleksibel (case insensitive, partial match)
-          const prosesDataFlexible = allProses.find(
-            (p) =>
-              p.nama.toLowerCase().includes(selectedValue.toLowerCase()) ||
-              selectedValue.toLowerCase().includes(p.nama.toLowerCase()),
-          );
-          if (prosesDataFlexible) {
-            console.log(
-              "✅ Proses ditemukan dengan matching fleksibel:",
-              prosesDataFlexible.nama,
-            );
-            masterData = {
-              tahapanStatus: prosesDataFlexible.tahapanStatus || {},
-            };
-          }
-        }
+        allProses = await window.API.MasterData.proses.getAll();
       } else {
-        console.log("🔄 Menggunakan fetch langsung ke /api/dataProses");
         const response = await fetch(`/api/dataProses`);
-        if (response.ok) {
-          const allProses = await response.json();
-          console.log("📊 Total proses dari fetch:", allProses.length);
-          console.log(
-            "📋 Semua proses:",
-            allProses.map((p) => p.nama),
-          );
-
-          const prosesData = allProses.find((p) => p.nama === selectedValue);
-          console.log("🔍 Mencari proses:", selectedValue);
-          console.log("📦 Data proses ditemukan:", prosesData);
-
-          if (prosesData) {
-            masterData = { tahapanStatus: prosesData.tahapanStatus || {} };
-            console.log("✅ Tahapan status:", masterData.tahapanStatus);
-          } else {
-            // Coba dengan matching fleksibel
-            const prosesDataFlexible = allProses.find(
-              (p) =>
-                p.nama.toLowerCase().includes(selectedValue.toLowerCase()) ||
-                selectedValue.toLowerCase().includes(p.nama.toLowerCase()),
-            );
-            if (prosesDataFlexible) {
-              console.log(
-                "✅ Proses ditemukan dengan matching fleksibel:",
-                prosesDataFlexible.nama,
-              );
-              masterData = {
-                tahapanStatus: prosesDataFlexible.tahapanStatus || {},
-              };
-            }
-          }
-        } else {
-          console.error(
-            "❌ Response tidak OK:",
-            response.status,
-            response.statusText,
-          );
-        }
+        if (response.ok) allProses = await response.json();
+      }
+      const idNum =
+        refId != null ? parseInt(String(refId), 10) : Number.NaN;
+      let prosesData = !Number.isNaN(idNum)
+        ? allProses.find((p) => Number(p.id) === idNum)
+        : null;
+      if (!prosesData && refNama) {
+        prosesData = allProses.find(
+          (p) => (p.nama || "").trim() === refNama,
+        );
+      }
+      if (!prosesData && selectedValue && /^\d+$/.test(String(selectedValue))) {
+        const sn = parseInt(String(selectedValue), 10);
+        prosesData = allProses.find((p) => Number(p.id) === sn);
+      }
+      if (!prosesData && selectedValue && !/^\d+$/.test(String(selectedValue))) {
+        prosesData = allProses.find((p) => (p.nama || "").trim() === selectedValue);
+      }
+      if (prosesData) {
+        masterData = {
+          tahapanStatus: prosesData.tahapanStatus || {},
+        };
+        console.log("✅ Tahapan status dari API:", masterData.tahapanStatus);
       }
     } catch (error) {
       console.error("❌ Error fetching tahapan from API:", error);
@@ -2447,8 +2456,7 @@ window.editProduksi = async function editProduksi(id) {
       }
     }
 
-    // Set other form fields dengan null check
-    setElementValue("prosesPengolahan", p.prosesPengolahan);
+    // Set other form fields — proses dipasang setelah opsi dimuat (id / nama)
     // Set kadar air (bisa diinputkan untuk semua tahapan)
     if (p.kadarAir !== null && p.kadarAir !== undefined) {
       setElementValue("kadarAir", p.kadarAir);
@@ -2463,7 +2471,7 @@ window.editProduksi = async function editProduksi(id) {
     setElementValue("catatanProduksi", p.catatan || "");
 
     await loadProsesPengolahanOptions();
-    setElementValue("prosesPengolahan", p.prosesPengolahan);
+    syncProsesSelectDariProduksi(p);
 
     // Set HACCP checkboxes dengan null check
     if (p.haccp) {
@@ -2507,9 +2515,11 @@ window.editProduksi = async function editProduksi(id) {
           loadTipeProdukOptionsProduksi(),
         ]);
 
-        setElementValue("prosesPengolahan", p.prosesPengolahan);
+        syncProsesSelectDariProduksi(p);
         currentProduksiTahapanAktif = p.statusTahapan;
-        await loadTahapanFromMasterProduksi(p.prosesPengolahan);
+        await loadTahapanFromMasterProduksi(
+          p.idProses != null ? p.idProses : p.prosesPengolahan,
+        );
         setElementValue("statusTahapan", p.statusTahapan);
         await renderIdBahanEditMode(p);
         const baAfterRender =
@@ -2776,7 +2786,10 @@ window.saveProduksi = async function saveProduksi() {
       idBahan = idBahanList[0];
       decodedBahanMeta = {
         idBahan,
-        prosesPengolahan: getElementValue("prosesPengolahan", ""),
+        idProses: getIdProsesDariSelectProduksi(),
+        prosesPengolahan:
+          getNamaProsesDariSelectProduksi() ||
+          getElementValue("prosesPengolahan", ""),
       };
     }
 
@@ -2819,21 +2832,24 @@ window.saveProduksi = async function saveProduksi() {
 
     // ==================== GET FORM FIELDS (dengan null check) ====================
     console.log("🔍 Getting form fields...");
-    // Fields yang mungkin tidak ada di template tertentu
-    let prosesPengolahan = getElementValue(
-      "prosesPengolahan",
-      produksiLama?.prosesPengolahan || "",
-    );
-    if (!isEditMode && decodedBahanMeta?.prosesPengolahan) {
-      prosesPengolahan = decodedBahanMeta.prosesPengolahan;
-      const ps = document.getElementById("prosesPengolahan");
-      if (ps) ps.value = prosesPengolahan;
+    const idProsesVal = getIdProsesDariSelectProduksi();
+    let prosesPengolahan = getNamaProsesDariSelectProduksi();
+    if (!prosesPengolahan && produksiLama?.prosesPengolahan) {
+      prosesPengolahan = String(produksiLama.prosesPengolahan).trim();
     }
-    if (!prosesPengolahan || String(prosesPengolahan).trim() === "") {
+    if (!isEditMode && decodedBahanMeta?.prosesPengolahan) {
+      prosesPengolahan = String(decodedBahanMeta.prosesPengolahan).trim();
+    }
+    const prosesQueryUntukBahan =
+      idProsesVal != null ? String(idProsesVal) : prosesPengolahan;
+    if (
+      (idProsesVal == null || Number.isNaN(idProsesVal)) &&
+      (!prosesPengolahan || String(prosesPengolahan).trim() === "")
+    ) {
       alert("Proses pengolahan wajib. Pilih proses di atas terlebih dahulu.");
       return;
     }
-    console.log("📝 prosesPengolahan:", prosesPengolahan);
+    console.log("📝 idProses:", idProsesVal, "prosesPengolahan:", prosesPengolahan);
 
     // GET STATUS TAHAPAN TERLEBIH DAHULU (sebelum digunakan di validasi kadar air)
     const statusTahapan = getElementValue(
@@ -3325,7 +3341,7 @@ window.saveProduksi = async function saveProduksi() {
       for (const row of alokasiBeratBahan) {
         const sisaBahan = await calculateSisaBahan(
           row.idBahan,
-          prosesPengolahan,
+          prosesQueryUntukBahan,
         );
         if (row.berat > sisaBahan + 1e-4) {
           alert(
@@ -3441,7 +3457,9 @@ window.saveProduksi = async function saveProduksi() {
       beratAwal: finalBeratAwal,
       beratTerkini: parseFloat(beratTerkini),
       beratAkhir: beratAkhir !== null ? parseFloat(beratAkhir) : null,
-      prosesPengolahan: String(prosesPengolahan),
+      prosesPengolahan: String(
+        prosesPengolahan || produksiLama?.prosesPengolahan || "",
+      ),
       kadarAir: kadarAir !== null && !isNaN(kadarAir) ? parseFloat(kadarAir) : null,
       varietas: String(varietas),
       tanggalMasuk: String(tanggalMasuk),
@@ -3456,6 +3474,11 @@ window.saveProduksi = async function saveProduksi() {
         document.getElementById("catatanProduksi")?.value ?? "",
       ).trim(),
     };
+    if (idProsesVal != null) {
+      produksiData.idProses = idProsesVal;
+    } else if (isEditMode && produksiLama?.idProses != null) {
+      produksiData.idProses = produksiLama.idProses;
+    }
     if (isPengemasan) {
       // Pakai parser lokal agar koma desimal tidak terpotong (contoh "319,59" → 319.59).
       produksiData.beratGreenBeans = parseBeratProduksiLocal(

@@ -502,7 +502,24 @@ async function loadProduksiData() {
 
   // Auto-fill Proses Pengolahan
   if (prosesPengolahanSelect) {
-    const prosesValue = produksiData.prosesPengolahan || "";
+    const wantId =
+      produksiData.idProses != null && produksiData.idProses !== ""
+        ? String(produksiData.idProses).trim()
+        : "";
+    let prosesValue = wantId;
+    if (
+      wantId &&
+      !Array.from(prosesPengolahanSelect.options).some((o) => o.value === wantId)
+    ) {
+      const nm = (produksiData.prosesPengolahan || "").trim();
+      const hit = Array.from(prosesPengolahanSelect.options).find(
+        (o) => (o.dataset?.namaProses || "").trim() === nm,
+      );
+      prosesValue = hit ? hit.value : nm;
+    }
+    if (!prosesValue && produksiData.prosesPengolahan) {
+      prosesValue = produksiData.prosesPengolahan;
+    }
     console.log("🔄 Mengisi Proses Pengolahan dengan nilai:", prosesValue);
 
     // Set value setelah options ter-load
@@ -987,8 +1004,9 @@ async function loadProsesPengolahanOptionsHasilProduksi() {
       select.innerHTML = '<option value="">Pilih Proses Pengolahan</option>';
       dataProses.forEach((item) => {
         const option = document.createElement("option");
-        option.value = item.nama;
-        option.textContent = item.nama;
+        option.value = item.id != null ? String(item.id) : (item.nama || "");
+        option.textContent = item.nama || "";
+        option.dataset.namaProses = item.nama || "";
         select.appendChild(option);
       });
       if (selectedValue) {
@@ -1644,8 +1662,23 @@ async function editHasilProduksi(id) {
 
     document.getElementById("tipeProduk").value = h.tipeProduk || "";
     document.getElementById("jenisKopi").value = h.jenisKopi || "";
-    document.getElementById("prosesPengolahan").value =
-      h.prosesPengolahan || "";
+    const psel = document.getElementById("prosesPengolahan");
+    if (psel) {
+      const idPv = h.idProses != null ? String(h.idProses) : "";
+      if (
+        idPv &&
+        Array.from(psel.options).some((o) => o.value === idPv)
+      ) {
+        psel.value = idPv;
+      } else {
+        const hit = Array.from(psel.options).find(
+          (o) =>
+            (o.dataset?.namaProses || "").trim() ===
+            String(h.prosesPengolahan || "").trim(),
+        );
+        psel.value = hit ? hit.value : h.prosesPengolahan || "";
+      }
+    }
     document.getElementById("tanggal").value = h.tanggal || "";
     document.getElementById("beratSaatIni").value = h.beratSaatIni || "";
     document.getElementById("jumlah").value = h.jumlah || "";
@@ -1699,7 +1732,8 @@ async function saveHasilProduksi() {
   const tipeProdukLower = (tipeProduk || "").trim().toLowerCase();
   const kemasan = document.getElementById("kemasan").value;
   const jenisKopi = document.getElementById("jenisKopi").value;
-  const prosesPengolahan = document.getElementById("prosesPengolahan").value;
+  const prosesSel = document.getElementById("prosesPengolahan");
+  const prosesRaw = prosesSel ? prosesSel.value : "";
   const tanggal = document.getElementById("tanggal").value;
   const beratSaatIni = parseFloat(
     document.getElementById("beratSaatIni").value
@@ -1928,18 +1962,37 @@ async function saveHasilProduksi() {
   }
 
   try {
+    const prosesOpt = prosesSel?.options?.[prosesSel?.selectedIndex];
+    let prosesPengolahanNama = (prosesOpt?.dataset?.namaProses || "").trim();
+    let idProsesHasil =
+      prosesRaw && /^\d+$/.test(String(prosesRaw).trim())
+        ? parseInt(String(prosesRaw).trim(), 10)
+        : null;
+    if (!prosesPengolahanNama && produksiData?.prosesPengolahan) {
+      prosesPengolahanNama = String(produksiData.prosesPengolahan).trim();
+    }
+    if (idProsesHasil == null && produksiData?.idProses != null) {
+      idProsesHasil = Number(produksiData.idProses);
+    }
+
     const hasilProduksiData = {
       idProduksi: idProduksiString,
       idBahan: idBahan,
       tipeProduk,
       kemasan,
       jenisKopi,
-      prosesPengolahan,
+      prosesPengolahan:
+        prosesPengolahanNama ||
+        produksiData?.prosesPengolahan ||
+        String(prosesRaw || ""),
       levelRoasting,
       tanggal,
       beratSaatIni,
       jumlah,
     };
+    if (idProsesHasil != null && !Number.isNaN(idProsesHasil)) {
+      hasilProduksiData.idProses = idProsesHasil;
+    }
 
     // VERIFY API AVAILABILITY - NO FALLBACK
     if (!window.API || !window.API.HasilProduksi) {

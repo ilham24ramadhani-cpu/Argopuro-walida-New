@@ -335,7 +335,7 @@ async function displayProses() {
   if (dataProses.length === 0) {
     tableBody.innerHTML = `
       <tr>
-        <td colspan="4" class="text-center py-4 text-muted">
+        <td colspan="5" class="text-center py-4 text-muted">
           <i class="bi bi-inbox fs-1 d-block mb-2"></i>
           Tidak ada data proses pengolahan
         </td>
@@ -362,6 +362,7 @@ async function displayProses() {
       return `
     <tr>
       <td>${index + 1}</td>
+      <td><span class="badge bg-dark">#${item.id != null ? item.id : "—"}</span></td>
       <td>${item.nama}</td>
       <td>${tahapanDisplay}</td>
       <td class="text-center">
@@ -431,6 +432,8 @@ function openModalProses(mode = "add", id = null) {
     label.textContent = "Tambah Proses Pengolahan";
     form.reset();
     document.getElementById("prosesId").value = "";
+    const wrapId = document.getElementById("wrapProsesMasterId");
+    if (wrapId) wrapId.classList.add("d-none");
     // Render checkbox dengan semua unchecked
     renderTahapanCheckboxes({});
   } else {
@@ -452,6 +455,12 @@ async function editProses(id) {
 
   document.getElementById("prosesId").value = item.id || item._id;
   document.getElementById("namaProses").value = item.nama;
+  const wrapId = document.getElementById("wrapProsesMasterId");
+  const idDisp = document.getElementById("prosesMasterIdDisplay");
+  if (wrapId && idDisp) {
+    idDisp.textContent = item.id != null ? String(item.id) : "—";
+    wrapId.classList.remove("d-none");
+  }
 
   // Load tahapanStatus yang sudah ada (default ke semua false jika belum ada)
   const tahapanStatus = item.tahapanStatus || {};

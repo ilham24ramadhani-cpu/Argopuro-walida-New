@@ -473,6 +473,7 @@
                       <thead class="table-light">
                         <tr>
                           <th scope="col">No</th>
+                          <th scope="col">ID</th>
                           <th scope="col">Nama Proses Pengolahan</th>
                           <th scope="col">Tahapan</th>
                           <th scope="col" class="text-center">Aksi</th>
@@ -690,6 +691,10 @@
           <div class="modal-body">
             <form id="formProses">
               <input type="hidden" id="prosesId" />
+              <div class="mb-3 d-none" id="wrapProsesMasterId">
+                <span class="text-muted small">ID master (dipakai sistem untuk produksi &amp; bahan):</span>
+                <div class="fw-semibold" id="prosesMasterIdDisplay">—</div>
+              </div>
               <div class="mb-3">
                 <label for="namaProses" class="form-label"
                   >Nama Proses Pengolahan

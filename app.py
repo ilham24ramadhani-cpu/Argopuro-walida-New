@@ -9,6 +9,7 @@ from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
 from bson import ObjectId  # pyright: ignore[reportMissingImports]
 import jwt  # pyright: ignore[reportMissingImports]
 import hashlib
+import re
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 import base64
@@ -240,26 +241,102 @@ def get_next_id_produksi_preview():
     seq = get_next_id_preview(counter_key)
     return f"PRD-{yyyymm}-{str(seq).zfill(4)}"
 
-# Helper function untuk validasi sequential tahapan produksi
-def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_tahapan_lama=None):
-    """
-    Validasi urutan tahapan menurut master. Pada update: boleh menyimpan dengan tahapan **sama**
-    (edit berat, tambah ID bahan, catatan); tidak boleh mundur; maju hanya satu langkah aktif
-    sekaligus (anti-loncat) kecuali tidak ada tahapan terlewat yang wajib.
-    
-    Args:
-        proses_pengolahan: Nama proses pengolahan
-        status_tahapan_baru: Status tahapan baru yang ingin di-set
-        status_tahapan_lama: Status tahapan lama (untuk update mode)
-    
-    Returns:
-        tuple: (is_valid, error_message)
-    """
+def _int_proses_id(v):
     try:
-        # Ambil data master proses pengolahan
-        master_proses = db.dataProses.find_one({'nama': proses_pengolahan})
+        if v is None or v == '':
+            return None
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _find_data_proses_doc(*, id_proses=None, nama=None):
+    if id_proses is not None:
+        pid = _int_proses_id(id_proses)
+        if pid is None:
+            return None
+        return db.dataProses.find_one({'id': pid})
+    n = (nama or '').strip()
+    if n:
+        return db.dataProses.find_one({'nama': n})
+    return None
+
+
+def _resolve_proses_dari_payload(data):
+    """
+    idProses (disarankan) atau prosesPengolahan (legacy).
+    Return (master_doc, id_as_int, nama_master) atau (None, None, None, error_str).
+    """
+    if not isinstance(data, dict):
+        return None, None, None, 'payload tidak valid'
+    raw_id = data.get('idProses')
+    if raw_id is not None and str(raw_id).strip() != '':
+        master = _find_data_proses_doc(id_proses=raw_id)
+        if not master:
+            return None, None, None, f'idProses tidak ditemukan di master: {raw_id}'
+        ip = _int_proses_id(master.get('id'))
+        nm = (master.get('nama') or '').strip()
+        return master, ip, nm, None
+    pn = str(data.get('prosesPengolahan') or '').strip()
+    if pn:
+        master = _find_data_proses_doc(nama=pn)
+        if not master:
+            return None, None, None, f'Proses pengolahan "{pn}" tidak terdaftar di master data'
+        return master, _int_proses_id(master.get('id')), (master.get('nama') or '').strip(), None
+    return None, None, None, 'Wajib menyediakan idProses atau prosesPengolahan'
+
+
+def _resolve_proses_query_param_proses(raw):
+    """
+    Query ?proses= untuk API bahan: angka → id master; lainnya → nama (legacy).
+    Return (master_or_none, id_int_or_none, nama_str, error_str_or_none).
+    """
+    s = (raw or '').strip()
+    if not s:
+        return None, None, '', 'Parameter proses kosong'
+    if s.isdigit():
+        master = _find_data_proses_doc(id_proses=int(s))
+        if not master:
+            return None, None, '', f'idProses {s} tidak ditemukan'
+        ip = _int_proses_id(master.get('id'))
+        nm = (master.get('nama') or '').strip()
+        return master, ip, nm, None
+    master = _find_data_proses_doc(nama=s)
+    if not master:
+        return None, None, '', f'Proses "{s}" tidak ditemukan di master'
+    return master, _int_proses_id(master.get('id')), (master.get('nama') or '').strip(), None
+
+
+def _produksi_same_jalur(produksi_doc, id_proses, nama_proses):
+    """
+    Cocokkan dokumen produksi dengan jalur master.
+    Dokumen baru memakai idProses; lama bisa hanya punya nama.
+    """
+    if produksi_doc is None:
+        return False
+    ip_filter = _int_proses_id(id_proses)
+    nama = (nama_proses or '').strip() if nama_proses else ''
+    restrict = ip_filter is not None or bool(nama)
+    if not restrict:
+        return True
+    pid = _int_proses_id(produksi_doc.get('idProses'))
+    if ip_filter is not None and pid is not None:
+        return pid == ip_filter
+    if ip_filter is not None and pid is None and nama:
+        return (produksi_doc.get('prosesPengolahan') or '').strip() == nama
+    if nama:
+        return (produksi_doc.get('prosesPengolahan') or '').strip() == nama
+    return False
+
+
+def validate_sequential_tahapan_dengan_master(master_proses, status_tahapan_baru, status_tahapan_lama=None):
+    """
+    Validasi urutan tahapan memakai dokumen master dataProses yang sudah di-resolve.
+    """
+    label = (master_proses.get('nama') or '').strip() if master_proses else ''
+    try:
         if not master_proses:
-            return False, f'Proses pengolahan "{proses_pengolahan}" tidak ditemukan di master data'
+            return False, 'Master proses pengolahan tidak ada'
         
         tahapan_status = master_proses.get('tahapanStatus', {})
         
@@ -311,7 +388,7 @@ def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_t
         # Validasi: tahapan baru harus ada di konfigurasi master (kecuali Pengemasan yang selalu tersedia)
         if status_baru_normalized != 'Pengemasan':
             if not tahapan_status.get(status_baru_normalized, False):
-                return False, f'Tahapan "{status_tahapan_baru}" tidak tersedia untuk proses pengolahan "{proses_pengolahan}"'
+                return False, f'Tahapan "{status_tahapan_baru}" tidak tersedia untuk proses pengolahan "{label}"'
         
         # Jika ini adalah update (ada status lama), validasi sequential
         if status_tahapan_lama:
@@ -358,6 +435,17 @@ def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_t
         return False, f'Error validasi tahapan: {str(e)}'
 
 
+def validate_sequential_tahapan(proses_pengolahan, status_tahapan_baru, status_tahapan_lama=None):
+    """
+    Legacy: lookup master dari nama string lalu validasi urutan tahapan.
+    """
+    nama = (proses_pengolahan or '').strip()
+    master = _find_data_proses_doc(nama=nama)
+    if not master:
+        return False, f'Proses pengolahan "{nama}" tidak ditemukan di master data'
+    return validate_sequential_tahapan_dengan_master(master, status_tahapan_baru, status_tahapan_lama)
+
+
 def _clean_detail_kloter_list(detail_kloter):
     """Normalize detailKloter: only rows with berat > 0, renumber kloter."""
     detail_kloter_clean = []
@@ -377,27 +465,47 @@ def _clean_detail_kloter_list(detail_kloter):
 def _normalize_proses_bahan_payload(proses_bahan_raw):
     """
     Validate prosesBahan[] against master dataProses.
+    Prefer idProses per baris; fallback prosesPengolahan (nama).
     Returns (clean_list, total_berat, error_message).
     """
     if not proses_bahan_raw or not isinstance(proses_bahan_raw, list) or len(proses_bahan_raw) == 0:
         return None, 0, 'prosesBahan wajib berisi minimal satu proses dengan kloter timbangan'
-    pro_names = []
+    seen_ids = set()
+    seen_nama = set()
     proses_bahan_clean = []
     for item in proses_bahan_raw:
-        pn = (item.get('prosesPengolahan') or '').strip()
-        if not pn:
-            return None, 0, 'Setiap baris wajib memiliki nama proses pengolahan'
-        if pn in pro_names:
-            return None, 0, f'Proses "{pn}" tidak boleh duplikat pada satu bahan'
-        pro_names.append(pn)
-        if not db.dataProses.find_one({'nama': pn}):
-            return None, 0, f'Proses pengolahan "{pn}" tidak terdaftar di master data'
+        if not isinstance(item, dict):
+            return None, 0, 'Setiap baris proses harus berupa objek'
+        raw_id = item.get('idProses')
+        master = None
+        if raw_id is not None and str(raw_id).strip() != '':
+            master = _find_data_proses_doc(id_proses=raw_id)
+            if not master:
+                return None, 0, f'idProses {raw_id} tidak terdaftar di master data'
+        else:
+            pn = (item.get('prosesPengolahan') or '').strip()
+            if not pn:
+                return None, 0, 'Setiap baris wajib idProses atau prosesPengolahan'
+            master = _find_data_proses_doc(nama=pn)
+            if not master:
+                return None, 0, f'Proses pengolahan "{pn}" tidak terdaftar di master data'
+        pid = _int_proses_id(master.get('id'))
+        if pid is None:
+            return None, 0, 'Master proses tidak memiliki id numerik'
+        pname = (master.get('nama') or '').strip()
+        if pid in seen_ids:
+            return None, 0, f'Proses id {pid} tidak boleh duplikat pada satu bahan'
+        seen_ids.add(pid)
+        if pname in seen_nama:
+            return None, 0, f'Proses "{pname}" tidak boleh duplikat pada satu bahan'
+        seen_nama.add(pname)
         dk = _clean_detail_kloter_list(item.get('detailKloter') or item.get('kloter') or [])
         if not dk:
-            return None, 0, f'Minimal satu kloter dengan berat > 0 untuk proses "{pn}"'
+            return None, 0, f'Minimal satu kloter dengan berat > 0 untuk proses "{pname}"'
         subtotal = sum(k['berat'] for k in dk)
         proses_bahan_clean.append({
-            'prosesPengolahan': pn,
+            'idProses': pid,
+            'prosesPengolahan': pname,
             'detailKloter': dk,
             'jumlahBeratProses': round(subtotal, 4)
         })
@@ -444,21 +552,22 @@ def _alokasi_map_from_produksi(doc):
     return {}
 
 
-def _total_digunakan_bahan_proses(id_bahan, proses_q=None):
+def _total_digunakan_bahan_proses(id_bahan, id_proses=None, nama_proses=None):
     """
     Total berat terpakai untuk satu id_bahan.
-    Jika proses_q diisi: hanya produksi dengan prosesPengolahan sama (bahan multi-proses).
-    Jika None: semua produksi yang mengalokasikan berat ke id_bahan (pool legacy).
+    Jika id_proses atau nama_proses diisi: filter produksi ke jalur proses tersebut.
+    Tanpa filter: pool legacy semua produksi yang memakai id_bahan.
     """
     total = 0.0
     id_bahan = str(id_bahan or '').strip()
     if not id_bahan:
         return 0.0
-    pq = (proses_q or '').strip() if proses_q is not None else None
+    ip = _int_proses_id(id_proses)
+    nq = (nama_proses or '').strip() if nama_proses else ''
+    restrict = ip is not None or bool(nq)
     for p in db.produksi.find({}):
-        if pq is not None:
-            if (p.get('prosesPengolahan') or '').strip() != pq:
-                continue
+        if restrict and not _produksi_same_jalur(p, ip, nq):
+            continue
         m = _alokasi_map_from_produksi(p)
         total += float(m.get(id_bahan, 0) or 0)
     return total
@@ -499,29 +608,58 @@ def _status_tambah_bahan_dikunci(status_tahapan):
     return False
 
 
-def _sisa_bahan_line(bahan_doc, id_bahan, proses_pengolahan):
+def _sisa_bahan_line(bahan_doc, id_bahan, proses_pengolahan=None, id_proses=None):
     """
     Sisa berat untuk kombinasi idBahan + proses (atau legacy: satu pool per idBahan).
+    id_proses atau nama (proses_pengolahan) — id diprioritaskan.
     Returns (sisa_float, error_message or None).
     """
     lines = bahan_doc.get('prosesBahan') or []
     if lines:
-        if not proses_pengolahan:
-            return None, 'prosesPengolahan wajib untuk bahan yang memiliki pemisahan proses'
-        line = next((l for l in lines if l.get('prosesPengolahan') == proses_pengolahan), None)
+        ip = _int_proses_id(id_proses)
+        nq = (proses_pengolahan or '').strip()
+        if ip is None and not nq:
+            return None, 'prosesPengolahan atau idProses wajib untuk bahan yang memiliki pemisahan proses'
+        line = None
+        if ip is not None:
+            line = next(
+                (
+                    l for l in lines
+                    if isinstance(l, dict) and _int_proses_id(l.get('idProses')) == ip
+                ),
+                None,
+            )
+        if line is None and nq:
+            line = next(
+                (
+                    l for l in lines
+                    if isinstance(l, dict) and (l.get('prosesPengolahan') or '').strip() == nq
+                ),
+                None,
+            )
         if not line:
-            return None, f'Proses "{proses_pengolahan}" tidak terdaftar pada bahan ini'
+            return None, (
+                f'Proses id {ip} "{nq}" tidak terdaftar pada bahan ini'
+                if ip is not None
+                else f'Proses "{nq}" tidak terdaftar pada bahan ini'
+            )
+        line_ip = _int_proses_id(line.get('idProses'))
+        line_nama = (line.get('prosesPengolahan') or '').strip()
+        used = _total_digunakan_bahan_proses(
+            id_bahan,
+            id_proses=line_ip,
+            nama_proses=line_nama,
+        )
         cap = float(line.get('jumlahBeratProses', 0) or 0)
-        used = _total_digunakan_bahan_proses(id_bahan, proses_pengolahan)
         return max(0.0, cap - used), None
     # Legacy: satu pool stok per idBahan
     cap = float(bahan_doc.get('jumlah', 0) or 0)
-    used = _total_digunakan_bahan_proses(id_bahan, None)
+    used = _total_digunakan_bahan_proses(id_bahan)
     return max(0.0, cap - used), None
 
 
 def _proses_bahan_stok_equivalent(old_lines, new_lines):
-    """True jika setiap jalur punya nama proses + jumlahBeratProses yang sama (abaikan detail kloter)."""
+    """True jika setiap jalur punya idProses/nama + jumlahBeratProses yang sama (abaikan detail kloter)."""
     def norm(lst):
         if not isinstance(lst, list):
             return []
@@ -529,13 +667,15 @@ def _proses_bahan_stok_equivalent(old_lines, new_lines):
         for x in lst:
             if not isinstance(x, dict):
                 continue
+            ip = _int_proses_id(x.get('idProses'))
             pn = (x.get('prosesPengolahan') or '').strip()
             try:
                 w = round(float(x.get('jumlahBeratProses', 0) or 0), 4)
             except (TypeError, ValueError):
                 w = 0.0
-            out.append((pn, w))
-        return sorted(out, key=lambda t: t[0])
+            sort_id = ip if ip is not None else -1
+            out.append((sort_id, pn, w))
+        return sorted(out)
 
     return norm(old_lines) == norm(new_lines)
 
@@ -622,11 +762,14 @@ def _cascade_remove_id_bahan_dari_produksi_setelah_master_bahan_diubah(id_bahan)
     return {'matched': matched, 'updated': updated}
 
 
-def _cascade_rename_master_proses_pengolahan(old_nama, new_nama):
+def _cascade_rename_master_proses_pengolahan(old_nama, new_nama, master_id_proses=None):
     """
     Saat nama proses di dataProses diubah, perbarui semua salinan string nama lama
     (produksi, bahan.prosesBahan, pemesanan, hasilProduksi) agar validasi master
     seperti validate_sequential_tahapan tidak gagal dengan 'tidak ditemukan'.
+
+    Selain kesamaan string persis di DB, nama yang sama setelah .strip()
+    (mis. spasi depan/belakang) juga diselaraskan.
     """
     old_nama = (old_nama or '').strip()
     new_nama = (new_nama or '').strip()
@@ -636,68 +779,134 @@ def _cascade_rename_master_proses_pengolahan(old_nama, new_nama):
             'bahan_updated': 0,
             'pemesanan_updated': 0,
             'hasilProduksi_updated': 0,
+            'denorm_via_idProses': {'produksi': 0, 'hasilProduksi': 0, 'bahan': 0},
         }
     stats = {
         'produksi_updated': 0,
         'bahan_updated': 0,
         'pemesanan_updated': 0,
         'hasilProduksi_updated': 0,
+        'denorm_via_idProses': {'produksi': 0, 'hasilProduksi': 0, 'bahan': 0},
     }
+    mid = _int_proses_id(master_id_proses)
+    if mid is not None:
+        rden = db.produksi.update_many(
+            {'idProses': mid},
+            {'$set': {'prosesPengolahan': new_nama}},
+        )
+        stats['denorm_via_idProses']['produksi'] = int(rden.modified_count or 0)
+        rh = db.hasilProduksi.update_many(
+            {'idProses': mid},
+            {'$set': {'prosesPengolahan': new_nama}},
+        )
+        stats['denorm_via_idProses']['hasilProduksi'] = int(rh.modified_count or 0)
+        for bdoc in db.bahan.find({'prosesBahan': {'$elemMatch': {'idProses': mid}}}):
+            blines = list(bdoc.get('prosesBahan') or [])
+            chb = False
+            for row in blines:
+                if isinstance(row, dict) and _int_proses_id(row.get('idProses')) == mid:
+                    row['prosesPengolahan'] = new_nama
+                    chb = True
+            if chb:
+                db.bahan.update_one({'_id': bdoc['_id']}, {'$set': {'prosesBahan': blines}})
+                stats['denorm_via_idProses']['bahan'] += 1
+    rx_trim = re.compile(r'^\s*%s\s*$' % re.escape(old_nama))
+
     r_prod = db.produksi.update_many(
         {'prosesPengolahan': old_nama},
         {'$set': {'prosesPengolahan': new_nama}},
     )
-    stats['produksi_updated'] = int(r_prod.modified_count or 0)
+    r_prod2 = db.produksi.update_many(
+        {'prosesPengolahan': rx_trim},
+        {'$set': {'prosesPengolahan': new_nama}},
+    )
+    stats['produksi_updated'] = int(
+        (r_prod.modified_count or 0) + (r_prod2.modified_count or 0)
+    )
 
     r_hasil = db.hasilProduksi.update_many(
         {'prosesPengolahan': old_nama},
         {'$set': {'prosesPengolahan': new_nama}},
     )
-    stats['hasilProduksi_updated'] = int(r_hasil.modified_count or 0)
+    r_hasil2 = db.hasilProduksi.update_many(
+        {'prosesPengolahan': rx_trim},
+        {'$set': {'prosesPengolahan': new_nama}},
+    )
+    stats['hasilProduksi_updated'] = int(
+        (r_hasil.modified_count or 0) + (r_hasil2.modified_count or 0)
+    )
 
-    for doc in db.bahan.find({'prosesBahan.prosesPengolahan': old_nama}):
-        lines = list(doc.get('prosesBahan') or [])
-        changed = False
-        for line in lines:
-            if not isinstance(line, dict):
-                continue
-            if (line.get('prosesPengolahan') or '').strip() == old_nama:
-                line['prosesPengolahan'] = new_nama
-                changed = True
-        if changed:
-            db.bahan.update_one({'_id': doc['_id']}, {'$set': {'prosesBahan': lines}})
-            stats['bahan_updated'] += 1
+    def _apply_bahan_proses_lines():
+        bahan_queries = (
+            {'prosesBahan.prosesPengolahan': old_nama},
+            {'prosesBahan': {'$elemMatch': {'prosesPengolahan': rx_trim}}},
+        )
+        seen_ids = set()
+        for query in bahan_queries:
+            for doc in db.bahan.find(query):
+                did = doc.get('_id')
+                if did in seen_ids:
+                    continue
+                lines = list(doc.get('prosesBahan') or [])
+                changed = False
+                for line in lines:
+                    if not isinstance(line, dict):
+                        continue
+                    if (line.get('prosesPengolahan') or '').strip() == old_nama:
+                        line['prosesPengolahan'] = new_nama
+                        changed = True
+                if changed:
+                    db.bahan.update_one({'_id': did}, {'$set': {'prosesBahan': lines}})
+                    stats['bahan_updated'] += 1
+                    seen_ids.add(did)
 
-    pem_filter = {
-        '$or': [
-            {'prosesPengolahan': old_nama},
-            {'kloter.prosesPengolahan': old_nama},
-            {'items.prosesPengolahan': old_nama},
-        ]
-    }
-    for doc in db.pemesanan.find(pem_filter):
-        set_fields = {}
-        if (doc.get('prosesPengolahan') or '').strip() == old_nama:
-            set_fields['prosesPengolahan'] = new_nama
-        for arr_key in ('kloter', 'items'):
-            arr = doc.get(arr_key)
-            if not isinstance(arr, list):
+    _apply_bahan_proses_lines()
+
+    pem_queries = (
+        {
+            '$or': [
+                {'prosesPengolahan': old_nama},
+                {'kloter.prosesPengolahan': old_nama},
+                {'items.prosesPengolahan': old_nama},
+            ]
+        },
+        {
+            '$or': [
+                {'prosesPengolahan': rx_trim},
+                {'kloter': {'$elemMatch': {'prosesPengolahan': rx_trim}}},
+                {'items': {'$elemMatch': {'prosesPengolahan': rx_trim}}},
+            ]
+        },
+    )
+    pem_seen = set()
+    for pem_filter in pem_queries:
+        for doc in db.pemesanan.find(pem_filter):
+            pid = doc.get('_id')
+            if pid in pem_seen:
                 continue
-            new_arr = []
-            row_changed = False
-            for row in arr:
-                if isinstance(row, dict) and (row.get('prosesPengolahan') or '').strip() == old_nama:
-                    new_row = dict(row)
-                    new_row['prosesPengolahan'] = new_nama
-                    new_arr.append(new_row)
-                    row_changed = True
-                else:
-                    new_arr.append(row)
-            if row_changed:
-                set_fields[arr_key] = new_arr
-        if set_fields:
-            db.pemesanan.update_one({'_id': doc['_id']}, {'$set': set_fields})
-            stats['pemesanan_updated'] += 1
+            set_fields = {}
+            if (doc.get('prosesPengolahan') or '').strip() == old_nama:
+                set_fields['prosesPengolahan'] = new_nama
+            for arr_key in ('kloter', 'items'):
+                arr = doc.get(arr_key)
+                if not isinstance(arr, list):
+                    continue
+                new_arr = []
+                row_changed = False
+                for row in arr:
+                    if isinstance(row, dict) and (row.get('prosesPengolahan') or '').strip() == old_nama:
+                        new_row = dict(row)
+                        new_row['prosesPengolahan'] = new_nama
+                        new_arr.append(new_row)
+                        row_changed = True
+                    else:
+                        new_arr.append(row)
+                if row_changed:
+                    set_fields[arr_key] = new_arr
+            if set_fields:
+                db.pemesanan.update_one({'_id': pid}, {'$set': set_fields})
+                stats['pemesanan_updated'] += 1
+                pem_seen.add(pid)
 
     total = sum(stats.values())
     if total:
@@ -1269,12 +1478,17 @@ def create_produksi():
         # Validate required fields (idProduksi NOT required - backend generates it)
         # idBahan / idBahanList: minimal satu ID bahan (multi-bahan satu proses)
         # kadarAir hanya wajib untuk tahapan Pengeringan Awal & Akhir
-        required_fields = ['beratAwal', 'prosesPengolahan',
+        required_fields = ['beratAwal',
                           'varietas', 'tanggalMasuk', 'tanggalSekarang',
                           'statusTahapan', 'haccp']
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
+        if (
+            ('idProses' not in data or data.get('idProses') is None or str(data.get('idProses')).strip() == '')
+            and (not data.get('prosesPengolahan') or not str(data.get('prosesPengolahan')).strip())
+        ):
+            return jsonify({'error': 'Wajib menyediakan idProses atau prosesPengolahan'}), 400
         
         raw_list = data.get('idBahanList')
         if isinstance(raw_list, list) and len(raw_list) > 0:
@@ -1289,7 +1503,9 @@ def create_produksi():
         if len(id_bahan_list) != len(set(id_bahan_list)):
             return jsonify({'error': 'ID Bahan tidak boleh duplikat dalam satu produksi'}), 400
         
-        proses_pp = str(data.get('prosesPengolahan') or '').strip()
+        master_proses_doc, pid_proses, proses_pp, err_proses = _resolve_proses_dari_payload(data)
+        if err_proses:
+            return jsonify({'error': err_proses}), 400
         used_globally = _all_id_bahan_terpakai_produksi(None)
 
         berat_awal_req = float(data['beratAwal'])
@@ -1340,10 +1556,23 @@ def create_produksi():
             lines = bahan_one.get('prosesBahan') or []
             need = next((a['berat'] for a in alokasi_clean if a['idBahan'] == bid), 0)
             if lines:
-                line = next((l for l in lines if l.get('prosesPengolahan') == proses_pp), None)
+                line = None
+                if pid_proses is not None:
+                    line = next(
+                        (
+                            l for l in lines
+                            if isinstance(l, dict) and _int_proses_id(l.get('idProses')) == pid_proses
+                        ),
+                        None,
+                    )
+                if line is None:
+                    line = next(
+                        (l for l in lines if (l.get('prosesPengolahan') or '').strip() == proses_pp),
+                        None,
+                    )
                 if not line:
                     return jsonify({'error': f'Proses "{proses_pp}" tidak terdaftar pada bahan {bid}'}), 400
-                sisa, err = _sisa_bahan_line(bahan_one, bid, proses_pp)
+                sisa, err = _sisa_bahan_line(bahan_one, bid, proses_pp, id_proses=pid_proses)
                 if err:
                     return jsonify({'error': f'{bid}: {err}'}), 400
                 if need > (sisa or 0) + 1e-4:
@@ -1368,10 +1597,10 @@ def create_produksi():
         id_bahan_primary = id_bahan_list[0]
         
         # Validasi sequential tahapan berdasarkan konfigurasi master
-        is_valid, error_msg = validate_sequential_tahapan(
-            data['prosesPengolahan'],
+        is_valid, error_msg = validate_sequential_tahapan_dengan_master(
+            master_proses_doc,
             data['statusTahapan'],
-            None  # Tidak ada status lama untuk create mode
+            None,
         )
         if not is_valid:
             return jsonify({'error': error_msg}), 400
@@ -1468,7 +1697,8 @@ def create_produksi():
             'beratAwal': float(data['beratAwal']),
             'beratTerkini': float(beratTerkini),
             'beratAkhir': float(beratAkhir) if beratAkhir else None,
-            'prosesPengolahan': data['prosesPengolahan'],
+            'idProses': pid_proses,
+            'prosesPengolahan': proses_pp,
             'kadarAir': kadar_air_value,  # Kadar air bisa diinputkan untuk semua tahapan
             'varietas': data['varietas'],
             'tanggalMasuk': data['tanggalMasuk'],
@@ -1523,12 +1753,17 @@ def update_produksi(produksi_id):
         
         # Validate required fields
         # kadarAir hanya wajib untuk tahapan Pengeringan Awal & Akhir
-        required_fields = ['idProduksi', 'idBahan', 'beratAwal', 'prosesPengolahan', 
+        required_fields = ['idProduksi', 'idBahan', 'beratAwal',
                           'varietas', 'tanggalMasuk', 'tanggalSekarang', 
                           'statusTahapan', 'haccp']
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
+        if (
+            ('idProses' not in data or data.get('idProses') is None or str(data.get('idProses')).strip() == '')
+            and (not data.get('prosesPengolahan') or not str(data.get('prosesPengolahan')).strip())
+        ):
+            return jsonify({'error': 'Wajib menyediakan idProses atau prosesPengolahan'}), 400
         
         # Check if idProduksi already exists (excluding current)
         existing = db.produksi.find_one({
@@ -1593,7 +1828,9 @@ def update_produksi(produksi_id):
                     'error': f'Alokasi bahan {bid} tidak boleh diubah; hanya boleh menambah bahan baru',
                 }), 400
 
-        proses_pp = str(data['prosesPengolahan'] or '').strip()
+        master_proses_doc, pid_proses, proses_pp, err_proses = _resolve_proses_dari_payload(data)
+        if err_proses:
+            return jsonify({'error': err_proses}), 400
         for bid in new_set:
             need = float(new_map.get(bid, 0) or 0)
             if need <= 0:
@@ -1609,10 +1846,23 @@ def update_produksi(produksi_id):
                 return jsonify({'error': f'Bahan tidak ditemukan: {bid}'}), 400
             lines = bahan_one.get('prosesBahan') or []
             if lines:
-                line = next((l for l in lines if l.get('prosesPengolahan') == proses_pp), None)
+                line = None
+                if pid_proses is not None:
+                    line = next(
+                        (
+                            l for l in lines
+                            if isinstance(l, dict) and _int_proses_id(l.get('idProses')) == pid_proses
+                        ),
+                        None,
+                    )
+                if line is None:
+                    line = next(
+                        (l for l in lines if (l.get('prosesPengolahan') or '').strip() == proses_pp),
+                        None,
+                    )
                 if not line:
                     return jsonify({'error': f'Proses "{proses_pp}" tidak terdaftar pada bahan {bid}'}), 400
-                sisa, err = _sisa_bahan_line(bahan_one, bid, proses_pp)
+                sisa, err = _sisa_bahan_line(bahan_one, bid, proses_pp, id_proses=pid_proses)
                 if err:
                     return jsonify({'error': f'{bid}: {err}'}), 400
                 room = (sisa or 0) + (old_w if bid in old_set else 0)
@@ -1649,16 +1899,20 @@ def update_produksi(produksi_id):
         if abs(berat_baru - sum_alok) > 1e-3:
             return jsonify({'error': 'beratAwal harus sama dengan jumlah alokasi semua ID bahan'}), 400
 
-        # Proses pengolahan ditetapkan saat bahan masuk — tidak boleh diubah
-        if produksi.get('prosesPengolahan') != data['prosesPengolahan']:
+        # Proses pengolahan ditetapkan saat bahan masuk — tidak boleh diubah (id utama, nama legacy)
+        p_id_simpan = _int_proses_id(produksi.get('idProses'))
+        if p_id_simpan is not None and pid_proses is not None:
+            if p_id_simpan != pid_proses:
+                return jsonify({'error': 'Proses pengolahan tidak dapat diubah setelah produksi dibuat'}), 400
+        elif (produksi.get('prosesPengolahan') or '').strip() != proses_pp:
             return jsonify({'error': 'Proses pengolahan tidak dapat diubah setelah produksi dibuat'}), 400
         
         # Validasi sequential tahapan berdasarkan konfigurasi master
         status_tahapan_lama = produksi.get('statusTahapan')
-        is_valid, error_msg = validate_sequential_tahapan(
-            data['prosesPengolahan'],
+        is_valid, error_msg = validate_sequential_tahapan_dengan_master(
+            master_proses_doc,
             data['statusTahapan'],
-            status_tahapan_lama
+            status_tahapan_lama,
         )
         if not is_valid:
             return jsonify({'error': error_msg}), 400
@@ -1829,7 +2083,8 @@ def update_produksi(produksi_id):
             'beratAwal': float(data['beratAwal']),
             'beratTerkini': float(beratTerkini),
             'beratAkhir': float(beratAkhir) if beratAkhir else None,
-            'prosesPengolahan': data['prosesPengolahan'],
+            'idProses': pid_proses,
+            'prosesPengolahan': proses_pp,
             'kadarAir': kadar_air_value,
             'varietas': data['varietas'],
             'tanggalMasuk': data['tanggalMasuk'],
@@ -2372,25 +2627,42 @@ def get_sisa_bahan(id_bahan):
         if lines:
             if not proses_q:
                 return jsonify({'error': 'Parameter query proses wajib untuk bahan dengan pemisahan proses'}), 400
-            line = next((l for l in lines if l.get('prosesPengolahan') == proses_q), None)
+            _, rp_id, pname_res, err_p = _resolve_proses_query_param_proses(proses_q)
+            if err_p:
+                return jsonify({'error': err_p}), 400
+            line = None
+            if rp_id is not None:
+                line = next(
+                    (
+                        l for l in lines
+                        if isinstance(l, dict) and _int_proses_id(l.get('idProses')) == rp_id
+                    ),
+                    None,
+                )
+            if line is None:
+                line = next((l for l in lines if l.get('prosesPengolahan') == proses_q), None)
+                if line is None and pname_res:
+                    line = next(
+                        (l for l in lines if (l.get('prosesPengolahan') or '').strip() == pname_res),
+                        None,
+                    )
             if not line:
                 return jsonify({'error': f'Proses "{proses_q}" tidak ada pada bahan ini'}), 404
             cap = float(line.get('jumlahBeratProses', 0) or 0)
-            produksi_list = list(db.produksi.find({'prosesPengolahan': proses_q}))
-            total_digunakan = sum(
-                _alokasi_map_from_produksi(p).get(id_bahan, 0) or 0
-                for p in produksi_list
-            )
-            sisa = max(0.0, cap - total_digunakan)
+            lid = _int_proses_id(line.get('idProses'))
+            ln = (line.get('prosesPengolahan') or '').strip()
+            td = _total_digunakan_bahan_proses(id_bahan, id_proses=lid, nama_proses=ln)
+            sisa = max(0.0, cap - td)
             return jsonify({
                 'idBahan': id_bahan,
-                'prosesPengolahan': proses_q,
+                'idProses': lid if lid is not None else rp_id,
+                'prosesPengolahan': pname_res or ln or proses_q,
                 'totalBahan': cap,
-                'totalDigunakan': total_digunakan,
+                'totalDigunakan': td,
                 'sisaTersedia': sisa
             }), 200
         
-        total_digunakan = _total_digunakan_bahan_proses(id_bahan, None)
+        total_digunakan = _total_digunakan_bahan_proses(id_bahan)
         cap = float(bahan.get('jumlah', 0) or 0)
         sisa = max(0.0, cap - total_digunakan)
         return jsonify({
@@ -2416,6 +2688,9 @@ def get_bahan_untuk_produksi():
         exclude_id_produksi = request.args.get('idProduksi', '').strip() or None
         if not proses:
             return jsonify({'error': 'Parameter query proses wajib'}), 400
+        _, rp_id, pname_res, err_r = _resolve_proses_query_param_proses(proses)
+        if err_r:
+            return jsonify({'error': err_r}), 400
         
         terpakai = _all_id_bahan_terpakai_produksi(exclude_id_produksi)
         out = []
@@ -2426,17 +2701,36 @@ def get_bahan_untuk_produksi():
             lines = bahan.get('prosesBahan') or []
             if not lines and bid in terpakai:
                 continue
-            line = next((l for l in lines if l.get('prosesPengolahan') == proses), None) if lines else None
+            line = None
+            if lines:
+                if rp_id is not None:
+                    line = next(
+                        (
+                            l for l in lines
+                            if isinstance(l, dict) and _int_proses_id(l.get('idProses')) == rp_id
+                        ),
+                        None,
+                    )
+                if line is None and pname_res:
+                    line = next(
+                        (l for l in lines if (l.get('prosesPengolahan') or '').strip() == pname_res),
+                        None,
+                    )
+                if line is None:
+                    line = next((l for l in lines if l.get('prosesPengolahan') == proses), None)
             if not line:
                 continue
             cap = float(line.get('jumlahBeratProses', 0) or 0)
-            td = _total_digunakan_bahan_proses(bid, proses)
+            lid = _int_proses_id(line.get('idProses'))
+            ln = (line.get('prosesPengolahan') or '').strip()
+            td = _total_digunakan_bahan_proses(bid, id_proses=lid or rp_id, nama_proses=ln or pname_res)
             sisa = max(0.0, cap - td)
             if sisa <= 0:
                 continue
             out.append({
                 'idBahan': bid,
-                'prosesPengolahan': proses,
+                'idProses': lid if lid is not None else rp_id,
+                'prosesPengolahan': pname_res or ln or proses,
                 'sisaTersedia': sisa,
                 'alokasi': cap,
                 'varietas': bahan.get('varietas'),
@@ -3239,8 +3533,12 @@ def create_dataProses():
         if 'nama' not in data:
             return jsonify({'error': 'Missing required field: nama'}), 400
         
+        nama_clean = str(data['nama']).strip()
+        if not nama_clean:
+            return jsonify({'error': 'Nama tidak boleh kosong'}), 400
+
         # Check if nama already exists
-        existing = db.dataProses.find_one({'nama': data['nama']})
+        existing = db.dataProses.find_one({'nama': nama_clean})
         if existing:
             return jsonify({'error': 'Nama already exists'}), 400
         
@@ -3248,7 +3546,7 @@ def create_dataProses():
         
         item_data = {
             'id': new_id,
-            'nama': data['nama'],
+            'nama': nama_clean,
             'tahapanStatus': data.get('tahapanStatus', {})
         }
         
@@ -3275,8 +3573,11 @@ def update_dataProses(item_id):
         
         # Check duplicate nama
         if 'nama' in data:
+            nama_candidate = str(data['nama']).strip()
+            if not nama_candidate:
+                return jsonify({'error': 'Nama tidak boleh kosong'}), 400
             existing = db.dataProses.find_one({
-                'nama': data['nama'],
+                'nama': nama_candidate,
                 '_id': {'$ne': item['_id']}
             })
             if existing:
@@ -3285,14 +3586,16 @@ def update_dataProses(item_id):
         update_data = {}
         old_nama = (item.get('nama') or '').strip()
         if 'nama' in data:
-            update_data['nama'] = data['nama']
+            update_data['nama'] = nama_candidate
         if 'tahapanStatus' in data:
             update_data['tahapanStatus'] = data['tahapanStatus']
 
         new_nama = (update_data.get('nama') or item.get('nama') or '').strip()
         cascade_stats = None
         if 'nama' in update_data and old_nama and new_nama and new_nama != old_nama:
-            cascade_stats = _cascade_rename_master_proses_pengolahan(old_nama, new_nama)
+            cascade_stats = _cascade_rename_master_proses_pengolahan(
+                old_nama, new_nama, master_id_proses=item.get('id')
+            )
 
         db.dataProses.update_one(
             {'_id': item['_id']},
