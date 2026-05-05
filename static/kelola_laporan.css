@@ -167,3 +167,9 @@
   box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.35);
 }
 
+/* Warna ke-8 badge proses pengolahan (sinkron api-service getProsesPengolahanBadgeClass) */
+.badge.badge-proses-warna-8 {
+  background-color: #6f42c1;
+  color: #fff;
+}
+

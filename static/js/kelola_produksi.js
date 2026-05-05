@@ -1823,7 +1823,7 @@ async function displayProduksi(options = {}) {
       <td>${p.beratTerkini ? p.beratTerkini.toLocaleString("id-ID") : "-"} kg</td>
       <td>${p.beratAkhir ? p.beratAkhir.toLocaleString("id-ID") : "-"} kg</td>
       ${randomenTd}
-      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || (() => 'bg-secondary'))(prosesLabel)}">${prosesLabel}</span></td>
+      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || ((a) => 'bg-secondary'))(prosesLabel, p.idProses)}">${prosesLabel}</span></td>
       <td>${p.kadarAir || "-"}%</td>
       <td>${p.varietas || "-"}</td>
       <td>${new Date(p.tanggalMasuk).toLocaleDateString("id-ID")}</td>

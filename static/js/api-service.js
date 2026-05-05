@@ -20,19 +20,39 @@ window.getKualitasBadgeClass = function (kualitas) {
   if (k === "grade c") return "bg-danger";
   return "bg-secondary";
 };
-window.getProsesPengolahanBadgeClass = function (proses) {
-  const p = (proses || "").toLowerCase();
-  if (p.includes("honey wine")) return "bg-purple";
-  if (p.includes("wet honey")) return "bg-warning text-dark";
-  if (p.includes("natural wine")) return "bg-indigo";
-  if (p.includes("double fermentation")) return "bg-info";
-  if (p.includes("carbonic") || p.includes("maceration")) return "bg-light text-dark";
-  if (p.includes("anaerobic")) return "bg-dark";
-  if (p.includes("semi-washed") || p.includes("wet hulled")) return "bg-success";
-  if (p.includes("honey")) return "bg-brown";
-  if (p.includes("natural")) return "bg-secondary";
-  if (p.includes("washed") || p.includes("full wash")) return "bg-info";
-  return "bg-primary";
+/**
+ * Warna badge proses pengolahan: konsisten per ID master (8 palet berbeda),
+ * atau hash nama jika belum ada idProses di dokumen.
+ * @param {string} proses - label / nama proses (tampilan)
+ * @param {number|string|null|undefined} idProses - id numerik dari dataProses jika ada
+ */
+window.getProsesPengolahanBadgeClass = function (proses, idProses) {
+  const palette = [
+    "text-bg-primary",
+    "text-bg-success",
+    "text-bg-info",
+    "text-bg-warning text-dark",
+    "text-bg-danger",
+    "text-bg-secondary",
+    "text-bg-dark",
+    "badge-proses-warna-8",
+  ];
+  const n =
+    idProses != null && String(idProses).trim() !== ""
+      ? Number(idProses)
+      : NaN;
+  let idx;
+  if (!Number.isNaN(n) && n >= 1) {
+    idx = (Math.floor(n) - 1) % palette.length;
+  } else {
+    const s = String(proses || "").trim().toLowerCase();
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+      h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+    }
+    idx = Math.abs(h) % palette.length;
+  }
+  return palette[idx];
 };
 window.getStatusTahapanBadgeClass = function (tahapan) {
   const t = (tahapan || "").toLowerCase();

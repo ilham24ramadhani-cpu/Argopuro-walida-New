@@ -36,6 +36,12 @@
   font-weight: 500;
 }
 
+/* Warna ke-8 untuk pemisahan visual proses pengolahan di tabel (selaras getProsesPengolahanBadgeClass) */
+.badge.badge-proses-warna-8 {
+  background-color: #6f42c1;
+  color: #fff;
+}
+
 .btn-action {
   padding: 0.25rem 0.5rem;
   margin: 0 0.15rem;

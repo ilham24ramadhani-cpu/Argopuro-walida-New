@@ -4340,7 +4340,7 @@ function displayProduksi() {
           item.beratAkhir ? item.beratAkhir.toLocaleString("id-ID") : "-"
         } kg</td>
       <td class="text-nowrap small" title="${titleR}">${escapeHtmlLaporan(cellRandomenId)}</td>
-      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || (() => 'bg-secondary'))(prosesTampilan)}">${prosesTampilan}</span></td>
+      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || ((a) => 'bg-secondary'))(prosesTampilan, item.idProses)}">${prosesTampilan}</span></td>
       <td>${item.kadarAir ? item.kadarAir + "%" : "-"}</td>
       <td>${item.varietas || "-"}</td>
       <td>${formatDate(item.tanggalMasuk)}</td>

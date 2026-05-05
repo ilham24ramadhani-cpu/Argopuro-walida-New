@@ -1494,7 +1494,7 @@ async function displayHasilProduksi() {
       <td><span class="badge bg-primary">${h.tipeProduk || "-"}</span></td>
       <td>${h.kemasan || "-"}</td>
       <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => 'bg-secondary'))(h.jenisKopi)}">${h.jenisKopi}</span></td>
-      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || (() => 'bg-secondary'))(h.prosesPengolahan)}">${h.prosesPengolahan}</span></td>
+      <td><span class="badge ${(window.getProsesPengolahanBadgeClass || ((a) => 'bg-secondary'))(h.prosesPengolahan, h.idProses)}">${h.prosesPengolahan}</span></td>
       <td>${h.levelRoasting || "-"}</td>
       <td>${(h.beratSaatIni || 0).toLocaleString("id-ID")} kg</td>
       <td>${new Date(h.tanggal).toLocaleDateString("id-ID")}</td>
