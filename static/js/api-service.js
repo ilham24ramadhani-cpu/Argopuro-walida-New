@@ -21,13 +21,13 @@ window.getKualitasBadgeClass = function (kualitas) {
   return "bg-secondary";
 };
 /**
- * Warna badge proses pengolahan: konsisten per ID master (8 palet berbeda),
- * atau hash nama jika belum ada idProses di dokumen.
+ * Warna badge proses pengolahan per idProses master (1–8, mod 8): 1 Anaerob, 2 HSN, 3 Natural,
+ * 4 Washed, 5 Carbonic Wethull, 6 Kismis, 7 Komersil, 8 Cherry. Tanpa id: hash nama.
  * @param {string} proses - label / nama proses (tampilan)
  * @param {number|string|null|undefined} idProses - id numerik dari dataProses jika ada
  */
 window.getProsesPengolahanBadgeClass = function (proses, idProses) {
-  /* id master 1..8 → .process-1 … .process-8 di CSS */
+  /* Selaras kelas .process-1 … .process-8 di kelola_produksi.css / kelola_laporan.css */
   const palette = [
     "process-1",
     "process-2",
