@@ -27,16 +27,16 @@ window.getKualitasBadgeClass = function (kualitas) {
  * @param {number|string|null|undefined} idProses - id numerik dari dataProses jika ada
  */
 window.getProsesPengolahanBadgeClass = function (proses, idProses) {
-  /* 8 warna tetap (urutan = id master 1..8 mod 8); selaras .badge-proses-palet-* di CSS */
+  /* id master 1..8 → .process-1 … .process-8 di CSS */
   const palette = [
-    "badge-proses-palet-1",
-    "badge-proses-palet-2",
-    "badge-proses-palet-3",
-    "badge-proses-palet-4",
-    "badge-proses-palet-5",
-    "badge-proses-palet-6",
-    "badge-proses-palet-7",
-    "badge-proses-palet-8",
+    "process-1",
+    "process-2",
+    "process-3",
+    "process-4",
+    "process-5",
+    "process-6",
+    "process-7",
+    "process-8",
   ];
   const n =
     idProses != null && String(idProses).trim() !== ""

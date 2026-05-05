@@ -167,37 +167,13 @@
   box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.35);
 }
 
-/* Palet 8 warna proses pengolahan — sinkron api-service getProsesPengolahanBadgeClass */
-.badge.badge-proses-palet-1 {
-  background-color: #6c757d;
-  color: #fff;
-}
-.badge.badge-proses-palet-2 {
-  background-color: #0dcaf0;
-  color: #212529;
-}
-.badge.badge-proses-palet-3 {
-  background-color: #0d6efd;
-  color: #fff;
-}
-.badge.badge-proses-palet-4 {
-  background-color: #6f42c1;
-  color: #fff;
-}
-.badge.badge-proses-palet-5 {
-  background-color: #fd7e14;
-  color: #fff;
-}
-.badge.badge-proses-palet-6 {
-  background-color: #ffc107;
-  color: #212529;
-}
-.badge.badge-proses-palet-7 {
-  background-color: #198754;
-  color: #fff;
-}
-.badge.badge-proses-palet-8 {
-  background-color: #dc3545;
-  color: #fff;
-}
+/* Badge proses kopi — sinkron api-service getProsesPengolahanBadgeClass (.process-*) */
+.process-1 { background-color: #1E40AF; color: #FFFFFF; } /* Natural Process (Dry Process) */
+.process-2 { background-color: #0F766E; color: #FFFFFF; } /* Washed Process (Full Wash) */
+.process-3 { background-color: #7C3AED; color: #FFFFFF; } /* Natural Anaerob */
+.process-4 { background-color: #C2410C; color: #FFFFFF; } /* Carbonic Wethull */
+.process-5 { background-color: #BE185D; color: #FFFFFF; } /* Natural HSN */
+.process-6 { background-color: #047857; color: #FFFFFF; } /* Damarkandang Carbonic Kismis */
+.process-7 { background-color: #334155; color: #FFFFFF; } /* Wethull Komersil */
+.process-8 { background-color: #991B1B; color: #FFFFFF; } /* Damarkandang Carbonic Cherry */
 
