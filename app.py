@@ -908,12 +908,24 @@ def _cascade_rename_master_proses_pengolahan(old_nama, new_nama, master_id_prose
                 stats['pemesanan_updated'] += 1
                 pem_seen.add(pid)
 
-    total = sum(stats.values())
+    total = (
+        stats['produksi_updated']
+        + stats['bahan_updated']
+        + stats['pemesanan_updated']
+        + stats['hasilProduksi_updated']
+    )
+    dn = stats.get('denorm_via_idProses')
+    if isinstance(dn, dict):
+        total += sum(int(v or 0) for v in dn.values())
     if total:
+        dprod = dn.get('produksi') if isinstance(dn, dict) else 0
+        dhasil = dn.get('hasilProduksi') if isinstance(dn, dict) else 0
+        dbah = dn.get('bahan') if isinstance(dn, dict) else 0
         print(
             f"✅ [RENAME PROSES] '{old_nama}' → '{new_nama}': "
             f"produksi={stats['produksi_updated']}, bahan={stats['bahan_updated']}, "
-            f"pemesanan={stats['pemesanan_updated']}, hasilProduksi={stats['hasilProduksi_updated']}"
+            f"pemesanan={stats['pemesanan_updated']}, hasilProduksi={stats['hasilProduksi_updated']}, "
+            f"denormId(prod/hasil/bahan)={dprod}/{dhasil}/{dbah}"
         )
     return stats
 
