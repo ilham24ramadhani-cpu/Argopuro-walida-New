@@ -718,10 +718,10 @@ async function createBahanChart() {
     rawTotals[name] = (rawTotals[name] || 0) + parseFloat(b.jumlah || 0);
   });
   const desc = Object.entries(rawTotals).sort((a, b) => b[1] - a[1]);
-  const rowsAsc = dashboardTrimCategories(desc, DASHBOARD_BAR_MAX_CATEGORIES).slice().reverse();
+  const rowsTrim = dashboardTrimCategories(desc, DASHBOARD_BAR_MAX_CATEGORIES);
 
-  const labels = rowsAsc.map(([name]) => name);
-  const values = rowsAsc.map(([, v]) => v);
+  const labels = rowsTrim.map(([name]) => name);
+  const values = rowsTrim.map(([, v]) => v);
   const barColors = labels.map(
     (_, i) =>
       DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
@@ -757,14 +757,13 @@ async function createBahanChart() {
       ],
     },
     options: {
-      indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "nearest", intersect: false },
       elements: {
         bar: { borderRadius: 4, borderSkipped: false },
       },
-      datasets: { bar: { maxBarThickness: 36 } },
+      datasets: { bar: { maxBarThickness: 40 } },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -773,7 +772,7 @@ async function createBahanChart() {
               return items.length ? items[0].label : "";
             },
             label: function (context) {
-              const num = Number(context.parsed.x) || 0;
+              const num = Number(context.parsed.y) || 0;
               return `${num.toLocaleString("id-ID")} kg`;
             },
           },
@@ -781,6 +780,21 @@ async function createBahanChart() {
       },
       scales: {
         x: {
+          stacked: false,
+          title: {
+            display: true,
+            text: "Pemasok",
+            font: { size: 11, weight: "bold" },
+          },
+          ticks: {
+            autoSkip: false,
+            font: { size: 10 },
+            maxRotation: 50,
+            minRotation: 35,
+          },
+          grid: { display: false },
+        },
+        y: {
           beginAtZero: true,
           stacked: false,
           title: {
@@ -790,23 +804,12 @@ async function createBahanChart() {
           },
           ticks: {
             callback: (value) =>
-              typeof value === "number" ? value.toLocaleString("id-ID") + " kg" : value,
+              typeof value === "number"
+                ? value.toLocaleString("id-ID") + " kg"
+                : value,
             font: { size: 10 },
           },
           grid: { color: "rgba(0, 0, 0, 0.06)" },
-        },
-        y: {
-          stacked: false,
-          title: {
-            display: true,
-            text: "Pemasok",
-            font: { size: 11, weight: "bold" },
-          },
-          ticks: {
-            autoSkip: false,
-            font: { size: 11 },
-          },
-          grid: { display: false },
         },
       },
     },
@@ -889,10 +892,10 @@ async function createProduksiChart() {
     procTotals[key] = (procTotals[key] || 0) + dashboardProduksiBeratKg(p);
   });
   const desc = Object.entries(procTotals).sort((a, b) => b[1] - a[1]);
-  const rowsAsc = dashboardTrimCategories(desc, DASHBOARD_BAR_MAX_CATEGORIES).slice().reverse();
+  const rowsTrim = dashboardTrimCategories(desc, DASHBOARD_BAR_MAX_CATEGORIES);
 
-  const labels = rowsAsc.map(([name]) => name);
-  const values = rowsAsc.map(([, v]) => v);
+  const labels = rowsTrim.map(([name]) => name);
+  const values = rowsTrim.map(([, v]) => v);
   const barColors = labels.map(
     (_, i) =>
       DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
@@ -928,14 +931,13 @@ async function createProduksiChart() {
       ],
     },
     options: {
-      indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "nearest", intersect: false },
       elements: {
         bar: { borderRadius: 4, borderSkipped: false },
       },
-      datasets: { bar: { maxBarThickness: 36 } },
+      datasets: { bar: { maxBarThickness: 40 } },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -944,7 +946,7 @@ async function createProduksiChart() {
               return items.length ? items[0].label : "";
             },
             label: function (context) {
-              const num = Number(context.parsed.x) || 0;
+              const num = Number(context.parsed.y) || 0;
               return `${num.toLocaleString("id-ID")} kg`;
             },
           },
@@ -952,6 +954,21 @@ async function createProduksiChart() {
       },
       scales: {
         x: {
+          stacked: false,
+          title: {
+            display: true,
+            text: "Proses pengolahan",
+            font: { size: 11, weight: "bold" },
+          },
+          ticks: {
+            autoSkip: false,
+            font: { size: 10 },
+            maxRotation: 50,
+            minRotation: 35,
+          },
+          grid: { display: false },
+        },
+        y: {
           beginAtZero: true,
           stacked: false,
           title: {
@@ -961,23 +978,12 @@ async function createProduksiChart() {
           },
           ticks: {
             callback: (value) =>
-              typeof value === "number" ? value.toLocaleString("id-ID") + " kg" : value,
+              typeof value === "number"
+                ? value.toLocaleString("id-ID") + " kg"
+                : value,
             font: { size: 10 },
           },
           grid: { color: "rgba(0, 0, 0, 0.06)" },
-        },
-        y: {
-          stacked: false,
-          title: {
-            display: true,
-            text: "Proses pengolahan",
-            font: { size: 11, weight: "bold" },
-          },
-          ticks: {
-            autoSkip: false,
-            font: { size: 11 },
-          },
-          grid: { display: false },
         },
       },
     },
