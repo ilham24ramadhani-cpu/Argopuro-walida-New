@@ -1353,7 +1353,8 @@ async function updateKeuanganFromBahan(idBahan, totalPengeluaran, tanggal) {
       tanggal: tanggal,
       jenisPengeluaran: "Pembelian Bahan Baku",
       idBahanBaku: idBahan,
-      notes: null,
+      // Notes wajib di backend /api/keuangan (tidak boleh kosong)
+      notes: `Otomatis dari bahan masuk ${idBahan}`,
       nilai: totalPengeluaran,
     };
 
