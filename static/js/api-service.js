@@ -46,7 +46,22 @@ window.getProsesPengolahanBadgeClass = function (proses, idProses) {
   if (!Number.isNaN(n) && n >= 1) {
     idx = (Math.floor(n) - 1) % palette.length;
   } else {
-    const s = String(proses || "").trim().toLowerCase();
+    // Fallback konsisten untuk data legacy tanpa idProses: map via nama proses.
+    // Ini mencegah warna berubah karena perbedaan kecil teks (spasi/kasus).
+    const s = String(proses || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+
+    if (s.includes("anaerob")) return "process-1";
+    if (s.includes("hsn")) return "process-2";
+    if (s.includes("natural")) return "process-3";
+    if (s.includes("washed") || s.includes("full wash")) return "process-4";
+    if (s.includes("carbonic") && s.includes("wethull")) return "process-5";
+    if (s.includes("kismis")) return "process-6";
+    if (s.includes("komersil") || s.includes("komersial")) return "process-7";
+    if (s.includes("cherry")) return "process-8";
+
     let h = 0;
     for (let i = 0; i < s.length; i++) {
       h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
