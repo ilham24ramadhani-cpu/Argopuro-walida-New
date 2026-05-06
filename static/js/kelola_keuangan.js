@@ -334,7 +334,19 @@ async function displayKeuangan() {
 
   // Sort berdasarkan tanggal (terbaru dulu)
   filteredKeuangan.sort((a, b) => {
-    return new Date(b.tanggal) - new Date(a.tanggal);
+    // Prioritas: yang punya ID Bahan Baku (Pembelian Bahan) di atas
+    const aHasId = a && a.idBahanBaku ? 1 : 0;
+    const bHasId = b && b.idBahanBaku ? 1 : 0;
+    if (aHasId !== bHasId) return bHasId - aHasId;
+
+    // Lalu: terbaru dulu
+    const dt = new Date(b.tanggal) - new Date(a.tanggal);
+    if (dt !== 0) return dt;
+
+    // Stabil: urutkan ID bahan jika sama tanggal
+    const aId = a && a.idBahanBaku ? String(a.idBahanBaku) : "";
+    const bId = b && b.idBahanBaku ? String(b.idBahanBaku) : "";
+    return aId.localeCompare(bId, "id", { numeric: true });
   });
 
   if (filteredKeuangan.length === 0) {
