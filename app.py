@@ -346,11 +346,14 @@ def validate_sequential_tahapan_dengan_master(master_proses, status_tahapan_baru
         tahapan_map = {
             'Sortasi Cherry atau Buah Kopi': 'Sortasi',
             'Sortasi Buah': 'Sortasi',  # Kompatibilitas nama lama
+            'Pengeringan Awal Pertama': 'Pengeringan Awal Pertama',
+            'Pengeringan Awal Pertama (Para - Para)': 'Pengeringan Awal Pertama',
             'Fermentasi': 'Fermentasi',
             'Pulping': 'Pulping',
             'Pencucian': 'Pencucian',
             'Pengeringan Awal': 'Pengeringan Awal',
             'Pengeringan Awal (Para - Para)': 'Pengeringan Awal',
+            'Pengeringan Awal kedua (Para - Para)': 'Pengeringan Awal',
             'Fermentasi 2': 'Fermentasi 2',
             'Pulping 2': 'Pulping 2',
             'Pengeringan Akhir': 'Pengeringan Akhir',
@@ -366,7 +369,7 @@ def validate_sequential_tahapan_dengan_master(master_proses, status_tahapan_baru
         
         # Daftar urutan tahapan (sesuai urutan logis proses basah → pengeringan para-para → siklus kedua → pengeringan lantai → …)
         urutan_tahapan = [
-            'Sortasi', 'Fermentasi', 'Pulping', 'Pencucian',
+            'Sortasi', 'Pengeringan Awal Pertama', 'Fermentasi', 'Pulping', 'Pencucian',
             'Pengeringan Awal', 'Fermentasi 2', 'Pulping 2', 'Pengeringan Akhir',
             'Hulling', 'Hand Sortasi', 'Grinding', 'Pengemasan',
         ]
@@ -1329,7 +1332,7 @@ def _upsert_catatan_per_tahapan(existing, nama_tahapan, catatan, tanggal_sekaran
 # Urutan tampilan daftar produksi (GET /api/produksi): grup per tahapan, lalu idProduksi.
 # Roasting disisipkan sebelum Pengemasan untuk data legacy.
 _URUTAN_TAHAPAN_PRODUKSI_SORT = (
-    'Sortasi', 'Fermentasi', 'Pulping', 'Pencucian',
+    'Sortasi', 'Pengeringan Awal Pertama', 'Fermentasi', 'Pulping', 'Pencucian',
     'Pengeringan Awal', 'Fermentasi 2', 'Pulping 2', 'Pengeringan Akhir',
     'Hulling', 'Hand Sortasi', 'Grinding', 'Roasting', 'Pengemasan',
 )
@@ -1337,7 +1340,10 @@ _URUTAN_TAHAPAN_PRODUKSI_SORT_INDEX = {n: i for i, n in enumerate(_URUTAN_TAHAPA
 _PRODUKSI_STATUS_LABEL_KE_KANON_SORT = {
     'Sortasi Cherry atau Buah Kopi': 'Sortasi',
     'Sortasi Buah': 'Sortasi',
+    'Pengeringan Awal Pertama (Para - Para)': 'Pengeringan Awal Pertama',
+    'Pengeringan Awal Pertama': 'Pengeringan Awal Pertama',
     'Pengeringan Awal (Para - Para)': 'Pengeringan Awal',
+    'Pengeringan Awal kedua (Para - Para)': 'Pengeringan Awal',
     'Pengeringan Akhir (Pengeringan Lantai)': 'Pengeringan Akhir',
     'Pengupasan Kulit Tanduk (Hulling) Pertama': 'Pulping 2',
     'Pengupasan Kulit Tanduk (Hulling) Kedua': 'Hulling',

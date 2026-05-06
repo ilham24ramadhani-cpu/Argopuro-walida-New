@@ -736,10 +736,11 @@ async function loadBahanDataProduksi() {
 // Konstanta ini hanya untuk referensi/fallback jika diperlukan
 const ALL_TAHAPAN = {
   Sortasi: "Sortasi Cherry atau Buah Kopi",
+  "Pengeringan Awal Pertama": "Pengeringan Awal Pertama (Para - Para)",
   Fermentasi: "Fermentasi",
   Pulping: "Pulping",
   Pencucian: "Pencucian",
-  "Pengeringan Awal": "Pengeringan Awal (Para - Para)",
+  "Pengeringan Awal": "Pengeringan Awal kedua (Para - Para)",
   "Fermentasi 2": "Fermentasi 2",
   "Pulping 2": "Pengupasan Kulit Tanduk (Hulling) Pertama",
   "Pengeringan Akhir": "Pengeringan Akhir (Pengeringan Lantai)",
@@ -752,6 +753,7 @@ const ALL_TAHAPAN = {
 /** Urutan kanonik (kunci = kunci di tahapanStatus master). */
 const URUTAN_TAHAPAN_PRODUKSI = [
   "Sortasi",
+  "Pengeringan Awal Pertama",
   "Fermentasi",
   "Pulping",
   "Pencucian",
@@ -786,8 +788,11 @@ function normalisasiTahapanKeUrutanKey(str) {
     Fermentasi: "Fermentasi",
     Pulping: "Pulping",
     Pencucian: "Pencucian",
+    "Pengeringan Awal Pertama": "Pengeringan Awal Pertama",
+    "Pengeringan Awal Pertama (Para - Para)": "Pengeringan Awal Pertama",
     "Pengeringan Awal": "Pengeringan Awal",
     "Pengeringan Awal (Para - Para)": "Pengeringan Awal",
+    "Pengeringan Awal kedua (Para - Para)": "Pengeringan Awal",
     "Fermentasi 2": "Fermentasi 2",
     "Pulping 2": "Pulping 2",
     "Pengeringan Akhir": "Pengeringan Akhir",

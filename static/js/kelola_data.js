@@ -15,10 +15,11 @@ let currentDeleteType = null; // 'produk', 'proses', 'jenisKopi', 'varietas', 'r
 // Konstanta ini hanya untuk referensi/fallback jika diperlukan
 const ALL_TAHAPAN = {
   Sortasi: "Sortasi Cherry atau Buah Kopi",
+  "Pengeringan Awal Pertama": "Pengeringan Awal Pertama (Para - Para)",
   Fermentasi: "Fermentasi",
   Pulping: "Pulping",
   Pencucian: "Pencucian",
-  "Pengeringan Awal": "Pengeringan Awal (Para - Para)",
+  "Pengeringan Awal": "Pengeringan Awal kedua (Para - Para)",
   "Fermentasi 2": "Fermentasi 2",
   "Pulping 2": "Pengupasan Kulit Tanduk (Hulling) Pertama",
   "Pengeringan Akhir": "Pengeringan Akhir (Pengeringan Lantai)",

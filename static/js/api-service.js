@@ -73,6 +73,7 @@ window.getStatusTahapanBadgeClass = function (tahapan) {
 /** Urutan kanonik tahapan (sinkron dengan backend `get_produksi`). Roasting legacy sebelum Pengemasan. */
 window.URUTAN_TAHAPAN_PRODUKSI_KANON = [
   "Sortasi",
+  "Pengeringan Awal Pertama",
   "Fermentasi",
   "Pulping",
   "Pencucian",
@@ -90,7 +91,9 @@ window.URUTAN_TAHAPAN_PRODUKSI_KANON = [
 const _TAHAPAN_LABEL_KE_KUNCI_SORT = {
   "Sortasi Cherry atau Buah Kopi": "Sortasi",
   "Sortasi Buah": "Sortasi",
+  "Pengeringan Awal Pertama (Para - Para)": "Pengeringan Awal Pertama",
   "Pengeringan Awal (Para - Para)": "Pengeringan Awal",
+  "Pengeringan Awal kedua (Para - Para)": "Pengeringan Awal",
   "Pengeringan Akhir (Pengeringan Lantai)": "Pengeringan Akhir",
   "Pengupasan Kulit Tanduk (Hulling) Pertama": "Pulping 2",
   "Pengupasan Kulit Tanduk (Hulling) Kedua": "Hulling",
@@ -99,6 +102,7 @@ const _TAHAPAN_LABEL_KE_KUNCI_SORT = {
   Fermentasi: "Fermentasi",
   Pulping: "Pulping",
   Pencucian: "Pencucian",
+  "Pengeringan Awal Pertama": "Pengeringan Awal Pertama",
   "Pengeringan Awal": "Pengeringan Awal",
   "Fermentasi 2": "Fermentasi 2",
   "Pulping 2": "Pulping 2",
