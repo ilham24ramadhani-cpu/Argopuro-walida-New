@@ -10,6 +10,131 @@ let bahanChart = null;
 let produksiChart = null;
 let stokChart = null;
 
+/** Warna garis datasets trend multi-seri (pemasok / proses). */
+const DASHBOARD_CHART_SERIES_COLORS = [
+  "rgb(255, 193, 7)",
+  "rgb(13, 110, 253)",
+  "rgb(25, 135, 84)",
+  "rgb(220, 53, 69)",
+  "rgb(111, 66, 193)",
+  "rgb(214, 51, 132)",
+  "rgb(32, 201, 151)",
+  "rgb(253, 126, 20)",
+];
+
+function dashboardChartPreset(selectId) {
+  const el = document.getElementById(selectId);
+  return el?.value || "all";
+}
+
+function dashboardChartPeriodStartMs(preset) {
+  if (!preset || preset === "all") return null;
+  const days = { "7d": 7, "30d": 30, "90d": 90, "180d": 180, "365d": 365 }[preset];
+  if (!days) return null;
+  const start = new Date();
+  start.setDate(start.getDate() - days);
+  start.setHours(0, 0, 0, 0);
+  return start.getTime();
+}
+
+function dashboardChartUseDailyBuckets(preset) {
+  return preset === "7d" || preset === "30d";
+}
+
+function dashboardChartBucketKey(d, useDaily) {
+  if (useDaily) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function dashboardChartFormatBucketLabel(key, useDaily) {
+  const monthNames = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "Mei",
+    "Jun",
+    "Jul",
+    "Agu",
+    "Sep",
+    "Okt",
+    "Nov",
+    "Des",
+  ];
+  if (useDaily) {
+    const [y, m, day] = key.split("-").map(Number);
+    return `${day} ${monthNames[m - 1]} ${y}`;
+  }
+  const [y, m] = key.split("-").map(Number);
+  return `${monthNames[m - 1]} ${y}`;
+}
+
+function dashboardGetIdBahanListFromProduksi(p) {
+  if (!p) return [];
+  if (Array.isArray(p.idBahanList) && p.idBahanList.length > 0) {
+    return p.idBahanList.map((x) => String(x).trim()).filter(Boolean);
+  }
+  if (p.idBahan) return [String(p.idBahan).trim()];
+  return [];
+}
+
+function dashboardGetProsesPengolahanTampilan(prod, bahanById) {
+  const firstId = dashboardGetIdBahanListFromProduksi(prod)[0] || prod?.idBahan;
+  const id = firstId ? String(firstId).trim() : "";
+  const b = id && bahanById instanceof Map ? bahanById.get(id) : null;
+  const lines = b?.prosesBahan;
+  if (Array.isArray(lines) && lines.length === 1 && lines[0]?.prosesPengolahan) {
+    return String(lines[0].prosesPengolahan);
+  }
+  const direct = prod?.prosesPengolahan && String(prod.prosesPengolahan).trim();
+  return direct || "-";
+}
+
+function dashboardProduksiMillis(p) {
+  const raw = p.tanggalMasuk || p.tanggalSekarang;
+  const t = new Date(raw).getTime();
+  return Number.isFinite(t) ? t : NaN;
+}
+
+function dashboardProduksiBeratKg(p) {
+  const aw = parseFloat(p.beratAwal);
+  const cur = parseFloat(p.beratTerkini || p.beratSaatIni);
+  if (Number.isFinite(aw) && aw > 0) return aw;
+  if (Number.isFinite(cur)) return cur;
+  return 0;
+}
+
+const DASHBOARD_CHART_TOP_SERIES = 7;
+
+function bindDashboardChartPeriodFilters() {
+  const bahanSel = document.getElementById("dashboardBahanPeriodeFilter");
+  const prodSel = document.getElementById("dashboardProduksiPeriodeFilter");
+  const savedB = sessionStorage.getItem("dashboardBahanPeriod");
+  const savedP = sessionStorage.getItem("dashboardProduksiPeriod");
+  if (bahanSel && savedB && [...bahanSel.options].some((o) => o.value === savedB)) {
+    bahanSel.value = savedB;
+  }
+  if (prodSel && savedP && [...prodSel.options].some((o) => o.value === savedP)) {
+    prodSel.value = savedP;
+  }
+  if (bahanSel && !bahanSel.dataset.dashboardPeriodBound) {
+    bahanSel.dataset.dashboardPeriodBound = "1";
+    bahanSel.addEventListener("change", () => {
+      sessionStorage.setItem("dashboardBahanPeriod", bahanSel.value);
+      createBahanChart();
+    });
+  }
+  if (prodSel && !prodSel.dataset.dashboardPeriodBound) {
+    prodSel.dataset.dashboardPeriodBound = "1";
+    prodSel.addEventListener("change", () => {
+      sessionStorage.setItem("dashboardProduksiPeriod", prodSel.value);
+      createProduksiChart();
+    });
+  }
+}
+
 // Fungsi untuk menghitung statistik
 async function calculateStatistics() {
   // Ambil semua data dari API atau localStorage
@@ -556,7 +681,7 @@ async function displayQuickSummary() {
     .join("");
 }
 
-// Fungsi untuk membuat grafik bahan (Line Chart)
+// Grafik bahan masuk: trend jumlah (kg) per pemasok + filter periode
 async function createBahanChart() {
   let bahan = [];
   try {
@@ -570,36 +695,9 @@ async function createBahanChart() {
     bahan = JSON.parse(localStorage.getItem("bahan") || "[]");
   }
   const chartContainer = document.querySelector("#bahanChart")?.parentElement;
-  const ctx = document.getElementById("bahanChart");
-
   if (!chartContainer) return;
 
-  // Group data by month
-  const monthlyData = {};
-  bahan.forEach((b) => {
-    const date = new Date(b.tanggalMasuk);
-    const monthKey = `${date.getFullYear()}-${String(
-      date.getMonth() + 1
-    ).padStart(2, "0")}`;
-
-    if (!monthlyData[monthKey]) {
-      monthlyData[monthKey] = {
-        jumlah: 0,
-        totalPengeluaran: 0,
-      };
-    }
-
-    monthlyData[monthKey].jumlah += parseFloat(b.jumlah || 0);
-    monthlyData[monthKey].totalPengeluaran += parseFloat(
-      b.totalPengeluaran || 0
-    );
-  });
-
-  // Sort by date
-  const sortedMonths = Object.keys(monthlyData).sort();
-
-  // Jika tidak ada data, tampilkan pesan
-  if (sortedMonths.length === 0) {
+  if (bahan.length === 0) {
     if (bahanChart) {
       bahanChart.destroy();
       bahanChart = null;
@@ -614,61 +712,100 @@ async function createBahanChart() {
     return;
   }
 
-  const labels = sortedMonths.map((month) => {
-    const [year, monthNum] = month.split("-");
-    const monthNames = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "Mei",
-      "Jun",
-      "Jul",
-      "Agu",
-      "Sep",
-      "Okt",
-      "Nov",
-      "Des",
-    ];
-    return `${monthNames[parseInt(monthNum) - 1]} ${year}`;
+  const preset = dashboardChartPreset("dashboardBahanPeriodeFilter");
+  const startMs = dashboardChartPeriodStartMs(preset);
+  const useDaily = dashboardChartUseDailyBuckets(preset);
+
+  const filtered = bahan.filter((b) => {
+    const t = new Date(b.tanggalMasuk).getTime();
+    if (!Number.isFinite(t)) return false;
+    if (startMs != null && t < startMs) return false;
+    return true;
   });
 
-  const jumlahData = sortedMonths.map((month) => monthlyData[month].jumlah);
-  const pengeluaranData = sortedMonths.map(
-    (month) => monthlyData[month].totalPengeluaran
+  if (filtered.length === 0) {
+    if (bahanChart) {
+      bahanChart.destroy();
+      bahanChart = null;
+    }
+    chartContainer.innerHTML = `
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>
+        <p class="mb-0">Tidak ada bahan masuk pada periode ini</p>
+        <small>Ubah filter waktu atau tunggu data baru</small>
+      </div>
+    `;
+    return;
+  }
+
+  const rawTotals = {};
+  filtered.forEach((b) => {
+    const name = (b.pemasok && String(b.pemasok).trim()) || "Tanpa pemasok";
+    rawTotals[name] = (rawTotals[name] || 0) + parseFloat(b.jumlah || 0);
+  });
+  const byVolume = Object.entries(rawTotals).sort((a, b) => b[1] - a[1]);
+  const topNames = byVolume.slice(0, DASHBOARD_CHART_TOP_SERIES).map((x) => x[0]);
+  const topSet = new Set(topNames);
+  const useLainnya = byVolume.length > DASHBOARD_CHART_TOP_SERIES;
+
+  const matrix = {};
+  const bucketSet = new Set();
+  filtered.forEach((b) => {
+    const d = new Date(b.tanggalMasuk);
+    if (!Number.isFinite(d.getTime())) return;
+    const bucket = dashboardChartBucketKey(d, useDaily);
+    bucketSet.add(bucket);
+    const rawName = (b.pemasok && String(b.pemasok).trim()) || "Tanpa pemasok";
+    const seriesName =
+      !useLainnya || topSet.has(rawName) ? rawName : "Lainnya";
+    if (!matrix[bucket]) matrix[bucket] = {};
+    const kg = parseFloat(b.jumlah || 0);
+    matrix[bucket][seriesName] = (matrix[bucket][seriesName] || 0) + kg;
+  });
+
+  const sortedBuckets = [...bucketSet].sort();
+  const seriesOrder = [
+    ...topNames,
+    ...(useLainnya && sortedBuckets.some((bk) => matrix[bk]["Lainnya"] > 0)
+      ? ["Lainnya"]
+      : []),
+  ].filter((name, i, arr) => arr.indexOf(name) === i);
+
+  const labels = sortedBuckets.map((k) =>
+    dashboardChartFormatBucketLabel(k, useDaily)
   );
 
-  // Destroy existing chart if any
   if (bahanChart) {
     bahanChart.destroy();
     bahanChart = null;
   }
-
-  // Restore canvas if it was replaced (jika container tidak berisi canvas)
   if (!chartContainer.querySelector("canvas")) {
     chartContainer.innerHTML = '<canvas id="bahanChart"></canvas>';
   }
-
   const chartCtx = document.getElementById("bahanChart");
   if (!chartCtx) return;
 
+  const datasets = seriesOrder.map((name, idx) => {
+    const color = DASHBOARD_CHART_SERIES_COLORS[idx % DASHBOARD_CHART_SERIES_COLORS.length];
+    return {
+      label: name,
+      data: sortedBuckets.map((bk) => matrix[bk][name] || 0),
+      borderColor: color,
+      backgroundColor: color.replace("rgb(", "rgba(").replace(")", ", 0.12)"),
+      tension: 0.25,
+      fill: false,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+    };
+  });
+
   bahanChart = new Chart(chartCtx, {
-    type: "bar",
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: "Jumlah Bahan (kg)",
-          data: jumlahData,
-          backgroundColor: "rgba(255, 193, 7, 0.8)",
-          borderColor: "rgb(255, 193, 7)",
-          borderWidth: 2,
-        },
-      ],
-    },
+    type: "line",
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
       plugins: {
         legend: {
           display: true,
@@ -677,9 +814,8 @@ async function createBahanChart() {
         tooltip: {
           callbacks: {
             label: function (context) {
-              return (
-                "Jumlah: " + context.parsed.y.toLocaleString("id-ID") + " kg"
-              );
+              const v = context.parsed.y;
+              return `${context.dataset.label}: ${v.toLocaleString("id-ID")} kg`;
             },
           },
         },
@@ -687,86 +823,57 @@ async function createBahanChart() {
       scales: {
         y: {
           beginAtZero: true,
+          stacked: false,
           title: {
             display: true,
-            text: "Jumlah Bahan (kg)",
-            font: {
-              size: 12,
-              weight: "bold",
-            },
+            text: "Jumlah bahan masuk (kg)",
+            font: { size: 12, weight: "bold" },
           },
           ticks: {
-            callback: function (value) {
-              return value.toLocaleString("id-ID") + " kg";
-            },
-            font: {
-              size: 11,
-            },
+            callback: (value) => value.toLocaleString("id-ID") + " kg",
+            font: { size: 11 },
           },
-          grid: {
-            color: "rgba(0, 0, 0, 0.05)",
-          },
+          grid: { color: "rgba(0, 0, 0, 0.05)" },
         },
         x: {
-          ticks: {
-            font: {
-              size: 11,
-            },
-          },
-          grid: {
-            display: false,
-          },
+          ticks: { font: { size: 10 }, maxRotation: 45, minRotation: 0 },
+          grid: { display: false },
         },
       },
     },
   });
 }
 
-// Fungsi untuk membuat grafik produksi (Line Chart)
+// Grafik produksi: trend berat per proses pengolahan + filter periode
 async function createProduksiChart() {
   let produksi = [];
+  let bahanRows = [];
   try {
     if (window.API && window.API.Produksi) {
       produksi = await window.API.Produksi.getAll();
     } else {
       produksi = JSON.parse(localStorage.getItem("produksi") || "[]");
     }
+    if (window.API && window.API.Bahan) {
+      bahanRows = await window.API.Bahan.getAll();
+    } else {
+      bahanRows = JSON.parse(localStorage.getItem("bahan") || "[]");
+    }
   } catch (error) {
     console.error("Error loading produksi for chart:", error);
     produksi = JSON.parse(localStorage.getItem("produksi") || "[]");
+    bahanRows = JSON.parse(localStorage.getItem("bahan") || "[]");
   }
   const chartContainer =
     document.querySelector("#produksiChart")?.parentElement;
-  const ctx = document.getElementById("produksiChart");
-
   if (!chartContainer) return;
 
-  // Group data by month
-  const monthlyData = {};
-  produksi.forEach((p) => {
-    const date = new Date(p.tanggalMasuk);
-    const monthKey = `${date.getFullYear()}-${String(
-      date.getMonth() + 1
-    ).padStart(2, "0")}`;
-
-    if (!monthlyData[monthKey]) {
-      monthlyData[monthKey] = {
-        beratAwal: 0,
-        beratSaatIni: 0,
-        count: 0,
-      };
-    }
-
-    monthlyData[monthKey].beratAwal += parseFloat(p.beratAwal || 0);
-    monthlyData[monthKey].beratSaatIni += parseFloat(p.beratSaatIni || 0);
-    monthlyData[monthKey].count += 1;
+  const bahanById = new Map();
+  bahanRows.forEach((b) => {
+    if (b.idBahan) bahanById.set(String(b.idBahan).trim(), b);
   });
 
-  // Sort by date
-  const sortedMonths = Object.keys(monthlyData).sort();
-
-  // Jika tidak ada data, tampilkan pesan
-  if (sortedMonths.length === 0) {
+  if (produksi.length === 0) {
     if (produksiChart) {
       produksiChart.destroy();
       produksiChart = null;
@@ -781,67 +888,104 @@ async function createProduksiChart() {
     return;
   }
 
-  const labels = sortedMonths.map((month) => {
-    const [year, monthNum] = month.split("-");
-    const monthNames = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "Mei",
-      "Jun",
-      "Jul",
-      "Agu",
-      "Sep",
-      "Okt",
-      "Nov",
-      "Des",
-    ];
-    return `${monthNames[parseInt(monthNum) - 1]} ${year}`;
+  const preset = dashboardChartPreset("dashboardProduksiPeriodeFilter");
+  const startMs = dashboardChartPeriodStartMs(preset);
+  const useDaily = dashboardChartUseDailyBuckets(preset);
+
+  const filtered = produksi.filter((p) => {
+    const t = dashboardProduksiMillis(p);
+    if (!Number.isFinite(t)) return false;
+    if (startMs != null && t < startMs) return false;
+    return true;
   });
 
-  const beratAwalData = sortedMonths.map(
-    (month) => monthlyData[month].beratAwal
-  );
-  const beratSaatIniData = sortedMonths.map(
-    (month) => monthlyData[month].beratSaatIni
-  );
-  const countData = sortedMonths.map((month) => monthlyData[month].count);
+  if (filtered.length === 0) {
+    if (produksiChart) {
+      produksiChart.destroy();
+      produksiChart = null;
+    }
+    chartContainer.innerHTML = `
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>
+        <p class="mb-0">Tidak ada produksi pada periode ini</p>
+        <small>Ubah filter waktu atau tunggu data baru</small>
+      </div>
+    `;
+    return;
+  }
 
-  // Destroy existing chart if any
+  const procTotals = {};
+  filtered.forEach((p) => {
+    const label = dashboardGetProsesPengolahanTampilan(p, bahanById);
+    const key = label && label !== "-" ? label : "Tanpa proses";
+    procTotals[key] = (procTotals[key] || 0) + dashboardProduksiBeratKg(p);
+  });
+  const byVol = Object.entries(procTotals).sort((a, b) => b[1] - a[1]);
+  const topProc = byVol.slice(0, DASHBOARD_CHART_TOP_SERIES).map((x) => x[0]);
+  const topProcSet = new Set(topProc);
+  const useLainnyaProc = byVol.length > DASHBOARD_CHART_TOP_SERIES;
+
+  const matrix = {};
+  const bucketSet = new Set();
+  filtered.forEach((p) => {
+    const tms = dashboardProduksiMillis(p);
+    if (!Number.isFinite(tms)) return;
+    const d = new Date(tms);
+    const bucket = dashboardChartBucketKey(d, useDaily);
+    bucketSet.add(bucket);
+    const label = dashboardGetProsesPengolahanTampilan(p, bahanById);
+    const rawName = label && label !== "-" ? label : "Tanpa proses";
+    const seriesName =
+      !useLainnyaProc || topProcSet.has(rawName) ? rawName : "Lainnya";
+    if (!matrix[bucket]) matrix[bucket] = {};
+    const kg = dashboardProduksiBeratKg(p);
+    matrix[bucket][seriesName] = (matrix[bucket][seriesName] || 0) + kg;
+  });
+
+  const sortedBuckets = [...bucketSet].sort();
+  const seriesOrder = [
+    ...topProc,
+    ...(useLainnyaProc &&
+    sortedBuckets.some((bk) => (matrix[bk]["Lainnya"] || 0) > 0)
+      ? ["Lainnya"]
+      : []),
+  ].filter((name, i, arr) => arr.indexOf(name) === i);
+
+  const labels = sortedBuckets.map((k) =>
+    dashboardChartFormatBucketLabel(k, useDaily)
+  );
+
   if (produksiChart) {
     produksiChart.destroy();
     produksiChart = null;
   }
-
-  // Restore canvas if it was replaced (jika container tidak berisi canvas)
   if (!chartContainer.querySelector("canvas")) {
     chartContainer.innerHTML = '<canvas id="produksiChart"></canvas>';
   }
-
   const chartCtx = document.getElementById("produksiChart");
   if (!chartCtx) return;
 
+  const datasets = seriesOrder.map((name, idx) => {
+    const color = DASHBOARD_CHART_SERIES_COLORS[idx % DASHBOARD_CHART_SERIES_COLORS.length];
+    return {
+      label: name,
+      data: sortedBuckets.map((bk) => matrix[bk][name] || 0),
+      borderColor: color,
+      backgroundColor: color.replace("rgb(", "rgba(").replace(")", ", 0.12)"),
+      tension: 0.25,
+      fill: false,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+    };
+  });
+
   produksiChart = new Chart(chartCtx, {
     type: "line",
-    data: {
-      labels: labels,
-      datasets: [
-        {
-          label: "Berat Produksi (kg)",
-          data: beratSaatIniData,
-          borderColor: "rgb(13, 110, 253)",
-          backgroundColor: "rgba(13, 110, 253, 0.1)",
-          tension: 0.4,
-          fill: true,
-          pointRadius: 4,
-          pointHoverRadius: 6,
-        },
-      ],
-    },
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
       plugins: {
         legend: {
           display: true,
@@ -850,9 +994,8 @@ async function createProduksiChart() {
         tooltip: {
           callbacks: {
             label: function (context) {
-              return (
-                "Berat: " + context.parsed.y.toLocaleString("id-ID") + " kg"
-              );
+              const v = context.parsed.y;
+              return `${context.dataset.label}: ${v.toLocaleString("id-ID")} kg`;
             },
           },
         },
@@ -862,33 +1005,18 @@ async function createProduksiChart() {
           beginAtZero: true,
           title: {
             display: true,
-            text: "Berat Produksi (kg)",
-            font: {
-              size: 12,
-              weight: "bold",
-            },
+            text: "Berat (kg) — utama berat awal batch",
+            font: { size: 11, weight: "bold" },
           },
           ticks: {
-            callback: function (value) {
-              return value.toLocaleString("id-ID") + " kg";
-            },
-            font: {
-              size: 11,
-            },
+            callback: (value) => value.toLocaleString("id-ID") + " kg",
+            font: { size: 11 },
           },
-          grid: {
-            color: "rgba(0, 0, 0, 0.05)",
-          },
+          grid: { color: "rgba(0, 0, 0, 0.05)" },
         },
         x: {
-          ticks: {
-            font: {
-              size: 11,
-            },
-          },
-          grid: {
-            display: false,
-          },
+          ticks: { font: { size: 10 }, maxRotation: 45, minRotation: 0 },
+          grid: { display: false },
         },
       },
     },
@@ -1155,6 +1283,8 @@ document.addEventListener("DOMContentLoaded", function () {
       await displayStatisticsCards(false);
       await displayRecentActivity();
       await displayQuickSummary();
+
+      bindDashboardChartPeriodFilters();
 
       // Initialize charts
       await createBahanChart();
