@@ -1,7 +1,32 @@
 // Data keuangan (MONGODB ONLY - NO localStorage fallback)
 let keuangan = [];
+// Data pemasukan (read-only) dari pemesanan yang statusPembayaran = Lunas
+let pemasukan = [];
 let currentEditId = null;
 let currentDeleteId = null;
+
+function unwrapArrayResponse(res) {
+  if (Array.isArray(res)) return res;
+  if (res && Array.isArray(res.data)) return res.data;
+  return [];
+}
+
+function getActiveKeuanganTab() {
+  const active = document.querySelector("#keuanganTabs .nav-link.active");
+  return active && active.id === "tab-pemasukan" ? "pemasukan" : "pengeluaran";
+}
+
+function syncKeuanganHeaderForTab(tab) {
+  const btnTambah = document.getElementById("btnTambahPengeluaran");
+  const wrapFilter = document.getElementById("wrapFilterPengeluaran");
+  if (tab === "pemasukan") {
+    if (btnTambah) btnTambah.style.display = "none";
+    if (wrapFilter) wrapFilter.style.display = "none";
+  } else {
+    if (btnTambah) btnTambah.style.display = "";
+    if (wrapFilter) wrapFilter.style.display = "";
+  }
+}
 
 // Load data keuangan dari MongoDB (API ONLY - NO fallback)
 async function loadKeuanganData() {
@@ -40,6 +65,48 @@ async function loadKeuanganData() {
     }. Pastikan backend Flask aktif.`;
     alert(errorMsg);
     keuangan = [];
+    throw error;
+  }
+}
+
+async function loadPemasukanData() {
+  try {
+    console.log("🔄 Loading pemasukan data from pemesanan (Lunas)...");
+
+    let retries = 0;
+    while (!window.API && retries < 20) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      retries++;
+    }
+
+    if (!window.API || !window.API.Pemesanan) {
+      const errorMsg =
+        "❌ API.Pemesanan tidak tersedia. Tidak dapat memuat pemasukan. Pastikan backend Flask aktif.";
+      console.error(errorMsg);
+      alert(errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    const res = await window.API.Pemesanan.getAll();
+    const rows = unwrapArrayResponse(res);
+    const lunas = rows.filter(
+      (p) => String(p?.statusPembayaran || "").trim() === "Lunas",
+    );
+
+    pemasukan = lunas.map((p) => ({
+      idPembelian: p.idPembelian || p.id || p._id,
+      namaPembeli: p.namaPembeli || "-",
+      tipePemesanan: p.tipePemesanan || "-",
+      tanggalPemesanan: p.tanggalPemesanan || p.tanggal || null,
+      nilai: Number(p.totalHarga || 0) || 0,
+      _raw: p,
+    }));
+
+    console.log(`✅ Loaded ${pemasukan.length} pemasukan rows (Lunas)`);
+    if (!Array.isArray(pemasukan)) pemasukan = [];
+  } catch (error) {
+    console.error("❌ Error loading pemasukan:", error);
+    pemasukan = [];
     throw error;
   }
 }
@@ -234,7 +301,7 @@ async function displayKeuangan() {
     keuangan = [];
   }
 
-  const tableBody = document.getElementById("tableBody");
+  const tableBody = document.getElementById("tableBodyPengeluaran");
   const searchInput = document.getElementById("searchInput");
   const searchTerm = searchInput ? searchInput.value.toLowerCase() : "";
 
@@ -312,6 +379,91 @@ async function displayKeuangan() {
   `
     )
     .join("");
+}
+
+async function displayPemasukan() {
+  try {
+    await loadPemasukanData();
+  } catch (error) {
+    console.error("Error loading pemasukan:", error);
+    pemasukan = [];
+  }
+
+  const tableBody = document.getElementById("tableBodyPemasukan");
+  if (!tableBody) return;
+
+  const searchInput = document.getElementById("searchInput");
+  const searchTerm = searchInput ? searchInput.value.toLowerCase() : "";
+
+  let filtered = pemasukan || [];
+  if (searchTerm) {
+    filtered = filtered.filter((x) => {
+      const tglRaw = x.tanggalPemesanan != null ? String(x.tanggalPemesanan) : "";
+      const idp = x.idPembelian != null ? String(x.idPembelian) : "";
+      const nama = x.namaPembeli != null ? String(x.namaPembeli) : "";
+      const tipe = x.tipePemesanan != null ? String(x.tipePemesanan) : "";
+      return (
+        tglRaw.toLowerCase().includes(searchTerm) ||
+        idp.toLowerCase().includes(searchTerm) ||
+        nama.toLowerCase().includes(searchTerm) ||
+        tipe.toLowerCase().includes(searchTerm)
+      );
+    });
+  }
+
+  filtered.sort((a, b) => {
+    return new Date(b.tanggalPemesanan || 0) - new Date(a.tanggalPemesanan || 0);
+  });
+
+  if (!filtered.length) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="6" class="text-center py-4 text-muted">
+          <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+          Tidak ada data pemasukan (status pembayaran Lunas)
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tableBody.innerHTML = filtered
+    .map((x, i) => {
+      const tgl = x.tanggalPemesanan
+        ? new Date(x.tanggalPemesanan).toLocaleDateString("id-ID")
+        : "-";
+      return `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${tgl}</td>
+          <td><strong>${x.idPembelian || "-"}</strong></td>
+          <td>${x.namaPembeli || "-"}</td>
+          <td>
+            <span class="badge ${
+              x.tipePemesanan === "International"
+                ? "bg-warning text-dark"
+                : x.tipePemesanan === "E-commerce"
+                  ? "bg-info text-dark"
+                  : "bg-primary"
+            }">
+              ${x.tipePemesanan || "-"}
+            </span>
+          </td>
+          <td class="text-end">Rp ${(x.nilai || 0).toLocaleString("id-ID")}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+async function refreshKeuanganPageForActiveTab() {
+  const tab = getActiveKeuanganTab();
+  syncKeuanganHeaderForTab(tab);
+  if (tab === "pemasukan") {
+    await displayPemasukan();
+  } else {
+    await displayKeuangan();
+  }
 }
 
 // Fungsi untuk membuka modal tambah/edit (mendaftarkan ke window)
@@ -529,7 +681,7 @@ async function deleteKeuangan(id) {
 document.addEventListener("DOMContentLoaded", function () {
   setTimeout(async () => {
     try {
-      await displayKeuangan();
+      await refreshKeuanganPageForActiveTab();
     } catch (error) {
       console.error("Error initializing keuangan page:", error);
     }
@@ -538,14 +690,14 @@ document.addEventListener("DOMContentLoaded", function () {
   const searchInput = document.getElementById("searchInput");
   if (searchInput) {
     searchInput.addEventListener("input", async () => {
-      await displayKeuangan();
+      await refreshKeuanganPageForActiveTab();
     });
   }
 
   const filterJenis = document.getElementById("filterJenisPengeluaranKeuangan");
   if (filterJenis) {
     filterJenis.addEventListener("change", async () => {
-      await displayKeuangan();
+      await refreshKeuanganPageForActiveTab();
     });
   }
 
@@ -556,4 +708,12 @@ document.addEventListener("DOMContentLoaded", function () {
       await loadBahanBakuOptions();
     });
   }
+
+  // Tabs change: refresh current tab view + header controls
+  const tabs = document.querySelectorAll('#keuanganTabs [data-bs-toggle="tab"]');
+  tabs.forEach((t) => {
+    t.addEventListener("shown.bs.tab", async () => {
+      await refreshKeuanganPageForActiveTab();
+    });
+  });
 });

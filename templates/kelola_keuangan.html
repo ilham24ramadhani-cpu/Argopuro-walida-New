@@ -338,9 +338,12 @@
           <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
               <h2 class="fw-bold mb-1">Kelola Keuangan</h2>
-              <p class="text-muted mb-0">Manajemen data pengeluaran keuangan</p>
+              <p class="text-muted mb-0">
+                Manajemen data pengeluaran &amp; pemasukan
+              </p>
             </div>
             <button
+              id="btnTambahPengeluaran"
               class="btn btn-primary"
               data-bs-toggle="modal"
               data-bs-target="#modalKeuangan"
@@ -350,43 +353,124 @@
             </button>
           </div>
 
-          <!-- Table -->
-          <div class="card shadow-sm">
-            <div class="card-body">
-              <div class="row g-2 align-items-end mb-3">
-                <div class="col-12 col-sm-auto">
-                  <label
-                    for="filterJenisPengeluaranKeuangan"
-                    class="form-label small text-muted mb-0 d-block"
-                    >Filter jenis pengeluaran</label
-                  >
-                  <select
-                    class="form-select form-select-sm"
-                    id="filterJenisPengeluaranKeuangan"
-                    style="min-width: 240px"
-                    aria-label="Filter jenis pengeluaran"
-                  >
-                    <option value="">Semua jenis</option>
-                  </select>
+          <!-- Tabs -->
+          <ul class="nav nav-tabs mb-3" id="keuanganTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link active"
+                id="tab-pengeluaran"
+                data-bs-toggle="tab"
+                data-bs-target="#panel-pengeluaran"
+                type="button"
+                role="tab"
+                aria-controls="panel-pengeluaran"
+                aria-selected="true"
+              >
+                <i class="bi bi-arrow-down-circle me-2"></i>Pengeluaran
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="tab-pemasukan"
+                data-bs-toggle="tab"
+                data-bs-target="#panel-pemasukan"
+                type="button"
+                role="tab"
+                aria-controls="panel-pemasukan"
+                aria-selected="false"
+              >
+                <i class="bi bi-arrow-up-circle me-2"></i>Pemasukan
+              </button>
+            </li>
+          </ul>
+
+          <!-- Tab content -->
+          <div class="tab-content" id="keuanganTabContent">
+            <!-- Pengeluaran -->
+            <div
+              class="tab-pane fade show active"
+              id="panel-pengeluaran"
+              role="tabpanel"
+              aria-labelledby="tab-pengeluaran"
+              tabindex="0"
+            >
+              <div class="card shadow-sm">
+                <div class="card-body">
+                  <div class="row g-2 align-items-end mb-3" id="wrapFilterPengeluaran">
+                    <div class="col-12 col-sm-auto">
+                      <label
+                        for="filterJenisPengeluaranKeuangan"
+                        class="form-label small text-muted mb-0 d-block"
+                        >Filter jenis pengeluaran</label
+                      >
+                      <select
+                        class="form-select form-select-sm"
+                        id="filterJenisPengeluaranKeuangan"
+                        style="min-width: 240px"
+                        aria-label="Filter jenis pengeluaran"
+                      >
+                        <option value="">Semua jenis</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">No</th>
+                          <th scope="col">Tanggal</th>
+                          <th scope="col">Jenis Pengeluaran</th>
+                          <th scope="col">ID Bahan Baku</th>
+                          <th scope="col">Notes</th>
+                          <th scope="col" class="text-end">Nilai (RP)</th>
+                          <th scope="col" class="text-center">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tableBodyPengeluaran">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-              <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                  <thead class="table-light">
-                    <tr>
-                      <th scope="col">No</th>
-                      <th scope="col">Tanggal</th>
-                      <th scope="col">Jenis Pengeluaran</th>
-                      <th scope="col">ID Bahan Baku</th>
-                      <th scope="col">Notes</th>
-                      <th scope="col" class="text-end">Nilai (RP)</th>
-                      <th scope="col" class="text-center">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody id="tableBody">
-                    <!-- Data akan diisi oleh JavaScript -->
-                  </tbody>
-                </table>
+            </div>
+
+            <!-- Pemasukan (read-only dari pemesanan yang Lunas) -->
+            <div
+              class="tab-pane fade"
+              id="panel-pemasukan"
+              role="tabpanel"
+              aria-labelledby="tab-pemasukan"
+              tabindex="0"
+            >
+              <div class="card shadow-sm">
+                <div class="card-body">
+                  <div class="alert alert-info d-flex align-items-start mb-3" role="alert">
+                    <i class="bi bi-info-circle me-2 mt-1"></i>
+                    <div class="small">
+                      Data pemasukan otomatis berasal dari <strong>pemesanan</strong> yang
+                      <strong>status pembayaran = Lunas</strong>.
+                    </div>
+                  </div>
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">No</th>
+                          <th scope="col">Tanggal</th>
+                          <th scope="col">ID Pembelian</th>
+                          <th scope="col">Nama Pembeli</th>
+                          <th scope="col">Tipe</th>
+                          <th scope="col" class="text-end">Nilai (RP)</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tableBodyPemasukan">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
