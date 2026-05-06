@@ -1208,8 +1208,70 @@
                   </div>
                 </div>
               </div>
+
+              <!-- Ringkasan Keuangan (pemasukan otomatis dari pemesanan Lunas) -->
+              <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                  <div class="card stat-card h-100">
+                    <div class="card-body">
+                      <p class="text-muted text-uppercase small mb-1">Total Pemasukan (Rp)</p>
+                      <h3 class="fw-bold mb-0 text-success" id="keuanganTotalPemasukan">-</h3>
+                      <small class="text-muted">Dari pemesanan status pembayaran Lunas</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="card stat-card h-100">
+                    <div class="card-body">
+                      <p class="text-muted text-uppercase small mb-1">Total Pengeluaran (Rp)</p>
+                      <h3 class="fw-bold mb-0 text-danger" id="keuanganTotalPengeluaran">-</h3>
+                      <small class="text-muted">Dari data pengeluaran (keuangan)</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="card stat-card h-100">
+                    <div class="card-body">
+                      <p class="text-muted text-uppercase small mb-1">Saldo (Rp)</p>
+                      <h3 class="fw-bold mb-0" id="keuanganSaldo">-</h3>
+                      <small class="text-muted">Pemasukan − Pengeluaran</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div class="card shadow-sm">
                 <div class="card-body">
+                  <div class="alert alert-info d-flex align-items-start mb-3" role="alert">
+                    <i class="bi bi-info-circle me-2 mt-1"></i>
+                    <div class="small">
+                      <strong>Pemasukan</strong> dihitung otomatis dari <strong>pemesanan</strong> yang
+                      <strong>status pembayaran = Lunas</strong>. Data akan ikut berubah saat status pembayaran pemesanan diperbarui.
+                    </div>
+                  </div>
+
+                  <h6 class="fw-bold mb-2">Pemasukan</h6>
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col">No</th>
+                          <th scope="col">Tanggal</th>
+                          <th scope="col">ID Pembelian</th>
+                          <th scope="col">Nama Pembeli</th>
+                          <th scope="col">Tipe</th>
+                          <th scope="col" class="text-end">Nilai (Rp)</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tableKeuanganPemasukan">
+                        <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <hr class="my-4" />
+
+                  <h6 class="fw-bold mb-2">Pengeluaran</h6>
                   <div class="table-responsive">
                     <table class="table table-hover align-middle">
                       <thead class="table-light">
@@ -1218,12 +1280,12 @@
                           <th scope="col">Tanggal</th>
                           <th scope="col">Jenis Pengeluaran</th>
                           <th scope="col">ID Bahan Baku</th>
-                          <th scope="col">Nilai (Rp)</th>
+                          <th scope="col" class="text-end">Nilai (Rp)</th>
                           <th scope="col">Notes</th>
                           <th scope="col" class="text-center">Lihat Detail</th>
                         </tr>
                       </thead>
-                      <tbody id="tableKeuangan">
+                      <tbody id="tableKeuanganPengeluaran">
                         <!-- Data akan diisi oleh JavaScript -->
                       </tbody>
                     </table>

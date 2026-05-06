@@ -8,6 +8,22 @@ let pemasok = [];
 let keuangan = [];
 let pemesanan = []; // TAMBAHAN: Data pemesanan untuk laporan
 
+function unwrapArrayResponseLaporan(res) {
+  if (Array.isArray(res)) return res;
+  if (res && Array.isArray(res.data)) return res.data;
+  return [];
+}
+
+function safeNumberLaporan(n) {
+  const x = typeof n === "number" ? n : parseFloat(n);
+  return Number.isFinite(x) ? x : 0;
+}
+
+function setTextById(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
 /** Produksi sudah pengemasan dengan penyebut rendemen valid: berat green beans, atau fallback berat akhir (data lama). Pixel tidak dipakai. */
 function isProduksiPengemasanBeratAkhir(p) {
   const st = (p.statusTahapan || "").toLowerCase();
@@ -5136,48 +5152,102 @@ function displayKeuangan() {
   // Data sudah di-load dari MongoDB di loadAllReportData()
   // Tidak perlu reload dari localStorage
 
-  const tbody = document.getElementById("tableKeuangan");
-  if (!tbody) return;
+  const tbodyPengeluaran = document.getElementById("tableKeuanganPengeluaran");
+  const tbodyPemasukan = document.getElementById("tableKeuanganPemasukan");
+  if (!tbodyPengeluaran || !tbodyPemasukan) return;
 
-  tbody.innerHTML = "";
+  tbodyPengeluaran.innerHTML = "";
+  tbodyPemasukan.innerHTML = "";
 
-  if (keuangan.length === 0) {
-    tbody.innerHTML = `
+  // Filter waktu untuk pengeluaran (keuangan.tanggal)
+  const filteredPengeluaran = applyTableFilter(
+    "keuangan",
+    keuangan,
+    (item) => item.tanggal,
+  );
+
+  // Filter waktu untuk pemasukan (pemesanan.tanggalPemesanan)
+  const pemRows = unwrapArrayResponseLaporan(pemesanan);
+  const lunasRows = pemRows.filter(
+    (p) => String(p?.statusPembayaran || "").trim() === "Lunas",
+  );
+  const filteredPemasukan = applyTableFilter(
+    "keuangan",
+    lunasRows,
+    (item) => item.tanggalPemesanan,
+  );
+
+  // Totals + saldo
+  const totalPengeluaran = (filteredPengeluaran || []).reduce(
+    (s, x) => s + safeNumberLaporan(x?.nilai),
+    0,
+  );
+  const totalPemasukan = (filteredPemasukan || []).reduce(
+    (s, x) => s + safeNumberLaporan(x?.totalHarga),
+    0,
+  );
+  const saldo = totalPemasukan - totalPengeluaran;
+
+  setTextById("keuanganTotalPengeluaran", formatCurrencyNumeric(totalPengeluaran));
+  setTextById("keuanganTotalPemasukan", formatCurrencyNumeric(totalPemasukan));
+  setTextById("keuanganSaldo", formatCurrencyNumeric(saldo));
+
+  // Render pemasukan
+  if (!filteredPemasukan.length) {
+    tbodyPemasukan.innerHTML = `
+      <tr>
+        <td colspan="6" class="text-center text-muted py-4">
+          <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+          Tidak ada data pemasukan (pemesanan Lunas) sesuai filter.
+        </td>
+      </tr>
+    `;
+  } else {
+    const sortedPemasukan = [...filteredPemasukan].sort(
+      (a, b) =>
+        new Date(b.tanggalPemesanan || 0) - new Date(a.tanggalPemesanan || 0),
+    );
+    tbodyPemasukan.innerHTML = sortedPemasukan
+      .map((p, idx) => {
+        const tipe = p.tipePemesanan || "-";
+        const tipeBadge =
+          tipe === "International"
+            ? "bg-warning text-dark"
+            : tipe === "E-commerce"
+              ? "bg-info text-dark"
+              : "bg-primary";
+        return `
+          <tr>
+            <td>${idx + 1}</td>
+            <td>${formatDate(p.tanggalPemesanan)}</td>
+            <td><strong>${escapeHtmlLaporan(p.idPembelian || "-")}</strong></td>
+            <td>${escapeHtmlLaporan(p.namaPembeli || "-")}</td>
+            <td><span class="badge ${tipeBadge}">${escapeHtmlLaporan(tipe)}</span></td>
+            <td class="text-end">${formatCurrencyNumeric(safeNumberLaporan(p.totalHarga))}</td>
+          </tr>
+        `;
+      })
+      .join("");
+  }
+
+  // Render pengeluaran
+  if (!filteredPengeluaran.length) {
+    tbodyPengeluaran.innerHTML = `
       <tr>
         <td colspan="7" class="text-center text-muted py-4">
           <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-          Tidak ada data keuangan
+          Tidak ada data pengeluaran sesuai filter.
         </td>
       </tr>
     `;
     return;
   }
 
-  const filteredKeuangan = applyTableFilter(
-    "keuangan",
-    keuangan,
-    (item) => item.tanggal
-  );
-
-  if (filteredKeuangan.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="7" class="text-center text-muted py-4">
-          <i class="bi bi-funnel d-block mb-2"></i>
-          Tidak ada data sesuai filter.
-        </td>
-      </tr>
-    `;
-    return;
-  }
-
-  // Sort berdasarkan tanggal (terbaru dulu)
-  const sortedKeuangan = [...filteredKeuangan].sort((a, b) => {
+  const sortedPengeluaran = [...filteredPengeluaran].sort((a, b) => {
     return new Date(b.tanggal) - new Date(a.tanggal);
   });
 
-  // Gunakan innerHTML dengan map.join()
-  tbody.innerHTML = sortedKeuangan
+  tbodyPengeluaran.innerHTML = sortedPengeluaran
     .map((item, index) => {
       const jenisBadge =
         item.jenisPengeluaran === "Pembelian Bahan Baku"
@@ -5185,22 +5255,22 @@ function displayKeuangan() {
           : '<span class="badge bg-warning">Operasional</span>';
 
       return `
-      <tr>
-      <td>${index + 1}</td>
-      <td>${formatDate(item.tanggal)}</td>
-      <td>${jenisBadge}</td>
-      <td>${item.idBahanBaku || "-"}</td>
-      <td>${item.nilai ? formatCurrencyNumeric(item.nilai) : "-"}</td>
-      <td>${item.notes || "-"}</td>
-      <td class="text-center">
-          <button class="btn btn-sm btn-primary" onclick="generateKeuanganPDF(${
-            item.id
-          })">
-          <i class="bi bi-file-pdf me-1"></i>Lihat Detail
-        </button>
-      </td>
-      </tr>
-    `;
+        <tr>
+          <td>${index + 1}</td>
+          <td>${formatDate(item.tanggal)}</td>
+          <td>${jenisBadge}</td>
+          <td>${item.idBahanBaku || "-"}</td>
+          <td class="text-end">${item.nilai ? formatCurrencyNumeric(item.nilai) : "-"}</td>
+          <td>${item.notes || "-"}</td>
+          <td class="text-center">
+            <button class="btn btn-sm btn-primary" onclick="generateKeuanganPDF(${
+              item.id
+            })">
+              <i class="bi bi-file-pdf me-1"></i>Lihat Detail
+            </button>
+          </td>
+        </tr>
+      `;
     })
     .join("");
 }
