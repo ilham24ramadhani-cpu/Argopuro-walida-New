@@ -791,21 +791,22 @@ async function createBahanChart() {
       label: name,
       data: sortedBuckets.map((bk) => matrix[bk][name] || 0),
       borderColor: color,
-      backgroundColor: color.replace("rgb(", "rgba(").replace(")", ", 0.12)"),
-      tension: 0.25,
-      fill: false,
-      pointRadius: 3,
-      pointHoverRadius: 5,
+      backgroundColor: color.replace("rgb(", "rgba(").replace(")", ", 0.85)"),
+      borderWidth: 1,
     };
   });
 
   bahanChart = new Chart(chartCtx, {
-    type: "line",
+    type: "bar",
     data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
+      elements: {
+        bar: { borderRadius: 3, borderSkipped: false },
+      },
+      datasets: { bar: { maxBarThickness: 48 } },
       plugins: {
         legend: {
           display: true,
@@ -817,13 +818,21 @@ async function createBahanChart() {
               const v = context.parsed.y;
               return `${context.dataset.label}: ${v.toLocaleString("id-ID")} kg`;
             },
+            footer: function (tooltipItems) {
+              if (!tooltipItems.length) return "";
+              const sum = tooltipItems.reduce(
+                (acc, t) => acc + (t.parsed?.y || 0),
+                0
+              );
+              return "Total: " + sum.toLocaleString("id-ID") + " kg";
+            },
           },
         },
       },
       scales: {
         y: {
           beginAtZero: true,
-          stacked: false,
+          stacked: true,
           title: {
             display: true,
             text: "Jumlah bahan masuk (kg)",
@@ -836,6 +845,7 @@ async function createBahanChart() {
           grid: { color: "rgba(0, 0, 0, 0.05)" },
         },
         x: {
+          stacked: true,
           ticks: { font: { size: 10 }, maxRotation: 45, minRotation: 0 },
           grid: { display: false },
         },
@@ -971,21 +981,22 @@ async function createProduksiChart() {
       label: name,
       data: sortedBuckets.map((bk) => matrix[bk][name] || 0),
       borderColor: color,
-      backgroundColor: color.replace("rgb(", "rgba(").replace(")", ", 0.12)"),
-      tension: 0.25,
-      fill: false,
-      pointRadius: 3,
-      pointHoverRadius: 5,
+      backgroundColor: color.replace("rgb(", "rgba(").replace(")", ", 0.85)"),
+      borderWidth: 1,
     };
   });
 
   produksiChart = new Chart(chartCtx, {
-    type: "line",
+    type: "bar",
     data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "index", intersect: false },
+      elements: {
+        bar: { borderRadius: 3, borderSkipped: false },
+      },
+      datasets: { bar: { maxBarThickness: 48 } },
       plugins: {
         legend: {
           display: true,
@@ -997,12 +1008,21 @@ async function createProduksiChart() {
               const v = context.parsed.y;
               return `${context.dataset.label}: ${v.toLocaleString("id-ID")} kg`;
             },
+            footer: function (tooltipItems) {
+              if (!tooltipItems.length) return "";
+              const sum = tooltipItems.reduce(
+                (acc, t) => acc + (t.parsed?.y || 0),
+                0
+              );
+              return "Total: " + sum.toLocaleString("id-ID") + " kg";
+            },
           },
         },
       },
       scales: {
         y: {
           beginAtZero: true,
+          stacked: true,
           title: {
             display: true,
             text: "Berat (kg) — utama berat awal batch",
@@ -1015,6 +1035,7 @@ async function createProduksiChart() {
           grid: { color: "rgba(0, 0, 0, 0.05)" },
         },
         x: {
+          stacked: true,
           ticks: { font: { size: 10 }, maxRotation: 45, minRotation: 0 },
           grid: { display: false },
         },
