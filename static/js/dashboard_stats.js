@@ -10,7 +10,7 @@ let bahanChart = null;
 let produksiChart = null;
 let stokChart = null;
 
-/** Warna garis datasets trend multi-seri (pemasok / proses). */
+/** Warna batang bergantian per kategori. */
 const DASHBOARD_CHART_SERIES_COLORS = [
   "rgb(255, 193, 7)",
   "rgb(13, 110, 253)",
@@ -21,6 +21,17 @@ const DASHBOARD_CHART_SERIES_COLORS = [
   "rgb(32, 201, 151)",
   "rgb(253, 126, 20)",
 ];
+
+const DASHBOARD_BAR_MAX_CATEGORIES = 14;
+
+/** entriesDesc: pasangan [label, nilai], urut descending; gabung sisanya ke "Lainnya" jika melebihi max. */
+function dashboardTrimCategories(entriesDesc, max) {
+  if (entriesDesc.length <= max) return entriesDesc;
+  const head = entriesDesc.slice(0, max - 1);
+  const tail = entriesDesc.slice(max - 1);
+  const sumTail = tail.reduce((s, [, v]) => s + v, 0);
+  return [...head, ["Lainnya", sumTail]];
+}
 
 function dashboardChartPreset(selectId) {
   const el = document.getElementById(selectId);
@@ -35,40 +46,6 @@ function dashboardChartPeriodStartMs(preset) {
   start.setDate(start.getDate() - days);
   start.setHours(0, 0, 0, 0);
   return start.getTime();
-}
-
-function dashboardChartUseDailyBuckets(preset) {
-  return preset === "7d" || preset === "30d";
-}
-
-function dashboardChartBucketKey(d, useDaily) {
-  if (useDaily) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  }
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function dashboardChartFormatBucketLabel(key, useDaily) {
-  const monthNames = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "Mei",
-    "Jun",
-    "Jul",
-    "Agu",
-    "Sep",
-    "Okt",
-    "Nov",
-    "Des",
-  ];
-  if (useDaily) {
-    const [y, m, day] = key.split("-").map(Number);
-    return `${day} ${monthNames[m - 1]} ${y}`;
-  }
-  const [y, m] = key.split("-").map(Number);
-  return `${monthNames[m - 1]} ${y}`;
 }
 
 function dashboardGetIdBahanListFromProduksi(p) {
@@ -105,8 +82,6 @@ function dashboardProduksiBeratKg(p) {
   if (Number.isFinite(cur)) return cur;
   return 0;
 }
-
-const DASHBOARD_CHART_TOP_SERIES = 7;
 
 function bindDashboardChartPeriodFilters() {
   const bahanSel = document.getElementById("dashboardBahanPeriodeFilter");
@@ -681,7 +656,7 @@ async function displayQuickSummary() {
     .join("");
 }
 
-// Grafik bahan masuk: trend jumlah (kg) per pemasok + filter periode
+// Grafik bahan masuk: sumbu kategori = pemasok (total kg dalam periode filter)
 async function createBahanChart() {
   let bahan = [];
   try {
@@ -714,7 +689,6 @@ async function createBahanChart() {
 
   const preset = dashboardChartPreset("dashboardBahanPeriodeFilter");
   const startMs = dashboardChartPeriodStartMs(preset);
-  const useDaily = dashboardChartUseDailyBuckets(preset);
 
   const filtered = bahan.filter((b) => {
     const t = new Date(b.tanggalMasuk).getTime();
@@ -743,36 +717,19 @@ async function createBahanChart() {
     const name = (b.pemasok && String(b.pemasok).trim()) || "Tanpa pemasok";
     rawTotals[name] = (rawTotals[name] || 0) + parseFloat(b.jumlah || 0);
   });
-  const byVolume = Object.entries(rawTotals).sort((a, b) => b[1] - a[1]);
-  const topNames = byVolume.slice(0, DASHBOARD_CHART_TOP_SERIES).map((x) => x[0]);
-  const topSet = new Set(topNames);
-  const useLainnya = byVolume.length > DASHBOARD_CHART_TOP_SERIES;
+  const desc = Object.entries(rawTotals).sort((a, b) => b[1] - a[1]);
+  const rowsAsc = dashboardTrimCategories(desc, DASHBOARD_BAR_MAX_CATEGORIES).slice().reverse();
 
-  const matrix = {};
-  const bucketSet = new Set();
-  filtered.forEach((b) => {
-    const d = new Date(b.tanggalMasuk);
-    if (!Number.isFinite(d.getTime())) return;
-    const bucket = dashboardChartBucketKey(d, useDaily);
-    bucketSet.add(bucket);
-    const rawName = (b.pemasok && String(b.pemasok).trim()) || "Tanpa pemasok";
-    const seriesName =
-      !useLainnya || topSet.has(rawName) ? rawName : "Lainnya";
-    if (!matrix[bucket]) matrix[bucket] = {};
-    const kg = parseFloat(b.jumlah || 0);
-    matrix[bucket][seriesName] = (matrix[bucket][seriesName] || 0) + kg;
-  });
-
-  const sortedBuckets = [...bucketSet].sort();
-  const seriesOrder = [
-    ...topNames,
-    ...(useLainnya && sortedBuckets.some((bk) => matrix[bk]["Lainnya"] > 0)
-      ? ["Lainnya"]
-      : []),
-  ].filter((name, i, arr) => arr.indexOf(name) === i);
-
-  const labels = sortedBuckets.map((k) =>
-    dashboardChartFormatBucketLabel(k, useDaily)
+  const labels = rowsAsc.map(([name]) => name);
+  const values = rowsAsc.map(([, v]) => v);
+  const barColors = labels.map(
+    (_, i) =>
+      DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
+        .replace("rgb(", "rgba(")
+        .replace(")", ", 0.88)")
+  );
+  const borderColors = labels.map(
+    (_, i) => DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
   );
 
   if (bahanChart) {
@@ -785,68 +742,70 @@ async function createBahanChart() {
   const chartCtx = document.getElementById("bahanChart");
   if (!chartCtx) return;
 
-  const datasets = seriesOrder.map((name, idx) => {
-    const color = DASHBOARD_CHART_SERIES_COLORS[idx % DASHBOARD_CHART_SERIES_COLORS.length];
-    return {
-      label: name,
-      data: sortedBuckets.map((bk) => matrix[bk][name] || 0),
-      borderColor: color,
-      backgroundColor: color.replace("rgb(", "rgba(").replace(")", ", 0.85)"),
-      borderWidth: 1,
-    };
-  });
-
   bahanChart = new Chart(chartCtx, {
     type: "bar",
-    data: { labels, datasets },
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Bahan masuk",
+          data: values,
+          backgroundColor: barColors,
+          borderColor: borderColors,
+          borderWidth: 1,
+        },
+      ],
+    },
     options: {
+      indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
+      interaction: { mode: "nearest", intersect: false },
       elements: {
-        bar: { borderRadius: 3, borderSkipped: false },
+        bar: { borderRadius: 4, borderSkipped: false },
       },
-      datasets: { bar: { maxBarThickness: 48 } },
+      datasets: { bar: { maxBarThickness: 36 } },
       plugins: {
-        legend: {
-          display: true,
-          position: "top",
-        },
+        legend: { display: false },
         tooltip: {
           callbacks: {
-            label: function (context) {
-              const v = context.parsed.y;
-              return `${context.dataset.label}: ${v.toLocaleString("id-ID")} kg`;
+            title: function (items) {
+              return items.length ? items[0].label : "";
             },
-            footer: function (tooltipItems) {
-              if (!tooltipItems.length) return "";
-              const sum = tooltipItems.reduce(
-                (acc, t) => acc + (t.parsed?.y || 0),
-                0
-              );
-              return "Total: " + sum.toLocaleString("id-ID") + " kg";
+            label: function (context) {
+              const num = Number(context.parsed.x) || 0;
+              return `${num.toLocaleString("id-ID")} kg`;
             },
           },
         },
       },
       scales: {
-        y: {
+        x: {
           beginAtZero: true,
-          stacked: true,
+          stacked: false,
           title: {
             display: true,
             text: "Jumlah bahan masuk (kg)",
-            font: { size: 12, weight: "bold" },
+            font: { size: 11, weight: "bold" },
           },
           ticks: {
-            callback: (value) => value.toLocaleString("id-ID") + " kg",
+            callback: (value) =>
+              typeof value === "number" ? value.toLocaleString("id-ID") + " kg" : value,
+            font: { size: 10 },
+          },
+          grid: { color: "rgba(0, 0, 0, 0.06)" },
+        },
+        y: {
+          stacked: false,
+          title: {
+            display: true,
+            text: "Pemasok",
+            font: { size: 11, weight: "bold" },
+          },
+          ticks: {
+            autoSkip: false,
             font: { size: 11 },
           },
-          grid: { color: "rgba(0, 0, 0, 0.05)" },
-        },
-        x: {
-          stacked: true,
-          ticks: { font: { size: 10 }, maxRotation: 45, minRotation: 0 },
           grid: { display: false },
         },
       },
@@ -854,7 +813,7 @@ async function createBahanChart() {
   });
 }
 
-// Grafik produksi: trend berat per proses pengolahan + filter periode
+// Grafik produksi: sumbu kategori = proses pengolahan (total kg dalam periode filter)
 async function createProduksiChart() {
   let produksi = [];
   let bahanRows = [];
@@ -900,7 +859,6 @@ async function createProduksiChart() {
 
   const preset = dashboardChartPreset("dashboardProduksiPeriodeFilter");
   const startMs = dashboardChartPeriodStartMs(preset);
-  const useDaily = dashboardChartUseDailyBuckets(preset);
 
   const filtered = produksi.filter((p) => {
     const t = dashboardProduksiMillis(p);
@@ -930,39 +888,19 @@ async function createProduksiChart() {
     const key = label && label !== "-" ? label : "Tanpa proses";
     procTotals[key] = (procTotals[key] || 0) + dashboardProduksiBeratKg(p);
   });
-  const byVol = Object.entries(procTotals).sort((a, b) => b[1] - a[1]);
-  const topProc = byVol.slice(0, DASHBOARD_CHART_TOP_SERIES).map((x) => x[0]);
-  const topProcSet = new Set(topProc);
-  const useLainnyaProc = byVol.length > DASHBOARD_CHART_TOP_SERIES;
+  const desc = Object.entries(procTotals).sort((a, b) => b[1] - a[1]);
+  const rowsAsc = dashboardTrimCategories(desc, DASHBOARD_BAR_MAX_CATEGORIES).slice().reverse();
 
-  const matrix = {};
-  const bucketSet = new Set();
-  filtered.forEach((p) => {
-    const tms = dashboardProduksiMillis(p);
-    if (!Number.isFinite(tms)) return;
-    const d = new Date(tms);
-    const bucket = dashboardChartBucketKey(d, useDaily);
-    bucketSet.add(bucket);
-    const label = dashboardGetProsesPengolahanTampilan(p, bahanById);
-    const rawName = label && label !== "-" ? label : "Tanpa proses";
-    const seriesName =
-      !useLainnyaProc || topProcSet.has(rawName) ? rawName : "Lainnya";
-    if (!matrix[bucket]) matrix[bucket] = {};
-    const kg = dashboardProduksiBeratKg(p);
-    matrix[bucket][seriesName] = (matrix[bucket][seriesName] || 0) + kg;
-  });
-
-  const sortedBuckets = [...bucketSet].sort();
-  const seriesOrder = [
-    ...topProc,
-    ...(useLainnyaProc &&
-    sortedBuckets.some((bk) => (matrix[bk]["Lainnya"] || 0) > 0)
-      ? ["Lainnya"]
-      : []),
-  ].filter((name, i, arr) => arr.indexOf(name) === i);
-
-  const labels = sortedBuckets.map((k) =>
-    dashboardChartFormatBucketLabel(k, useDaily)
+  const labels = rowsAsc.map(([name]) => name);
+  const values = rowsAsc.map(([, v]) => v);
+  const barColors = labels.map(
+    (_, i) =>
+      DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
+        .replace("rgb(", "rgba(")
+        .replace(")", ", 0.88)")
+  );
+  const borderColors = labels.map(
+    (_, i) => DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
   );
 
   if (produksiChart) {
@@ -975,68 +913,70 @@ async function createProduksiChart() {
   const chartCtx = document.getElementById("produksiChart");
   if (!chartCtx) return;
 
-  const datasets = seriesOrder.map((name, idx) => {
-    const color = DASHBOARD_CHART_SERIES_COLORS[idx % DASHBOARD_CHART_SERIES_COLORS.length];
-    return {
-      label: name,
-      data: sortedBuckets.map((bk) => matrix[bk][name] || 0),
-      borderColor: color,
-      backgroundColor: color.replace("rgb(", "rgba(").replace(")", ", 0.85)"),
-      borderWidth: 1,
-    };
-  });
-
   produksiChart = new Chart(chartCtx, {
     type: "bar",
-    data: { labels, datasets },
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Berat batch",
+          data: values,
+          backgroundColor: barColors,
+          borderColor: borderColors,
+          borderWidth: 1,
+        },
+      ],
+    },
     options: {
+      indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
+      interaction: { mode: "nearest", intersect: false },
       elements: {
-        bar: { borderRadius: 3, borderSkipped: false },
+        bar: { borderRadius: 4, borderSkipped: false },
       },
-      datasets: { bar: { maxBarThickness: 48 } },
+      datasets: { bar: { maxBarThickness: 36 } },
       plugins: {
-        legend: {
-          display: true,
-          position: "top",
-        },
+        legend: { display: false },
         tooltip: {
           callbacks: {
-            label: function (context) {
-              const v = context.parsed.y;
-              return `${context.dataset.label}: ${v.toLocaleString("id-ID")} kg`;
+            title: function (items) {
+              return items.length ? items[0].label : "";
             },
-            footer: function (tooltipItems) {
-              if (!tooltipItems.length) return "";
-              const sum = tooltipItems.reduce(
-                (acc, t) => acc + (t.parsed?.y || 0),
-                0
-              );
-              return "Total: " + sum.toLocaleString("id-ID") + " kg";
+            label: function (context) {
+              const num = Number(context.parsed.x) || 0;
+              return `${num.toLocaleString("id-ID")} kg`;
             },
           },
         },
       },
       scales: {
-        y: {
+        x: {
           beginAtZero: true,
-          stacked: true,
+          stacked: false,
           title: {
             display: true,
             text: "Berat (kg) — utama berat awal batch",
             font: { size: 11, weight: "bold" },
           },
           ticks: {
-            callback: (value) => value.toLocaleString("id-ID") + " kg",
+            callback: (value) =>
+              typeof value === "number" ? value.toLocaleString("id-ID") + " kg" : value,
+            font: { size: 10 },
+          },
+          grid: { color: "rgba(0, 0, 0, 0.06)" },
+        },
+        y: {
+          stacked: false,
+          title: {
+            display: true,
+            text: "Proses pengolahan",
+            font: { size: 11, weight: "bold" },
+          },
+          ticks: {
+            autoSkip: false,
             font: { size: 11 },
           },
-          grid: { color: "rgba(0, 0, 0, 0.05)" },
-        },
-        x: {
-          stacked: true,
-          ticks: { font: { size: 10 }, maxRotation: 45, minRotation: 0 },
           grid: { display: false },
         },
       },
