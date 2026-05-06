@@ -2323,6 +2323,48 @@ def calculate_jumlah_kemasan(berat_saat_ini, kemasan, tipe_produk_lower):
 
 # ==================== BAHAN ENDPOINTS ====================
 
+def _sync_keuangan_pengeluaran_bahan_masuk(bahan_doc):
+    """
+    Otomatis sinkron baris keuangan untuk pembelian bahan baku.
+    - Satu idBahan -> maksimal satu baris keuangan jenis "Pembelian Bahan Baku"
+    - Dibuat/diupdate berdasarkan master bahan (tanggalMasuk + totalPengeluaran)
+    """
+    try:
+        if not bahan_doc:
+            return
+        id_bahan = str(bahan_doc.get('idBahan') or '').strip()
+        if not id_bahan:
+            return
+
+        tanggal = (bahan_doc.get('tanggalMasuk') or '').strip() or datetime.now().strftime('%Y-%m-%d')
+        nilai = float(bahan_doc.get('totalPengeluaran') or 0)
+        if nilai < 0:
+            nilai = 0
+
+        q = {
+            'jenisPengeluaran': 'Pembelian Bahan Baku',
+            'idBahanBaku': id_bahan,
+        }
+        existing = db.keuangan.find_one(q)
+        payload = {
+            'tanggal': tanggal,
+            'jenisPengeluaran': 'Pembelian Bahan Baku',
+            'idBahanBaku': id_bahan,
+            'notes': f'Otomatis dari bahan masuk {id_bahan}',
+            'nilai': round(nilai, 2),
+            'source': 'bahan',  # field tambahan untuk menandai asal (tidak wajib dipakai frontend)
+        }
+
+        if existing:
+            db.keuangan.update_one({'_id': existing['_id']}, {'$set': payload})
+        else:
+            new_id = get_next_id('keuangan')
+            payload['id'] = new_id
+            db.keuangan.insert_one(payload)
+    except Exception as e:
+        # Jangan gagalkan proses bahan hanya karena sinkron keuangan
+        print(f"⚠️ [SYNC KEUANGAN<-BAHAN] ERROR: {str(e)}")
+
 @app.route('/api/bahan', methods=['GET'])
 def get_bahan():
     """Get all bahan data"""
@@ -2442,6 +2484,10 @@ def create_bahan():
         result = db.bahan.insert_one(bahan_data)
         bahan_data['_id'] = result.inserted_id
         print(f"✅ [BAHAN CREATE] Successfully inserted! ID: {result.inserted_id}, Collection: bahan")
+
+        # Otomatis buat/update pengeluaran keuangan untuk pembelian bahan baku
+        _sync_keuangan_pengeluaran_bahan_masuk(bahan_data)
+
         return jsonify(json_serialize(bahan_data)), 201
     except Exception as e:
         print(f"❌ [BAHAN CREATE] ERROR: {str(e)}")
@@ -2463,6 +2509,8 @@ def update_bahan(bahan_id):
         
         if not bahan:
             return jsonify({'error': 'Bahan not found'}), 404
+
+        old_id_bahan = str(bahan.get('idBahan') or '').strip()
         
         # Check if idBahan already exists (excluding current)
         if 'idBahan' in data:
@@ -2568,6 +2616,21 @@ def update_bahan(bahan_id):
             )
 
         updated = db.bahan.find_one({'_id': bahan['_id']})
+
+        # Jika idBahan berubah, coba pindahkan referensi baris keuangan lama ke id baru
+        try:
+            new_id_bahan = str(updated.get('idBahan') or '').strip() if updated else ''
+            if old_id_bahan and new_id_bahan and old_id_bahan != new_id_bahan:
+                db.keuangan.update_many(
+                    {'jenisPengeluaran': 'Pembelian Bahan Baku', 'idBahanBaku': old_id_bahan},
+                    {'$set': {'idBahanBaku': new_id_bahan}},
+                )
+        except Exception as e:
+            print(f"⚠️ [SYNC KEUANGAN ID BAHAN] ERROR: {str(e)}")
+
+        # Otomatis update pengeluaran keuangan untuk pembelian bahan baku
+        _sync_keuangan_pengeluaran_bahan_masuk(updated)
+
         return jsonify(json_serialize(updated)), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -2616,6 +2679,8 @@ def delete_bahan(bahan_id):
         
         if not bahan:
             return jsonify({'error': 'Bahan not found'}), 404
+
+        id_bahan = str(bahan.get('idBahan') or '').strip()
         
         # Check if there are produksi using this bahan (tunggal atau dalam idBahanList)
         bid = bahan.get('idBahan')
@@ -2628,6 +2693,17 @@ def delete_bahan(bahan_id):
             }), 400
         
         db.bahan.delete_one({'_id': bahan['_id']})
+
+        # Otomatis hapus baris keuangan terkait (pembelian bahan baku) jika ada
+        try:
+            if id_bahan:
+                db.keuangan.delete_many({
+                    'jenisPengeluaran': 'Pembelian Bahan Baku',
+                    'idBahanBaku': id_bahan,
+                })
+        except Exception as e:
+            print(f"⚠️ [DELETE KEUANGAN<-BAHAN] ERROR: {str(e)}")
+
         return jsonify({'message': 'Bahan deleted successfully'}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
