@@ -4750,6 +4750,34 @@ def _normalize_pemesanan_kloter_from_body(data):
     return out, None
 
 
+def _total_harga_pemesanan_tolerance(expected):
+    """Selisih yang diizinkan antara total dari klien vs server (float / pembulatan kloter, nilai Rupiah besar)."""
+    exp = abs(float(expected or 0))
+    return max(2.0, exp * 1e-6)
+
+
+def _normalize_status_pembayaran_canonical(raw):
+    """
+    Samakan variasi input status pembayaran ke nilai kanonik.
+    Mengembalikan salah satu dari: Lunas, Belum Lunas, Pembayaran Bertahap, atau None jika tidak dikenali.
+    """
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    low = ' '.join(s.lower().replace('_', ' ').split())
+    if low in ('lunas', 'paid', 'sudah bayar', 'sudah lunas', 'bayar lunas'):
+        return 'Lunas'
+    if low in ('belum lunas', 'belum bayar', 'unpaid', 'pending', 'belum dibayar'):
+        return 'Belum Lunas'
+    if 'bertahap' in low or low in ('cicilan', 'partial', 'pembayaran bertahap'):
+        return 'Pembayaran Bertahap'
+    if s in ('Lunas', 'Belum Lunas', 'Pembayaran Bertahap'):
+        return s
+    return None
+
+
 def pemesanan_items_from_doc(doc):
     """Baca baris barang untuk stok/ordering: kloter[] → items[] → bentuk tunggal root."""
     if not doc:
@@ -4862,7 +4890,9 @@ def create_pemesanan():
         if tipe_pm not in ('Lokal', 'International', 'E-commerce'):
             return jsonify({'error': 'tipePemesanan harus Lokal, International, atau E-commerce'}), 400
 
-        status_bayar = (data.get('statusPembayaran') or 'Belum Lunas').strip()
+        status_bayar = _normalize_status_pembayaran_canonical(
+            data.get('statusPembayaran') or 'Belum Lunas'
+        ) or 'Belum Lunas'
         if status_bayar not in ('Lunas', 'Belum Lunas', 'Pembayaran Bertahap'):
             return jsonify({'error': 'statusPembayaran harus Lunas, Belum Lunas, atau Pembayaran Bertahap'}), 400
         
@@ -4890,7 +4920,8 @@ def create_pemesanan():
         total_harga_received = float(data['totalHarga'])
         calculated_total = subtotal_barang + biaya_pajak + biaya_pengiriman
 
-        if abs(total_harga_received - calculated_total) > 0.01:
+        tol = _total_harga_pemesanan_tolerance(calculated_total)
+        if abs(total_harga_received - calculated_total) > tol:
             print(f"❌ [PEMESANAN CREATE] Total harga mismatch:")
             print(f"   Received: {total_harga_received}")
             print(f"   Calculated: {calculated_total}")
@@ -5063,7 +5094,8 @@ def update_pemesanan(pemesanan_id):
             if pg < 0:
                 return jsonify({'error': 'Biaya pengiriman tidak boleh negatif'}), 400
             expected = sub_lines + pj + pg
-            if abs(th - expected) > 0.01:
+            tol = _total_harga_pemesanan_tolerance(expected)
+            if abs(th - expected) > tol:
                 return jsonify({
                     'error': 'Total harga tidak sesuai (subtotal barang + pajak + pengiriman)',
                     'expected': expected,
@@ -5071,8 +5103,8 @@ def update_pemesanan(pemesanan_id):
                 }), 400
 
         if 'statusPembayaran' in update_data:
-            sb = (update_data.get('statusPembayaran') or '').strip()
-            if sb not in ('Lunas', 'Belum Lunas', 'Pembayaran Bertahap'):
+            sb = _normalize_status_pembayaran_canonical(update_data.get('statusPembayaran'))
+            if not sb:
                 return jsonify({'error': 'statusPembayaran tidak valid'}), 400
             update_data['statusPembayaran'] = sb
         
@@ -5224,9 +5256,51 @@ def proses_ordering():
         if not pemesanan:
             return jsonify({'error': 'Pemesanan not found'}), 404
         
-        existing_ordering = db.ordering.find_one({'idPembelian': data['idPembelian']})
+        id_pb = data['idPembelian']
+        existing_ordering = db.ordering.find_one({'idPembelian': id_pb})
         if existing_ordering:
-            return jsonify({'error': 'Pemesanan ini sudah diproses sebelumnya'}), 400
+            # Jejak pengurangan stok: hasilProduksi untuk pembelian ini (biasanya isFromOrdering=True)
+            hp_loose = db.hasilProduksi.count_documents({'idPembelian': id_pb})
+            hp_strict = db.hasilProduksi.count_documents({
+                'idPembelian': id_pb,
+                'isFromOrdering': {'$in': [True, 1]},
+            })
+            cur_status = (pemesanan.get('statusPemesanan') or '').strip()
+
+            if hp_loose > 0:
+                # Stok sudah pernah dialokasikan untuk ID pembelian ini — jangan proses ulang (hindari double deduction)
+                if cur_status != 'Complete':
+                    db.pemesanan.update_one(
+                        {'_id': pemesanan['_id']},
+                        {'$set': {
+                            'statusPemesanan': 'Complete',
+                            'statusPembayaran': 'Lunas',
+                            'updatedAt': datetime.now(),
+                        }},
+                    )
+                    print(
+                        f"✅ [ORDERING PROSES] Sinkron status pemesanan → Complete untuk {id_pb} "
+                        f"(ordering ada, hasilProduksi={hp_loose}, isFromOrdering match={hp_strict})"
+                    )
+                ord_doc = db.ordering.find_one({'idPembelian': id_pb})
+                return jsonify({
+                    'success': True,
+                    'message': (
+                        'Pemesanan sudah pernah diproses; status diselaraskan dengan data ordering.'
+                        if cur_status != 'Complete'
+                        else 'Pemesanan sudah selesai diproses sebelumnya.'
+                    ),
+                    'ordering': json_serialize(ord_doc),
+                    'alreadyProcessed': True,
+                    'statusRepaired': cur_status != 'Complete',
+                }), 200
+
+            # Hanya baris ordering tanpa hasilProduksi — data tidak lengkap; hapus agar bisa diproses ulang
+            del_ord = db.ordering.delete_many({'idPembelian': id_pb})
+            print(
+                f"⚠️ [ORDERING PROSES] Menghapus {del_ord.deleted_count} ordering orphan untuk {id_pb} "
+                "(tidak ada hasilProduksi terkait)"
+            )
 
         line_items = pemesanan_items_from_doc(pemesanan)
         if not line_items:

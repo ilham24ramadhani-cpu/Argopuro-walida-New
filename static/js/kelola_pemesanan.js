@@ -2033,17 +2033,32 @@ async function saveOrdering() {
     console.log("✅ [ORDERING PROSES] Response:", result);
 
     if (result && result.success) {
-      alert(
-        `Ordering berhasil diproses!\n\nStok sebelum: ${result.stokSebelum.toLocaleString(
-          "id-ID",
-          { minimumFractionDigits: 2 },
-        )} kg\nStok sesudah: ${result.stokSesudah.toLocaleString("id-ID", {
-          minimumFractionDigits: 2,
-        })} kg\nJumlah dikurangi: ${result.jumlahDikurangi.toLocaleString(
-          "id-ID",
-          { minimumFractionDigits: 2 },
-        )} kg`,
-      );
+      if (result.alreadyProcessed) {
+        const msg =
+          result.message ||
+          (result.statusRepaired
+            ? "Data ordering sudah ada; status pemesanan diselaraskan (stok tidak dikurangi lagi)."
+            : "Pemesanan ini sudah pernah diproses.");
+        alert(msg);
+      } else if (
+        result.stokSebelum != null &&
+        result.stokSesudah != null &&
+        result.jumlahDikurangi != null
+      ) {
+        alert(
+          `Ordering berhasil diproses!\n\nStok sebelum: ${result.stokSebelum.toLocaleString(
+            "id-ID",
+            { minimumFractionDigits: 2 },
+          )} kg\nStok sesudah: ${result.stokSesudah.toLocaleString("id-ID", {
+            minimumFractionDigits: 2,
+          })} kg\nJumlah dikurangi: ${result.jumlahDikurangi.toLocaleString(
+            "id-ID",
+            { minimumFractionDigits: 2 },
+          )} kg`,
+        );
+      } else {
+        alert("Ordering berhasil diproses! Stok telah dikurangi.");
+      }
     } else {
       alert("Ordering berhasil diproses! Stok telah dikurangi.");
     }
