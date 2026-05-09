@@ -1263,6 +1263,7 @@ async function savePemesanan(cetakInvoice) {
     if (pemesananId) {
       if (currentEditPreservesComplete) {
         pemesananData.statusPemesanan = "Complete";
+        pemesananData.statusPembayaran = "Lunas";
         console.log(`🔄 Updating pemesanan ID: ${pemesananId}`);
         await window.API.Pemesanan.update(pemesananId, pemesananData);
         if (window.showNotification) {
@@ -1318,6 +1319,7 @@ async function savePemesanan(cetakInvoice) {
         await window.API.Pemesanan.update(pemesananId, {
           ...pemesananData,
           statusPemesanan: "Complete",
+          statusPembayaran: "Lunas",
         });
 
         if (window.showNotification) {

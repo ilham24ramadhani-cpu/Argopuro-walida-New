@@ -4899,6 +4899,14 @@ def create_pemesanan():
         if tipe_pm == 'International' and not data.get('negara'):
             return jsonify({'error': 'Negara wajib diisi untuk pemesanan International'}), 400
 
+        status_pem = (data.get('statusPemesanan') or '').strip()
+        if status_pem == 'Complete':
+            # Complete hanya boleh setelah proses ordering (pengurangan stok).
+            # Selain itu, aturan bisnis: Complete => Pembayaran wajib Lunas.
+            return jsonify({
+                'error': 'Status Complete hanya bisa dicapai melalui proses ordering. Gunakan endpoint /api/ordering/proses untuk mengurangi stok dan menyelesaikan pemesanan.'
+            }), 400
+
         biaya_pajak = float(data.get('biayaPajak') or 0)
         if biaya_pajak < 0:
             return jsonify({'error': 'Biaya pajak tidak boleh negatif'}), 400
@@ -5115,13 +5123,32 @@ def update_pemesanan(pemesanan_id):
             if tt != 'International':
                 update_data['negara'] = ''
         
+        # ==================== ATURAN STATUS (BISNIS) ====================
+        # - statusPemesanan hanya boleh Complete jika statusPembayaran = Lunas
+        # - Jika statusPembayaran bukan Lunas, statusPemesanan harus Ordering (tidak boleh Complete)
+        old_status_pem = (pemesanan.get('statusPemesanan') or '').strip()
+        old_status_bayar = _normalize_status_pembayaran_canonical(pemesanan.get('statusPembayaran')) or (pemesanan.get('statusPembayaran') or 'Belum Lunas')
+        new_status_pem = (update_data.get('statusPemesanan', old_status_pem) or '').strip()
+        new_status_bayar = update_data.get('statusPembayaran', old_status_bayar)
+
+        # Jika dokumen sudah Complete, pembayaran harus tetap Lunas (jangan bisa diturunkan).
+        if old_status_pem == 'Complete' and new_status_bayar != 'Lunas':
+            return jsonify({
+                'error': 'Status pembayaran untuk pemesanan yang sudah Complete harus Lunas.'
+            }), 400
+
+        # Jika mencoba set Complete tapi pembayaran bukan Lunas => tolak.
+        if new_status_pem == 'Complete' and new_status_bayar != 'Lunas':
+            return jsonify({
+                'error': 'Status pemesanan hanya bisa Complete jika status pembayaran Lunas.'
+            }), 400
+
         # Validasi Complete: tidak boleh pertama kali jadi Complete tanpa jalur ordering/hasil stok.
         # Mengizinkan simpan lain (mis. statusPembayaran) jika dokumen ini sudah Complete sebelumnya
         # atau ada bukti pemotongan stok — menghindari error saat koleksi ordering tidak sinkron dengan pemesanan.
         if 'statusPemesanan' in update_data and update_data['statusPemesanan'] == 'Complete':
             id_pb = pemesanan.get('idPembelian')
             ordering = db.ordering.find_one({'idPembelian': id_pb}) if id_pb else None
-            old_status = (pemesanan.get('statusPemesanan') or '').strip()
             has_hasil_pb = False
             if id_pb:
                 has_hasil_pb = db.hasilProduksi.count_documents({
@@ -5129,11 +5156,11 @@ def update_pemesanan(pemesanan_id):
                     'isFromOrdering': {'$in': [True, 1]},
                 }) > 0
 
-            transitioning_to_complete = old_status != 'Complete'
+            transitioning_to_complete = old_status_pem != 'Complete'
 
             if not ordering:
                 safe_complete = (
-                    old_status == 'Complete'
+                    old_status_pem == 'Complete'
                     or has_hasil_pb
                 )
                 if transitioning_to_complete and not safe_complete:
