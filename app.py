@@ -5115,17 +5115,34 @@ def update_pemesanan(pemesanan_id):
             if tt != 'International':
                 update_data['negara'] = ''
         
-        # Validasi: Status tidak boleh diubah menjadi Complete dari endpoint ini
-        # Complete hanya bisa dicapai melalui /api/ordering/proses
+        # Validasi Complete: tidak boleh pertama kali jadi Complete tanpa jalur ordering/hasil stok.
+        # Mengizinkan simpan lain (mis. statusPembayaran) jika dokumen ini sudah Complete sebelumnya
+        # atau ada bukti pemotongan stok — menghindari error saat koleksi ordering tidak sinkron dengan pemesanan.
         if 'statusPemesanan' in update_data and update_data['statusPemesanan'] == 'Complete':
-            # Cek apakah sudah ada ordering untuk pemesanan ini
-            ordering = db.ordering.find_one({'idPembelian': pemesanan.get('idPembelian')})
+            id_pb = pemesanan.get('idPembelian')
+            ordering = db.ordering.find_one({'idPembelian': id_pb}) if id_pb else None
+            old_status = (pemesanan.get('statusPemesanan') or '').strip()
+            has_hasil_pb = False
+            if id_pb:
+                has_hasil_pb = db.hasilProduksi.count_documents({
+                    'idPembelian': id_pb,
+                    'isFromOrdering': {'$in': [True, 1]},
+                }) > 0
+
+            transitioning_to_complete = old_status != 'Complete'
+
             if not ordering:
-                return jsonify({
-                    'error': 'Status Complete hanya bisa dicapai melalui proses ordering. Gunakan endpoint /api/ordering/proses untuk mengurangi stok dan menyelesaikan pemesanan.'
-                }), 400
-            # Pemesanan selesai → pembayaran dianggap lunas
-            update_data['statusPembayaran'] = 'Lunas'
+                safe_complete = (
+                    old_status == 'Complete'
+                    or has_hasil_pb
+                )
+                if transitioning_to_complete and not safe_complete:
+                    return jsonify({
+                        'error': 'Status Complete hanya bisa dicapai melalui proses ordering. Gunakan endpoint /api/ordering/proses untuk mengurangi stok dan menyelesaikan pemesanan.'
+                    }), 400
+            else:
+                # Dokumen ordering ada → pemesanan selesai dari sisi stok → lunas (perilaku bisnis tetap).
+                update_data['statusPembayaran'] = 'Lunas'
         
         update_data['updatedAt'] = datetime.now()
 
