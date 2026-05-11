@@ -269,7 +269,7 @@ function sumJumlahPembayaranKloterFromDoc(p) {
 }
 
 /**
- * Sisa tagihan = total harga − Σ pembayaran per kloter (sama dengan field totalPembayaranSaatIni di API).
+ * Sisa tagihan = total harga − Σ pembayaran tercatat (selaras field totalPembayaranSaatIni di API).
  */
 function totalPembayaranSaatIniFromDoc(p) {
   if (!p) return 0;
@@ -389,7 +389,6 @@ function addKloterRow(initial = {}) {
 function addKloterRowClick() {
   addKloterRow({});
   calculateTotalHarga();
-  syncPembayaranPerKloterRows({});
 }
 
 function removeKloterRow(btn) {
@@ -402,16 +401,35 @@ function removeKloterRow(btn) {
   calculateTotalHarga();
 }
 
-/** Nilai input pembayaran luar per baris (urutan = kloter). */
-function readPembayaranLuarKloterValues() {
-  const payTb = document.getElementById("tbodyPembayaranPerKloter");
-  if (!payTb) return [];
-  return Array.from(payTb.querySelectorAll("input.pembayaran-luar-kloter")).map(
-    (inp) => String(inp.value ?? "").trim(),
-  );
-}
-
 const MAX_PEMBAYARAN_BERTAHAP_BARIS_TAMBAHAN = 30;
+
+/**
+ * Baris untuk form pembayaran bertahap: pakai pembayaranBertahapBaris dari API;
+ * jika kosong, migrasi dari jumlahPembayaranKloter per baris (dokumen lama) agar nominal tidak hilang saat simpan ulang.
+ */
+function pembayaranBertahapBarisUntukFormDariDoc(p) {
+  if (!p) return [];
+  const api = p.pembayaranBertahapBaris;
+  if (Array.isArray(api) && api.length > 0) {
+    return api
+      .filter((b) => {
+        const jj = parseFloat(b?.jumlahRp) || 0;
+        const ct = String(b?.catatan || "").trim();
+        return jj > 0 || ct.length > 0;
+      })
+      .slice(0, MAX_PEMBAYARAN_BERTAHAP_BARIS_TAMBAHAN);
+  }
+  const lines = getPemesananKloterLinesFromDoc(p);
+  const out = [];
+  lines.forEach((L, i) => {
+    const j = parseFloat(L.jumlahPembayaranKloter);
+    if (Number.isFinite(j) && j > 0) {
+      const cat = [L.tipeProduk, L.jenisKopi, L.prosesPengolahan].filter(Boolean).join(" · ") || `Kloter ${i + 1}`;
+      out.push({ catatan: cat, jumlahRp: j });
+    }
+  });
+  return out.slice(0, MAX_PEMBAYARAN_BERTAHAP_BARIS_TAMBAHAN);
+}
 
 function clearPembayaranBertahapTambahanRows() {
   const tb = document.getElementById("tbodyPembayaranBertahapTambahan");
@@ -508,104 +526,12 @@ function renderPembayaranBertahapBarisTambahan(rows) {
 function sumAllPembayaranBertahapFromForm() {
   let sum = 0;
   document
-    .querySelectorAll("#tbodyPembayaranPerKloter input.pembayaran-luar-kloter")
-    .forEach((inp) => {
-      const v = parseFloat(inp.value || 0);
-      if (Number.isFinite(v) && v > 0) sum += v;
-    });
-  document
     .querySelectorAll("#tbodyPembayaranBertahapTambahan input.bertahap-baris-jumlah")
     .forEach((inp) => {
       const v = parseFloat(inp.value || 0);
       if (Number.isFinite(v) && v > 0) sum += v;
     });
   return Math.round(sum * 100) / 100;
-}
-
-/**
- * Bangun ulang tabel pembayaran per kloter agar selaras dengan baris kloter produk.
- * @param {{ amountsPreset?: string[] }} opts - jika ada, isi awal per indeks (dari dokumen / preserve).
- */
-function syncPembayaranPerKloterRows(opts) {
-  const ktb = document.getElementById("tbodyKloterPemesanan");
-  const ptb = document.getElementById("tbodyPembayaranPerKloter");
-  if (!ktb || !ptb) return;
-  const kRows = ktb.querySelectorAll("tr.kloter-row");
-  const preset = opts && Array.isArray(opts.amountsPreset) ? opts.amountsPreset : null;
-  const prev = preset != null ? preset : readPembayaranLuarKloterValues();
-  ptb.innerHTML = "";
-  kRows.forEach((kr, idx) => {
-    updateKloterRowSubtotal(kr);
-    const tipe = (kr.querySelector(".kloter-tipe")?.value || "").trim();
-    const jk = (kr.querySelector(".kloter-jenis")?.value || "").trim();
-    const pr = (kr.querySelector(".kloter-proses")?.value || "").trim();
-    const sub =
-      parseFloat(kr.querySelector(".kloter-subtotal")?.dataset.subnilai || 0) ||
-      0;
-    const ringkas =
-      [tipe, jk, pr].filter(Boolean).join(" · ") || `Kloter ${idx + 1}`;
-    const rawPay = prev[idx] != null ? String(prev[idx]).trim() : "";
-    const payAttr = rawPay ? escapeHtmlAttr(rawPay) : "";
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="text-muted">${idx + 1}</td>
-      <td><small class="text-break pembayaran-ringkas-label">${escapeHtmlAttr(ringkas)}</small></td>
-      <td class="text-end"><span class="pembayaran-row-subtotal small">${
-        sub > 0
-          ? `Rp ${sub.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`
-          : "—"
-      }</span></td>
-      <td>
-        <input type="number" class="form-control form-control-sm pembayaran-luar-kloter text-end" placeholder="0" min="0" step="1000" value="${payAttr}" title="Pembayaran masuk untuk kloter ini" />
-      </td>`;
-    ptb.appendChild(tr);
-    const inp = tr.querySelector("input.pembayaran-luar-kloter");
-    if (inp) {
-      inp.addEventListener("input", () => updateRingkasanPembayaranBertahap());
-      inp.addEventListener("change", () => updateRingkasanPembayaranBertahap());
-    }
-  });
-  updateRingkasanPembayaranBertahap();
-}
-
-/** Perbarui ringkasan & subtotal di form pembayaran luar tanpa menghapus input (jumlah baris sama). */
-function refreshPembayaranLuarKloterMetaFromKloter() {
-  const ktb = document.getElementById("tbodyKloterPemesanan");
-  const ptb = document.getElementById("tbodyPembayaranPerKloter");
-  const wrapForm = document.getElementById("wrapFormPembayaranPerKloter");
-  if (!ktb || !ptb || !wrapForm || wrapForm.classList.contains("d-none")) {
-    updateBertahapStatusLocks();
-    return;
-  }
-  const kRows = ktb.querySelectorAll("tr.kloter-row");
-  const pRows = ptb.querySelectorAll("tr");
-  if (kRows.length !== pRows.length) {
-    syncPembayaranPerKloterRows({});
-    return;
-  }
-  kRows.forEach((kr, idx) => {
-    updateKloterRowSubtotal(kr);
-    const pr = pRows[idx];
-    if (!pr) return;
-    const tipe = (kr.querySelector(".kloter-tipe")?.value || "").trim();
-    const jk = (kr.querySelector(".kloter-jenis")?.value || "").trim();
-    const pro = (kr.querySelector(".kloter-proses")?.value || "").trim();
-    const sub =
-      parseFloat(kr.querySelector(".kloter-subtotal")?.dataset.subnilai || 0) ||
-      0;
-    const ringkas =
-      [tipe, jk, pro].filter(Boolean).join(" · ") || `Kloter ${idx + 1}`;
-    const lab = pr.querySelector(".pembayaran-ringkas-label");
-    if (lab) lab.textContent = ringkas;
-    const sp = pr.querySelector(".pembayaran-row-subtotal");
-    if (sp) {
-      sp.textContent =
-        sub > 0
-          ? `Rp ${sub.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`
-          : "—";
-    }
-  });
-  updateRingkasanPembayaranBertahap();
 }
 
 function renderKloterTable(rows) {
@@ -615,40 +541,24 @@ function renderKloterTable(rows) {
   const list = Array.isArray(rows) && rows.length ? rows : [{}];
   list.forEach((r) => addKloterRow(r));
   calculateTotalHarga();
-  const amountsPreset = list.map((r) => {
-    const v = parseFloat(r.jumlahPembayaranKloter);
-    return Number.isFinite(v) && v > 0 ? String(v) : "";
-  });
-  if (document.getElementById("statusPembayaran")?.value === "Pembayaran Bertahap") {
-    syncPembayaranPerKloterRows({ amountsPreset });
-  }
 }
 
 function collectKloterFromForm() {
   const tb = document.getElementById("tbodyKloterPemesanan");
   if (!tb) return [];
-  const payInputs = Array.from(
-    document.querySelectorAll("#tbodyPembayaranPerKloter input.pembayaran-luar-kloter"),
-  );
   const out = [];
-  tb.querySelectorAll("tr.kloter-row").forEach((tr, idx) => {
+  tb.querySelectorAll("tr.kloter-row").forEach((tr) => {
     const tipe = (tr.querySelector(".kloter-tipe")?.value || "").trim();
     const jk = (tr.querySelector(".kloter-jenis")?.value || "").trim();
     const pr = (tr.querySelector(".kloter-proses")?.value || "").trim();
     const berat = parseFloat(tr.querySelector(".kloter-berat")?.value || 0);
     const hp = parseFloat(tr.querySelector(".kloter-harga")?.value || 0);
-    const bayarRaw = parseFloat(payInputs[idx]?.value || 0);
-    const bayar =
-      Number.isFinite(bayarRaw) && bayarRaw > 0
-        ? Math.round(bayarRaw * 100) / 100
-        : 0;
     out.push({
       tipeProduk: tipe,
       jenisKopi: jk,
       prosesPengolahan: pr,
       beratKg: berat,
       hargaPerKg: hp,
-      jumlahPembayaranKloter: bayar,
     });
   });
   return out;
@@ -698,11 +608,7 @@ function syncPembayaranBertahapSections() {
   const wrapForm = document.getElementById("wrapFormPembayaranPerKloter");
   if (wrapForm) {
     wrapForm.classList.toggle("d-none", !on);
-    if (on) {
-      syncPembayaranPerKloterRows({});
-    } else {
-      const ptb = document.getElementById("tbodyPembayaranPerKloter");
-      if (ptb) ptb.innerHTML = "";
+    if (!on) {
       clearPembayaranBertahapTambahanRows();
     }
   }
@@ -772,7 +678,6 @@ function calculateTotalHarga() {
   if (th) {
     th.value = total.toLocaleString("id-ID").replace(/\./g, ",");
   }
-  refreshPembayaranLuarKloterMetaFromKloter();
   updateRingkasanPembayaranBertahap();
 }
 
@@ -1234,7 +1139,7 @@ function applyFilterPemesanan() {
               String(p.statusPembayaran || "").trim() === "Pembayaran Bertahap";
             if (isBt || sumK > 0) {
               return `<span class="fw-semibold">Rp ${sisa.toLocaleString("id-ID")}</span>
-                <div class="small text-muted">Σ kloter: Rp ${sumK.toLocaleString("id-ID")}</div>`;
+                <div class="small text-muted">Terbayar: Rp ${sumK.toLocaleString("id-ID")}</div>`;
             }
             return '<span class="text-muted">—</span>';
           })()}
@@ -1472,14 +1377,7 @@ async function editPemesanan(id) {
     if (spb) spb.value = p.statusPembayaran || "Belum Lunas";
     syncPembayaranKloterColumnsVisibility();
     if (spb && spb.value === "Pembayaran Bertahap") {
-      const linesForPay = getPemesananKloterLinesFromDoc(p);
-      syncPembayaranPerKloterRows({
-        amountsPreset: linesForPay.map((L) => {
-          const v = parseFloat(L.jumlahPembayaranKloter);
-          return Number.isFinite(v) && v > 0 ? String(v) : "";
-        }),
-      });
-      renderPembayaranBertahapBarisTambahan(p.pembayaranBertahapBaris || []);
+      renderPembayaranBertahapBarisTambahan(pembayaranBertahapBarisUntukFormDariDoc(p));
     } else {
       clearPembayaranBertahapTambahanRows();
     }
@@ -1585,22 +1483,13 @@ async function savePemesanan(cetakInvoice) {
   const statusPembayaran =
     document.getElementById("statusPembayaran")?.value || "Belum Lunas";
 
-  const kloterPayload = kloterRaw.map((k) => {
-    const row = {
-      tipeProduk: k.tipeProduk,
-      jenisKopi: k.jenisKopi,
-      prosesPengolahan: k.prosesPengolahan,
-      beratKg: k.beratKg,
-      hargaPerKg: k.hargaPerKg,
-    };
-    if (
-      statusPembayaran === "Pembayaran Bertahap" &&
-      k.jumlahPembayaranKloter > 0
-    ) {
-      row.jumlahPembayaranKloter = k.jumlahPembayaranKloter;
-    }
-    return row;
-  });
+  const kloterPayload = kloterRaw.map((k) => ({
+    tipeProduk: k.tipeProduk,
+    jenisKopi: k.jenisKopi,
+    prosesPengolahan: k.prosesPengolahan,
+    beratKg: k.beratKg,
+    hargaPerKg: k.hargaPerKg,
+  }));
 
   let biayaPajak = parseFloat(
     document.getElementById("biayaPajak")?.value || 0,
@@ -1623,7 +1512,7 @@ async function savePemesanan(cetakInvoice) {
     const sumPay = sumAllPembayaranBertahapFromForm();
     if (sumPay > totalHarga + 1e-6) {
       alert(
-        "Jumlah pembayaran tercatat (per kloter + baris tambahan, Σ) tidak boleh melebihi total harga pemesanan.",
+        "Jumlah pembayaran tercatat (Σ) tidak boleh melebihi total harga pemesanan.",
       );
       return;
     }
@@ -2042,10 +1931,10 @@ async function loadPemesananDataForOrdering() {
         .map((L) => {
           const w = parseFloat(L.beratKg) || 0;
           const hp = parseFloat(L.hargaPerKg) || 0;
-          const pay = parseFloat(L.jumlahPembayaranKloter) || 0;
-          const payCell =
-            pay > 0
-              ? `Rp ${pay.toLocaleString("id-ID")}`
+          const sub = w * hp;
+          const subCell =
+            sub > 0
+              ? `Rp ${sub.toLocaleString("id-ID")}`
               : '<span class="text-muted">—</span>';
           return `<tr>
             <td>${escapeHtmlAttr(L.tipeProduk || "—")}</td>
@@ -2053,7 +1942,7 @@ async function loadPemesananDataForOrdering() {
             <td>${escapeHtmlAttr(L.prosesPengolahan || "—")}</td>
             <td class="text-end">${w.toLocaleString("id-ID")}</td>
             <td class="text-end">${hp.toLocaleString("id-ID")}</td>
-            <td class="text-end">${payCell}</td>
+            <td class="text-end">${subCell}</td>
           </tr>`;
         })
         .join("");
@@ -2793,6 +2682,28 @@ function pdfDrawOrderStatusBadge(doc, x, yBaseline, label) {
   pdfDrawColoredBadge(doc, x, yBaseline, label, pdfOrderStatusBadgeColors);
 }
 
+/** Baris pembayaran bertahap di PDF: dari pembayaranBertahapBaris, atau migrasi jumlahPembayaranKloter (dokumen lama). */
+function pdfPembayaranBertahapRowsForInvoice(p) {
+  const fromApi = Array.isArray(p?.pembayaranBertahapBaris)
+    ? p.pembayaranBertahapBaris.filter((ex) => {
+        const jj = parseFloat(ex?.jumlahRp) || 0;
+        const ct = String(ex?.catatan || "").trim();
+        return jj > 0 || ct.length > 0;
+      })
+    : [];
+  if (fromApi.length > 0) return fromApi;
+  const lines = getPemesananKloterLinesFromDoc(p);
+  const out = [];
+  lines.forEach((row) => {
+    const jj = parseFloat(row.jumlahPembayaranKloter) || 0;
+    if (jj > 0) {
+      const desk = `${row.tipeProduk || "-"} · ${row.jenisKopi || "-"} · ${row.prosesPengolahan || "-"}`;
+      out.push({ catatan: desk, jumlahRp: jj });
+    }
+  });
+  return out;
+}
+
 function pdfDrawInvoiceBody(doc, p, y) {
   const LX = 14;
   const VX = 52;
@@ -2909,16 +2820,15 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const tblRx = 196;
   const C_NO = 16;
   const C_DESC = 24;
-  const W_DESC = 66;
-  const C_QTY = 96;
-  const C_HP = 118;
-  const C_SUB = 142;
-  const C_PAY = 176;
+  const W_DESC = 95;
+  const C_QTY = 122;
+  const C_HP = 148;
+  const C_SUB = 180;
 
   doc.setFontSize(10.5);
   doc.setFont(undefined, "bold");
   doc.setTextColor(25, 90, 40);
-  doc.text("RINCIAN PRODUK, HARGA & PEMBAYARAN PER KLOTER", LX, y);
+  doc.text("RINCIAN PRODUK & HARGA", LX, y);
   doc.setTextColor(0, 0, 0);
   y += 5.5;
   const hdrTop = y;
@@ -2936,7 +2846,6 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.text("Kg", C_QTY, hdrTop + 5, { align: "right" });
   doc.text("@/kg", C_HP, hdrTop + 5, { align: "right" });
   doc.text("Subtotal", C_SUB, hdrTop + 5, { align: "right" });
-  doc.text("Terbayar", C_PAY, hdrTop + 5, { align: "right" });
   doc.setTextColor(0, 0, 0);
   doc.setFont(undefined, "normal");
   y = hdrTop + hdrH + 3;
@@ -2959,18 +2868,11 @@ function pdfDrawInvoiceBody(doc, p, y) {
     const jumlahKg = parseFloat(row.beratKg) || 0;
     const hargaKg = parseFloat(row.hargaPerKg) || 0;
     const subtotalBaris = jumlahKg * hargaKg;
-    const payRow = parseFloat(row.jumlahPembayaranKloter) || 0;
     doc.text(pdfFmtIdNumber(jumlahKg), C_QTY, yStartBlock, { align: "right" });
     doc.text(pdfFmtIdNumber(hargaKg), C_HP, yStartBlock, { align: "right" });
     doc.text(pdfFmtIdNumber(subtotalBaris), C_SUB, yStartBlock, {
       align: "right",
     });
-    doc.text(
-      payRow > 0 ? pdfFmtIdNumber(payRow) : "—",
-      C_PAY,
-      yStartBlock,
-      { align: "right" },
-    );
     y = Math.max(y, yStartBlock + 5.5);
     doc.setDrawColor(220, 228, 222);
     doc.setLineWidth(0.1);
@@ -2978,37 +2880,31 @@ function pdfDrawInvoiceBody(doc, p, y) {
     y += 2.2;
   });
 
-  const pdfExtraBaris = Array.isArray(p.pembayaranBertahapBaris)
-    ? p.pembayaranBertahapBaris.filter((ex) => {
-        const jj = parseFloat(ex?.jumlahRp) || 0;
-        const ct = String(ex?.catatan || "").trim();
-        return jj > 0 || ct.length > 0;
-      })
-    : [];
-  if (pdfExtraBaris.length > 0) {
+  const pdfPayRows = pdfPembayaranBertahapRowsForInvoice(p);
+  if (pdfPayRows.length > 0) {
     y += 3;
     doc.setFontSize(8.2);
     doc.setFont(undefined, "bold");
     doc.setTextColor(45, 75, 50);
-    doc.text("Pembayaran tambahan (termin / gabungan)", LX, y);
+    doc.text("RINCIAN PEMBAYARAN TERCATAT (BERTAHAP)", LX, y);
     y += 4.5;
     doc.setFont(undefined, "normal");
     doc.setFontSize(7.85);
-    pdfExtraBaris.forEach((ex, ix) => {
+    pdfPayRows.forEach((ex, ix) => {
       if (y > 268) {
         doc.addPage();
         y = 18;
       }
       const cat = String(ex.catatan || "").trim() || `Baris ${ix + 1}`;
       const jj = parseFloat(ex.jumlahRp) || 0;
-      const catLines = doc.splitTextToSize(cat, W_DESC + 24);
+      const catLines = doc.splitTextToSize(cat, W_DESC + 30);
       const y0 = y;
       doc.text(String(ix + 1), C_NO, y0);
       catLines.forEach((ln) => {
         doc.text(ln, C_DESC, y);
         y += 3.65;
       });
-      doc.text(jj > 0 ? pdfFmtIdNumber(jj) : "—", C_PAY, y0, { align: "right" });
+      doc.text(jj > 0 ? pdfFmtIdNumber(jj) : "—", C_SUB, y0, { align: "right" });
       y = Math.max(y, y0 + 5.5);
       doc.setDrawColor(220, 228, 222);
       doc.setLineWidth(0.1);
