@@ -2587,12 +2587,18 @@ function pdfDecodeHtmlEntities(raw) {
  * @returns {number} y di bawah tabel + jarak kecil
  */
 function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
+  const optsObj = opts || {};
+  const forceSinglePage = !!optsObj.forceSinglePage;
+  const pageBottom =
+    optsObj && Number.isFinite(optsObj.pageBottom) ? optsObj.pageBottom : 288;
   const W =
-    opts && Number.isFinite(opts.width) ? opts.width : 190 - LX;
+    optsObj && Number.isFinite(optsObj.width) ? optsObj.width : 190 - LX;
   const padX = 3.5;
   const innerW = W - padX * 2;
   const marginBottom =
-    opts && Number.isFinite(opts.marginBottom) ? opts.marginBottom : 6;
+    optsObj && Number.isFinite(optsObj.marginBottom)
+      ? optsObj.marginBottom
+      : 6;
   const decoded = pdfDecodeHtmlEntities(String(catatanRaw).trim());
   const blocks = decoded
     .split(/\r?\n/)
@@ -2609,12 +2615,23 @@ function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
     doc.splitTextToSize(blk, innerW).forEach((ln) => displayLines.push(ln));
     if (idx < blocks.length - 1) displayLines.push("");
   });
-  const bodyH = bodyPadTop + displayLines.length * lineH + bodyPadBottom;
-  const tableH = headerH + bodyH;
+  let bodyH = bodyPadTop + displayLines.length * lineH + bodyPadBottom;
+  let tableH = headerH + bodyH;
 
-  if (y + tableH > 285) {
+  if (!forceSinglePage && y + tableH > 285) {
     doc.addPage();
     y = 22;
+  } else if (forceSinglePage && y + tableH > pageBottom) {
+    const avail = pageBottom - y - headerH - bodyPadTop - bodyPadBottom;
+    const maxLines = Math.max(1, Math.floor(avail / lineH));
+    if (displayLines.length > maxLines) {
+      const head = displayLines.slice(0, Math.max(0, maxLines - 1));
+      head.push("…");
+      displayLines.length = 0;
+      head.forEach((ln) => displayLines.push(ln));
+      bodyH = bodyPadTop + displayLines.length * lineH + bodyPadBottom;
+      tableH = headerH + bodyH;
+    }
   }
 
   doc.setDrawColor(46, 125, 50);
@@ -2806,6 +2823,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const pdfInvoiceModeBertahap = statusBayarKey === "pembayaran bertahap";
 
   const pageBreakIfNeeded = (yy) => {
+    if (!pdfInvoiceModeBertahap) return yy;
     if (yy > 258) {
       doc.addPage();
       return 20;
@@ -3250,7 +3268,10 @@ function pdfDrawInvoiceBody(doc, p, y) {
   };
 
   let yFooter = y + 8;
-  if (yFooter + estimateFooterClusterHeight(yFooter) > PAGE_SAFE_BOTTOM) {
+  if (
+    pdfInvoiceModeBertahap &&
+    yFooter + estimateFooterClusterHeight(yFooter) > PAGE_SAFE_BOTTOM
+  ) {
     doc.addPage();
     y = 24;
     const pageNo = doc.internal.getNumberOfPages();
@@ -3299,6 +3320,8 @@ function pdfDrawInvoiceBody(doc, p, y) {
     const yCatEnd = pdfDrawCatatanPemesananTable(doc, LX, yFooter, catatan, {
       width: WCAT,
       marginBottom: 4,
+      forceSinglePage: !pdfInvoiceModeBertahap,
+      pageBottom: 286,
     });
     drawTtdBlock(yFooter, { ...geo, sigL, sigR }, namaLinesSig);
     yBottom = Math.max(yCatEnd, geo.boxTop + geo.boxH + 6);
