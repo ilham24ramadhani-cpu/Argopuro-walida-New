@@ -5153,12 +5153,20 @@ function laporanSumPembayaranKloterPemesanan(p) {
   const agg = parseFloat(p.totalPembayaranKloter);
   if (Number.isFinite(agg) && agg > 0) return Math.round(agg * 100) / 100;
   const rows = p.kloter || p.items;
-  if (!Array.isArray(rows)) return 0;
   let s = 0;
-  rows.forEach((r) => {
-    const v = safeNumberLaporan(r?.jumlahPembayaranKloter);
-    if (v > 0) s += v;
-  });
+  if (Array.isArray(rows)) {
+    rows.forEach((r) => {
+      const v = safeNumberLaporan(r?.jumlahPembayaranKloter);
+      if (v > 0) s += v;
+    });
+  }
+  const extra = p.pembayaranBertahapBaris;
+  if (Array.isArray(extra)) {
+    extra.forEach((it) => {
+      const v = safeNumberLaporan(it?.jumlahRp);
+      if (v > 0) s += v;
+    });
+  }
   return Math.round(s * 100) / 100;
 }
 

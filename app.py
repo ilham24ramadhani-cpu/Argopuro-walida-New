@@ -4717,22 +4717,70 @@ def _sum_jumlah_pembayaran_kloter(kloter_list):
     return round(sum(_jumlah_pembayaran_kloter_from_row(row) for row in kloter_list), 2)
 
 
-def _compute_pemesanan_pembayaran_kloter_agg(status_bayar, total_harga, kloter_list):
+def _normalize_pembayaran_bertahap_baris_tambahan(data):
     """
-    totalPembayaranKloter = Σ jumlahPembayaranKloter per baris.
+    Array opsional pembayaran bertahap tambahan (termin / gabungan), selain nominal per baris kloter produk.
+    Maksimal 30 baris. Tiap elemen: { jumlahRp: number, catatan?: str }.
+    Mengembalikan (list_tersimpan, pesan_error_atau_None).
+    """
+    raw = data.get('pembayaranBertahapBaris')
+    if raw is None:
+        return [], None
+    if not isinstance(raw, list):
+        return None, 'pembayaranBertahapBaris harus berupa array'
+    if len(raw) > 30:
+        return None, 'Maksimal 30 baris pembayaran bertahap tambahan'
+    out = []
+    for idx, it in enumerate(raw):
+        if not isinstance(it, dict):
+            return None, f'Baris pembayaran {idx + 1}: format tidak valid'
+        try:
+            jr = float(it.get('jumlahRp') or 0)
+        except (TypeError, ValueError):
+            return None, f'Baris pembayaran {idx + 1}: jumlahRp tidak valid'
+        if jr < 0:
+            return None, f'Baris pembayaran {idx + 1}: jumlahRp tidak boleh negatif'
+        if jr <= 0 and not (str(it.get('catatan') or '').strip()):
+            continue
+        row = {'jumlahRp': round(max(0.0, jr), 2)}
+        cat = (str(it.get('catatan') or '')).strip()
+        if cat:
+            row['catatan'] = cat[:500]
+        out.append(row)
+    return out, None
+
+
+def _sum_pembayaran_bertahap_baris_tambahan(baris_list):
+    if not baris_list or not isinstance(baris_list, list):
+        return 0.0
+    s = 0.0
+    for it in baris_list:
+        if not isinstance(it, dict):
+            continue
+        try:
+            s += float(it.get('jumlahRp') or 0)
+        except (TypeError, ValueError):
+            continue
+    return round(max(0.0, s), 2)
+
+
+def _compute_pemesanan_pembayaran_kloter_agg(status_bayar, total_harga, kloter_list, baris_tambahan=None):
+    """
+    totalPembayaranKloter = Σ jumlahPembayaranKloter per baris kloter + Σ pembayaranBertahapBaris[].jumlahRp.
     totalPembayaranSaatIni = total harga − Σ itu (sisa tagihan, tidak negatif).
     Validasi: untuk Pembayaran Bertahap, Σ tidak boleh melebihi total.
     Mengembalikan (sum_pay, sisa, error_string_atau_None).
     """
     rows = kloter_list if isinstance(kloter_list, list) else []
     sum_pay = _sum_jumlah_pembayaran_kloter(rows)
+    sum_pay = round(sum_pay + _sum_pembayaran_bertahap_baris_tambahan(baris_tambahan), 2)
     th = float(total_harga or 0)
     sisa = round(max(0.0, th - sum_pay), 2)
     sb = (status_bayar or '').strip()
     if sb == 'Pembayaran Bertahap':
         tol = _total_harga_pemesanan_tolerance(th)
         if sum_pay - th > tol:
-            return None, None, 'Jumlah pembayaran per kloter tidak boleh melebihi total harga pemesanan.'
+            return None, None, 'Jumlah pembayaran (per kloter + tambahan) tidak boleh melebihi total harga pemesanan.'
     return sum_pay, sisa, None
 
 
@@ -5047,9 +5095,14 @@ def create_pemesanan():
         if apb:
             pemesanan_data['alamatPembeli'] = apb
 
+        baris_tb, baris_err = _normalize_pembayaran_bertahap_baris_tambahan(data)
+        if baris_err:
+            return jsonify({'error': baris_err}), 400
+        pemesanan_data['pembayaranBertahapBaris'] = baris_tb
+
         klist_agg = pemesanan_data.get('kloter') or pemesanan_data.get('items') or []
         sum_pay, sisa_bayar, agg_err = _compute_pemesanan_pembayaran_kloter_agg(
-            status_bayar, pemesanan_data['totalHarga'], klist_agg
+            status_bayar, pemesanan_data['totalHarga'], klist_agg, baris_tb
         )
         if agg_err:
             return jsonify({'error': agg_err}), 400
@@ -5172,6 +5225,12 @@ def update_pemesanan(pemesanan_id):
                 return jsonify({'error': 'tipePemesanan tidak valid'}), 400
             if tt != 'International':
                 update_data['negara'] = ''
+
+        if 'pembayaranBertahapBaris' in data:
+            baris_tb_up, baris_err_up = _normalize_pembayaran_bertahap_baris_tambahan(data)
+            if baris_err_up:
+                return jsonify({'error': baris_err_up}), 400
+            update_data['pembayaranBertahapBaris'] = baris_tb_up
         
         # ==================== ATURAN STATUS (BISNIS) ====================
         # - statusPemesanan hanya boleh Complete jika statusPembayaran = Lunas
@@ -5188,8 +5247,11 @@ def update_pemesanan(pemesanan_id):
         merged_th_val = float(update_data.get('totalHarga', pemesanan.get('totalHarga', 0)))
         pending_bayar_val = update_data.get('statusPembayaran', old_status_bayar)
         pending_bayar_val = _normalize_status_pembayaran_canonical(pending_bayar_val) or pending_bayar_val
+        merged_baris_val = update_data.get('pembayaranBertahapBaris')
+        if merged_baris_val is None:
+            merged_baris_val = pemesanan.get('pembayaranBertahapBaris') or []
         _sum_early, sisa_val, e_agg_early = _compute_pemesanan_pembayaran_kloter_agg(
-            pending_bayar_val, merged_th_val, merged_k_val
+            pending_bayar_val, merged_th_val, merged_k_val, merged_baris_val
         )
         if e_agg_early:
             return jsonify({'error': e_agg_early}), 400
@@ -5260,8 +5322,11 @@ def update_pemesanan(pemesanan_id):
         merged_kloter = update_data.get('kloter')
         if merged_kloter is None:
             merged_kloter = pemesanan.get('kloter') or pemesanan.get('items') or []
+        merged_baris_fin = update_data.get('pembayaranBertahapBaris')
+        if merged_baris_fin is None:
+            merged_baris_fin = pemesanan.get('pembayaranBertahapBaris') or []
         sum_pay, sisa_bayar, agg_err = _compute_pemesanan_pembayaran_kloter_agg(
-            eff_bayar, merged_total, merged_kloter
+            eff_bayar, merged_total, merged_kloter, merged_baris_fin
         )
         if agg_err:
             return jsonify({'error': agg_err}), 400
@@ -5403,7 +5468,10 @@ def proses_ordering():
         if sb_order == 'Pembayaran Bertahap':
             klist_o = pemesanan.get('kloter') or pemesanan.get('items') or []
             th_o = float(pemesanan.get('totalHarga') or 0)
-            _s_o, sisa_o, _e_o = _compute_pemesanan_pembayaran_kloter_agg('Pembayaran Bertahap', th_o, klist_o)
+            baris_o = pemesanan.get('pembayaranBertahapBaris') or []
+            _s_o, sisa_o, _e_o = _compute_pemesanan_pembayaran_kloter_agg(
+                'Pembayaran Bertahap', th_o, klist_o, baris_o
+            )
             if sisa_o > 1.0:
                 return jsonify({
                     'error': (
@@ -5434,8 +5502,9 @@ def proses_ordering():
                     th_fix = float(pemesanan.get('totalHarga') or 0)
                     sisa_fix = 0.0
                     if sb_fix == 'Pembayaran Bertahap':
+                        baris_fix = pemesanan.get('pembayaranBertahapBaris') or []
                         _sf, sisa_fix, _ef = _compute_pemesanan_pembayaran_kloter_agg(
-                            'Pembayaran Bertahap', th_fix, klist_fix
+                            'Pembayaran Bertahap', th_fix, klist_fix, baris_fix
                         )
                     skip_lunas_complete = sb_fix == 'Pembayaran Bertahap' and sisa_fix > 1.0
                     if skip_lunas_complete:

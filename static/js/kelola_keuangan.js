@@ -92,12 +92,20 @@ async function loadPemasukanData() {
 
     function sumJumlahPembayaranKloterKeuangan(p) {
       const lines = p?.kloter || p?.items;
-      if (!Array.isArray(lines)) return 0;
       let s = 0;
-      lines.forEach((r) => {
-        const v = parseFloat(r?.jumlahPembayaranKloter);
-        if (Number.isFinite(v) && v > 0) s += v;
-      });
+      if (Array.isArray(lines)) {
+        lines.forEach((r) => {
+          const v = parseFloat(r?.jumlahPembayaranKloter);
+          if (Number.isFinite(v) && v > 0) s += v;
+        });
+      }
+      const extra = p?.pembayaranBertahapBaris;
+      if (Array.isArray(extra)) {
+        extra.forEach((it) => {
+          const v = parseFloat(it?.jumlahRp);
+          if (Number.isFinite(v) && v > 0) s += v;
+        });
+      }
       return Math.round(s * 100) / 100;
     }
 
