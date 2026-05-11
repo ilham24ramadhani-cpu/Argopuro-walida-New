@@ -2486,6 +2486,7 @@ async function fetchArgopuroLogoForPdf() {
 }
 
 function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl) {
+  pdfInvSetFont(doc, "normal");
   const nama = "Argopuro Walida";
   const kontak = "+62 857-0766-1006";
   const alamat =
@@ -2501,17 +2502,17 @@ function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl) {
   }
   doc.setTextColor(25, 90, 40);
   doc.setFontSize(15);
-  doc.setFont(undefined, "bold");
+  pdfInvSetFont(doc, "bold");
   doc.text(nama, tx, y + 8);
   doc.setTextColor(55, 55, 55);
   doc.setFontSize(9);
-  doc.setFont(undefined, "normal");
+  pdfInvSetFont(doc, "normal");
   doc.text(`Kontak: ${kontak}`, tx, y + 15);
   const addrLines = doc.splitTextToSize(alamat, 132);
   let ay = y + 21;
   addrLines.forEach((ln) => {
     doc.text(ln, tx, ay);
-    ay += 4.5;
+    ay += 4.4;
   });
   doc.setTextColor(0, 0, 0);
   const barY = Math.max(y + 32, ay + 3);
@@ -2520,18 +2521,20 @@ function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl) {
   doc.line(18, barY, 192, barY);
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.1);
-  doc.setFontSize(16);
-  doc.setFont(undefined, "bold");
-  doc.text("INVOICE PEMESANAN", 105, barY + 9, { align: "center" });
+  doc.setFontSize(15.5);
+  pdfInvSetFont(doc, "bold");
+  doc.text("INVOICE PEMESANAN", 105, barY + 8.5, { align: "center" });
   doc.setFontSize(8);
-  doc.setFont(undefined, "normal");
+  pdfInvSetFont(doc, "normal");
+  doc.setTextColor(75, 82, 78);
   doc.text(
     "Dokumen pembelian resmi — mohon periksa rincian berikut.",
     105,
-    barY + 14,
+    barY + 13.5,
     { align: "center" },
   );
-  return barY + 19;
+  doc.setTextColor(0, 0, 0);
+  return barY + 18;
 }
 
 /** Angka dengan pemisah ribuan Indonesia, tanpa prefiks Rp/kg */
@@ -2539,6 +2542,13 @@ function pdfFmtIdNumber(n) {
   const v = Number(n);
   if (!Number.isFinite(v)) return "0";
   return v.toLocaleString("id-ID");
+}
+
+/** Font tunggal untuk invoice PDF (built-in jsPDF). */
+const PDF_FONT = "helvetica";
+
+function pdfInvSetFont(doc, style) {
+  doc.setFont(PDF_FONT, style || "normal");
 }
 
 /** Teks untuk PDF: uraikan entitas HTML bertingkat (mis. &amp;amp; → &). */
@@ -2586,13 +2596,13 @@ function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
     .split(/\r?\n/)
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
-  const lineH = 3.85;
-  const headerH = 7;
-  const bodyPadTop = 4;
-  const bodyPadBottom = 4;
+  const lineH = 4;
+  const headerH = 8;
+  const bodyPadTop = 4.5;
+  const bodyPadBottom = 4.5;
   const displayLines = [];
-  doc.setFontSize(8.5);
-  doc.setFont(undefined, "normal");
+  doc.setFontSize(8);
+  pdfInvSetFont(doc, "normal");
   blocks.forEach((blk, idx) => {
     doc.splitTextToSize(blk, innerW).forEach((ln) => displayLines.push(ln));
     if (idx < blocks.length - 1) displayLines.push("");
@@ -2616,12 +2626,12 @@ function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
   doc.line(LX, y + headerH, LX + W, y + headerH);
 
   doc.setTextColor(25, 90, 40);
-  doc.setFont(undefined, "bold");
-  doc.setFontSize(9);
-  doc.text("CATATAN", LX + padX, y + 5);
-  doc.setTextColor(35, 35, 35);
-  doc.setFont(undefined, "normal");
+  pdfInvSetFont(doc, "bold");
   doc.setFontSize(8.5);
+  doc.text("CATATAN", LX + padX, y + 5.7);
+  doc.setTextColor(35, 35, 35);
+  pdfInvSetFont(doc, "normal");
+  doc.setFontSize(8);
 
   let ty = y + headerH + bodyPadTop;
   displayLines.forEach((ln) => {
@@ -2633,6 +2643,7 @@ function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.1);
   doc.setFontSize(9);
+  pdfInvSetFont(doc, "normal");
   return y + tableH + marginBottom;
 }
 
@@ -2648,13 +2659,13 @@ function pdfEstimateCatatanTableHeight(doc, catatanRaw, W, marginBottom) {
     .split(/\r?\n/)
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
-  const lineH = 3.85;
-  const headerH = 7;
-  const bodyPadTop = 4;
-  const bodyPadBottom = 4;
+  const lineH = 4;
+  const headerH = 8;
+  const bodyPadTop = 4.5;
+  const bodyPadBottom = 4.5;
   const displayLines = [];
-  doc.setFontSize(8.5);
-  doc.setFont(undefined, "normal");
+  doc.setFontSize(8);
+  pdfInvSetFont(doc, "normal");
   blocks.forEach((blk, idx) => {
     doc.splitTextToSize(blk, innerW).forEach((ln) => displayLines.push(ln));
     if (idx < blocks.length - 1) displayLines.push("");
@@ -2689,7 +2700,7 @@ function pdfOrderStatusBadgeColors(status) {
 function pdfDrawColoredBadge(doc, x, yBaseline, label, colorFn) {
   const text = String(label || "—");
   doc.setFontSize(8);
-  doc.setFont(undefined, "bold");
+  pdfInvSetFont(doc, "bold");
   const w = doc.getTextWidth(text);
   const padX = 2.2;
   const padY = 1.2;
@@ -2702,7 +2713,7 @@ function pdfDrawColoredBadge(doc, x, yBaseline, label, colorFn) {
   doc.setTextColor(255, 255, 255);
   doc.text(text, x0 + padX, yBaseline);
   doc.setTextColor(0, 0, 0);
-  doc.setFont(undefined, "normal");
+  pdfInvSetFont(doc, "normal");
   doc.setFontSize(9);
 }
 
@@ -2739,27 +2750,37 @@ function pdfPembayaranBertahapRowsForInvoice(p) {
 /** Header baris tabel hijau seragam (invoice Argopuro). */
 function pdfInvoiceGreenTableHeader(doc, lx, rx, yTop, hdrH, cols) {
   const w = rx - lx;
-  doc.setFillColor(232, 245, 234);
-  doc.roundedRect(lx, yTop, w, hdrH, 0.6, 0.6, "F");
-  doc.setDrawColor(46, 125, 50);
-  doc.setLineWidth(0.18);
-  doc.roundedRect(lx, yTop, w, hdrH, 0.6, 0.6, "S");
-  doc.setFontSize(7.5);
-  doc.setFont(undefined, "bold");
-  doc.setTextColor(45, 75, 50);
+  doc.setFillColor(228, 241, 232);
+  doc.roundedRect(lx, yTop, w, hdrH, 0.5, 0.5, "F");
+  doc.setDrawColor(38, 120, 55);
+  doc.setLineWidth(0.2);
+  doc.roundedRect(lx, yTop, w, hdrH, 0.5, 0.5, "S");
+  const ty = yTop + hdrH * 0.55 + 1.05;
+  doc.setFontSize(8);
+  pdfInvSetFont(doc, "bold");
+  doc.setTextColor(32, 88, 48);
   cols.forEach((c) => {
-    doc.text(c.label, c.x, yTop + 5, c.opt || {});
+    doc.text(c.label, c.x, ty, c.opt || {});
   });
   doc.setTextColor(0, 0, 0);
-  doc.setFont(undefined, "normal");
-  return yTop + hdrH + 2.8;
+  pdfInvSetFont(doc, "normal");
+  return yTop + hdrH + 3.2;
 }
 
 function pdfDrawInvoiceBody(doc, p, y) {
+  pdfInvSetFont(doc, "normal");
   const LX = 14;
   const VX = 52;
   const tblRx = 196;
-  const hdrH = 7;
+  const HDR_H = 8.5;
+  const FS_RING = 8.5;
+  const FS_RING_TTL = 10;
+  const FS_LABEL = 8.5;
+  const FS_BODY = 8;
+  const FS_SEC = 11;
+  const FS_SEC_SUB = 7.5;
+  const LH_ROW = 4;
+  const LH_PEMBELI = 4.5;
   const C_NO = 16;
   const C_DESC = 24;
   const W_DESC = 95;
@@ -2791,91 +2812,101 @@ function pdfDrawInvoiceBody(doc, p, y) {
   };
 
   // --- Ringkasan dokumen: identitas & status (tanpa duplikat angka keuangan) ---
-  doc.setFontSize(9.5);
   doc.setFillColor(240, 248, 242);
   doc.roundedRect(LX, y - 2, 182, 36, 1, 1, "F");
   doc.setTextColor(0, 0, 0);
-  doc.setFont(undefined, "bold");
-  doc.text("Ringkasan dokumen", LX + 3, y + 4.5);
-  doc.setFont(undefined, "normal");
-  doc.setFontSize(8.5);
-  doc.text(`ID Pembelian: ${p.idPembelian || "-"}`, LX + 3, y + 10);
+  doc.setFontSize(FS_RING_TTL);
+  pdfInvSetFont(doc, "bold");
+  doc.text("Ringkasan dokumen", LX + 3, y + 4.8);
+  pdfInvSetFont(doc, "normal");
+  doc.setFontSize(FS_RING);
+  doc.text(`ID Pembelian: ${p.idPembelian || "-"}`, LX + 3, y + 10.2);
   doc.setTextColor(55, 55, 55);
   doc.text(
     `Tanggal pemesanan: ${formatDate(p.tanggalPemesanan || new Date().toISOString())}`,
     LX + 3,
-    y + 15.5,
+    y + 15.8,
   );
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(8);
-  doc.setFont(undefined, "normal");
+  doc.setFontSize(FS_BODY);
   doc.setTextColor(60, 60, 60);
   doc.text("Status pemesanan", LX + 3, y + 21.5);
   const osw = doc.getTextWidth("Status pemesanan");
   doc.setTextColor(0, 0, 0);
   pdfDrawOrderStatusBadge(doc, LX + 3 + osw + 2, y + 21.5, orderLabel);
-  doc.setFontSize(8);
+  doc.setFontSize(FS_BODY);
   doc.setTextColor(60, 60, 60);
   doc.text("Status pembayaran", LX + 3, y + 27.5);
   const spw = doc.getTextWidth("Status pembayaran");
   doc.setTextColor(0, 0, 0);
   pdfDrawPaymentBadge(doc, LX + 3 + spw + 2, y + 27.5, bayarLabel);
-  doc.setFontSize(7.4);
+  doc.setFontSize(FS_SEC_SUB);
   doc.setTextColor(95, 110, 100);
-  doc.text("Rincian nominal ada pada tabel di bawah.", LX + 3, y + 32.5);
+  doc.text("Rincian nominal ada pada tabel di bawah.", LX + 3, y + 32.8);
   doc.setTextColor(0, 0, 0);
   y += 38;
 
-  doc.setFontSize(10.5);
-  doc.setFont(undefined, "bold");
+  doc.setFontSize(FS_SEC);
+  pdfInvSetFont(doc, "bold");
   doc.text("PEMBELI", LX, y);
   y += 5;
   doc.setLineWidth(0.15);
   doc.line(LX, y, 190, y);
   y += 6;
-  doc.setFontSize(9.5);
-  doc.setFont(undefined, "bold");
+  doc.setFontSize(FS_LABEL);
+  pdfInvSetFont(doc, "bold");
   doc.text("Nama", LX, y);
-  doc.setFont(undefined, "normal");
+  pdfInvSetFont(doc, "normal");
+  doc.setFontSize(FS_BODY);
   const namaPembeliKop = pdfDecodeHtmlEntities(
     String(p.namaPembeli || "-").trim(),
   );
   const namaKopLines = doc.splitTextToSize(namaPembeliKop, 120);
   namaKopLines.forEach((ln) => {
     doc.text(ln, VX, y);
-    y += 4.3;
+    y += LH_PEMBELI;
   });
   y += 1;
-  doc.setFont(undefined, "bold");
+  doc.setFontSize(FS_LABEL);
+  pdfInvSetFont(doc, "bold");
   doc.text("Kontak", LX, y);
-  doc.setFont(undefined, "normal");
+  pdfInvSetFont(doc, "normal");
+  doc.setFontSize(FS_BODY);
   doc.text(String(p.kontakPembeli || "-"), VX, y);
   y += 6;
-  doc.setFont(undefined, "bold");
+  doc.setFontSize(FS_LABEL);
+  pdfInvSetFont(doc, "bold");
   doc.text("Alamat", LX, y);
-  doc.setFont(undefined, "normal");
+  pdfInvSetFont(doc, "normal");
+  doc.setFontSize(FS_BODY);
   const alLines = doc.splitTextToSize(String(p.alamatPembeli || "-"), 120);
   alLines.forEach((ln) => {
     doc.text(ln, VX, y);
-    y += 4.3;
+    y += LH_PEMBELI;
   });
   y += 1;
   if (p.idMasterPembeli) {
-    doc.setFont(undefined, "bold");
+    doc.setFontSize(FS_LABEL);
+    pdfInvSetFont(doc, "bold");
     doc.text("ID master", LX, y);
-    doc.setFont(undefined, "normal");
+    pdfInvSetFont(doc, "normal");
+    doc.setFontSize(FS_BODY);
     doc.text(String(p.idMasterPembeli), VX, y);
     y += 6;
   }
-  doc.setFont(undefined, "bold");
+  doc.setFontSize(FS_LABEL);
+  pdfInvSetFont(doc, "bold");
   doc.text("Tipe", LX, y);
-  doc.setFont(undefined, "normal");
+  pdfInvSetFont(doc, "normal");
+  doc.setFontSize(FS_BODY);
   doc.text(p.tipePemesanan || "-", VX, y);
   y += 6;
   if (p.tipePemesanan === "International" && p.negara) {
-    doc.setFont(undefined, "bold");
+    doc.setFontSize(FS_LABEL);
+    pdfInvSetFont(doc, "bold");
     doc.text("Negara", LX, y);
-    doc.setFont(undefined, "normal");
+    pdfInvSetFont(doc, "normal");
+    doc.setFontSize(FS_BODY);
     doc.text(p.negara || "-", VX, y);
     y += 6;
   }
@@ -2883,18 +2914,18 @@ function pdfDrawInvoiceBody(doc, p, y) {
 
   // ========== TABEL 1: DATA PEMESANAN ==========
   y = pageBreakIfNeeded(y + 2);
-  doc.setFontSize(10.2);
-  doc.setFont(undefined, "bold");
+  doc.setFontSize(FS_SEC);
+  pdfInvSetFont(doc, "bold");
   doc.setTextColor(25, 90, 40);
   doc.text("DATA PEMESANAN", LX, y);
-  doc.setTextColor(70, 80, 75);
-  doc.setFont(undefined, "normal");
-  doc.setFontSize(7.6);
-  doc.text("Barang dipesan, harga, pajak & pengiriman.", LX + 52, y);
+  doc.setFontSize(FS_SEC_SUB);
+  pdfInvSetFont(doc, "normal");
+  doc.setTextColor(88, 98, 92);
+  doc.text("Barang dipesan, harga, pajak & pengiriman.", LX, y + 4.4);
   doc.setTextColor(0, 0, 0);
-  y += 5.2;
+  y += 9;
   let yHdr = y;
-  y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, hdrH, [
+  y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, HDR_H, [
     { label: "No", x: C_NO },
     { label: "Item (tipe · jenis · proses)", x: C_DESC },
     { label: "Kg", x: C_QTY, opt: { align: "right" } },
@@ -2902,7 +2933,8 @@ function pdfDrawInvoiceBody(doc, p, y) {
     { label: "Subtotal (Rp)", x: C_SUB, opt: { align: "right" } },
   ]);
 
-  doc.setFontSize(7.85);
+  doc.setFontSize(FS_BODY);
+  pdfInvSetFont(doc, "normal");
   const invLines = getPemesananKloterLinesFromDoc(p);
   invLines.forEach((row, idx) => {
     y = pageBreakIfNeeded(y);
@@ -2912,7 +2944,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     doc.text(String(idx + 1), C_NO, yStartBlock);
     dLines.forEach((ln) => {
       doc.text(ln, C_DESC, y);
-      y += 3.65;
+      y += LH_ROW;
     });
     const jumlahKg = parseFloat(row.beratKg) || 0;
     const hargaKg = parseFloat(row.hargaPerKg) || 0;
@@ -2931,8 +2963,8 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setLineWidth(0.2);
   doc.line(LX, y, tblRx, y);
   y += 4;
-  doc.setFontSize(8.2);
-  doc.setFont(undefined, "normal");
+  doc.setFontSize(FS_BODY);
+  pdfInvSetFont(doc, "normal");
   doc.setTextColor(55, 65, 60);
   doc.text("Pajak (Rp)", C_DESC, y);
   doc.text(pdfFmtIdNumber(pajakInv), C_SUB, y, { align: "right" });
@@ -2944,14 +2976,14 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setLineWidth(0.28);
   doc.line(LX, y, tblRx, y);
   y += 5;
-  doc.setFontSize(9.8);
-  doc.setFont(undefined, "bold");
+  doc.setFontSize(9.5);
+  pdfInvSetFont(doc, "bold");
   doc.setTextColor(25, 90, 40);
   doc.text("TOTAL TAGIHAN (Rp)", C_DESC, y);
   doc.text(pdfFmtIdNumber(p.totalHarga || 0), C_SUB, y, { align: "right" });
   doc.setTextColor(0, 0, 0);
-  doc.setFont(undefined, "normal");
-  doc.setFontSize(9);
+  pdfInvSetFont(doc, "normal");
+  doc.setFontSize(FS_BODY);
   y += 7;
   doc.setDrawColor(46, 125, 50);
   doc.setLineWidth(0.22);
@@ -2960,29 +2992,30 @@ function pdfDrawInvoiceBody(doc, p, y) {
 
   // ========== TABEL 2: DATA KLOTER PEMBAYARAN ==========
   y = pageBreakIfNeeded(y);
-  doc.setFontSize(10.2);
-  doc.setFont(undefined, "bold");
+  doc.setFontSize(FS_SEC);
+  pdfInvSetFont(doc, "bold");
   doc.setTextColor(25, 90, 40);
   doc.text("DATA KLOTER PEMBAYARAN", LX, y);
-  doc.setTextColor(70, 80, 75);
-  doc.setFont(undefined, "normal");
-  doc.setFontSize(7.6);
-  doc.text("Pencatatan DP / termin / cicilan (bertahap).", LX + 68, y);
+  doc.setFontSize(FS_SEC_SUB);
+  pdfInvSetFont(doc, "normal");
+  doc.setTextColor(88, 98, 92);
+  doc.text("Pencatatan DP / termin / cicilan (bertahap).", LX, y + 4.4);
   doc.setTextColor(0, 0, 0);
-  y += 5.2;
+  y += 9;
   yHdr = y;
-  y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, hdrH, [
+  y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, HDR_H, [
     { label: "No", x: C_NO },
     { label: "Keterangan", x: C_DESC },
     { label: "Nominal (Rp)", x: C_SUB, opt: { align: "right" } },
   ]);
-  doc.setFontSize(7.85);
+  doc.setFontSize(FS_BODY);
+  pdfInvSetFont(doc, "normal");
   if (pdfPayRows.length === 0) {
     y = pageBreakIfNeeded(y);
-    doc.setFont(undefined, "italic");
+    pdfInvSetFont(doc, "italic");
     doc.setTextColor(120, 125, 130);
     doc.text("Belum ada baris pembayaran tercatat.", C_DESC, y);
-    doc.setFont(undefined, "normal");
+    pdfInvSetFont(doc, "normal");
     doc.setTextColor(0, 0, 0);
     y += 6;
     drawRowSep(y);
@@ -2995,10 +3028,10 @@ function pdfDrawInvoiceBody(doc, p, y) {
       const catLines = doc.splitTextToSize(cat, W_DESC + 28);
       const y0 = y;
       doc.text(String(ix + 1), C_NO, y0);
-      doc.setFont(undefined, "normal");
+      pdfInvSetFont(doc, "normal");
       catLines.forEach((ln) => {
         doc.text(ln, C_DESC, y);
-        y += 3.65;
+        y += LH_ROW;
       });
       doc.text(jj > 0 ? pdfFmtIdNumber(jj) : "—", C_SUB, y0, { align: "right" });
       y = Math.max(y, y0 + 5.5);
@@ -3013,24 +3046,24 @@ function pdfDrawInvoiceBody(doc, p, y) {
 
   // ========== TABEL 3: RINGKASAN SISA TAGIHAN ==========
   y = pageBreakIfNeeded(y);
-  doc.setFontSize(10.2);
-  doc.setFont(undefined, "bold");
+  doc.setFontSize(FS_SEC);
+  pdfInvSetFont(doc, "bold");
   doc.setTextColor(25, 90, 40);
   doc.text("RINGKASAN SISA TAGIHAN", LX, y);
-  doc.setTextColor(70, 80, 75);
-  doc.setFont(undefined, "normal");
-  doc.setFontSize(7.6);
-  doc.text("Rekapitulasi keuangan pemesanan.", LX + 62, y);
+  doc.setFontSize(FS_SEC_SUB);
+  pdfInvSetFont(doc, "normal");
+  doc.setTextColor(88, 98, 92);
+  doc.text("Rekapitulasi keuangan pemesanan.", LX, y + 4.4);
   doc.setTextColor(0, 0, 0);
-  y += 5.2;
+  y += 9;
   yHdr = y;
-  y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, hdrH, [
+  y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, HDR_H, [
     { label: "No", x: C_NO },
     { label: "Uraian", x: C_DESC },
     { label: "Nilai (Rp)", x: C_SUB, opt: { align: "right" } },
   ]);
-  doc.setFontSize(8.3);
-  doc.setFont(undefined, "normal");
+  doc.setFontSize(FS_BODY);
+  pdfInvSetFont(doc, "normal");
   doc.setTextColor(55, 55, 55);
   doc.text("1", C_NO, y);
   doc.text("Total tagihan", C_DESC, y);
@@ -3045,14 +3078,14 @@ function pdfDrawInvoiceBody(doc, p, y) {
   drawRowSep(y);
   y += 2.5;
   doc.text("3", C_NO, y);
-  doc.setFont(undefined, "bold");
-  doc.setFontSize(8.6);
+  pdfInvSetFont(doc, "bold");
+  doc.setFontSize(8.5);
   doc.setTextColor(55, 55, 55);
   doc.text("Sisa tagihan", C_DESC, y);
   doc.setTextColor(180, 90, 30);
   doc.text(pdfFmtIdNumber(sisaInv), C_SUB, y, { align: "right" });
   doc.setTextColor(0, 0, 0);
-  doc.setFont(undefined, "normal");
+  pdfInvSetFont(doc, "normal");
   doc.setFontSize(9);
   y += 6;
   doc.setDrawColor(46, 125, 50);
@@ -3112,7 +3145,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     doc.setDrawColor(0, 0, 0);
     doc.setLineWidth(0.1);
     doc.setFontSize(8.5);
-    doc.setFont(undefined, "normal");
+    pdfInvSetFont(doc, "normal");
     doc.setTextColor(75, 75, 75);
     doc.text("Pembeli,", xCenterSig, yTop + 5.5, { align: "center" });
     doc.setFontSize(8);
@@ -3124,14 +3157,14 @@ function pdfDrawInvoiceBody(doc, p, y) {
     doc.setDrawColor(0, 0, 0);
     doc.setLineWidth(0.1);
     doc.setFontSize(9);
-    doc.setFont(undefined, "bold");
+    pdfInvSetFont(doc, "bold");
     doc.setTextColor(0, 0, 0);
     let yN = yNamaStartFinal;
     namaLines.forEach((ln) => {
       doc.text(ln, xCenterSig, yN, { align: "center" });
       yN += lineHNama;
     });
-    doc.setFont(undefined, "normal");
+    pdfInvSetFont(doc, "normal");
     return boxTop + boxH;
   };
 
@@ -3144,9 +3177,9 @@ function pdfDrawInvoiceBody(doc, p, y) {
       const sigL = outerLTtd + boxPad;
       const sigR = RX - boxPad;
       doc.setFontSize(9);
-      doc.setFont(undefined, "bold");
+      pdfInvSetFont(doc, "bold");
       const namaLinesSig = doc.splitTextToSize(namaPembeliTtd, sigR - sigL);
-      doc.setFont(undefined, "normal");
+      pdfInvSetFont(doc, "normal");
       const geo = computeTtdLayout(yProbe, sigL, sigR, namaLinesSig);
       const hCat = pdfEstimateCatatanTableHeight(doc, catatan, WCAT, 4);
       return Math.max(hCat + 4, geo.boxH + 14) + 8;
@@ -3154,9 +3187,9 @@ function pdfDrawInvoiceBody(doc, p, y) {
     const sigR = RX - boxPad;
     const sigL = sigR - 68;
     doc.setFontSize(9);
-    doc.setFont(undefined, "bold");
+    pdfInvSetFont(doc, "bold");
     const namaLinesSig = doc.splitTextToSize(namaPembeliTtd, sigR - sigL);
-    doc.setFont(undefined, "normal");
+    pdfInvSetFont(doc, "normal");
     const geo = computeTtdLayout(yProbe + 2, sigL, sigR, namaLinesSig);
     return geo.boxH + 22;
   };
@@ -3167,7 +3200,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     y = 24;
     doc.setFontSize(10.5);
     doc.setTextColor(28, 105, 52);
-    doc.setFont(undefined, "bold");
+    pdfInvSetFont(doc, "bold");
     doc.text(
       catatan
         ? "Halaman 2 — Catatan & penandatanganan"
@@ -3175,7 +3208,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
       LX,
       y,
     );
-    doc.setFont(undefined, "normal");
+    pdfInvSetFont(doc, "normal");
     doc.setFontSize(8.2);
     doc.setTextColor(88, 98, 92);
     const sub2 = doc.splitTextToSize(
@@ -3203,9 +3236,9 @@ function pdfDrawInvoiceBody(doc, p, y) {
     const sigL = outerLTtd + boxPad;
     const sigR = RX - boxPad;
     doc.setFontSize(9);
-    doc.setFont(undefined, "bold");
+    pdfInvSetFont(doc, "bold");
     const namaLinesSig = doc.splitTextToSize(namaPembeliTtd, sigR - sigL);
-    doc.setFont(undefined, "normal");
+    pdfInvSetFont(doc, "normal");
     const geo = computeTtdLayout(yFooter, sigL, sigR, namaLinesSig);
     const yCatEnd = pdfDrawCatatanPemesananTable(doc, LX, yFooter, catatan, {
       width: WCAT,
@@ -3217,9 +3250,9 @@ function pdfDrawInvoiceBody(doc, p, y) {
     const sigR = RX - boxPad;
     const sigL = sigR - 68;
     doc.setFontSize(9);
-    doc.setFont(undefined, "bold");
+    pdfInvSetFont(doc, "bold");
     const namaLinesSig = doc.splitTextToSize(namaPembeliTtd, sigR - sigL);
-    doc.setFont(undefined, "normal");
+    pdfInvSetFont(doc, "normal");
     const geo = computeTtdLayout(yFooter + 2, sigL, sigR, namaLinesSig);
     drawTtdBlock(yFooter + 2, { ...geo, sigL, sigR }, namaLinesSig);
     yBottom = geo.boxTop + geo.boxH + 8;
