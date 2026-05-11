@@ -2930,7 +2930,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     { label: "No", x: C_NO_R, opt: { align: "right" } },
     { label: "Item (tipe · jenis · proses)", x: C_DESC },
     { label: "Kg", x: C_QTY, opt: { align: "right" } },
-    { label: "@/kg", x: C_HP, opt: { align: "right" } },
+    { label: "Harga/Kg", x: C_HP, opt: { align: "right" } },
     { label: "Subtotal (Rp)", x: C_AMT, opt: { align: "right" } },
   ]);
 
@@ -3061,8 +3061,33 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.line(LX, y, tblRx, y);
   y += 6;
 
+  // Ringkasan sisa tagihan selalu di halaman baru setelah rincian (biasanya halaman 2)
+  doc.addPage();
+  const ringPageNo = doc.internal.getNumberOfPages();
+  y = 24;
+  doc.setFontSize(10.5);
+  pdfInvSetFont(doc, "bold");
+  doc.setTextColor(28, 105, 52);
+  doc.text(`Halaman ${ringPageNo} — Ringkasan sisa tagihan`, LX, y);
+  pdfInvSetFont(doc, "normal");
+  doc.setFontSize(8.2);
+  doc.setTextColor(88, 98, 92);
+  const subRingPage = doc.splitTextToSize(
+    "Rekapitulasi total, terbayar, dan sisa tagihan. Catatan serta tanda tangan pembeli (jika ada) ditampilkan di halaman ini.",
+    tblRx - LX,
+  );
+  let yRingBanner = y + 5.5;
+  subRingPage.forEach((ln) => {
+    doc.text(ln, LX, yRingBanner);
+    yRingBanner += 4.1;
+  });
+  doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(186, 202, 190);
+  doc.setLineWidth(0.22);
+  doc.line(LX, yRingBanner + 2, tblRx, yRingBanner + 2);
+  y = yRingBanner + 8;
+
   // ========== TABEL 3: RINGKASAN SISA TAGIHAN ==========
-  y = pageBreakIfNeeded(y);
   doc.setFontSize(FS_SEC);
   pdfInvSetFont(doc, "bold");
   doc.setTextColor(25, 90, 40);
@@ -3211,13 +3236,14 @@ function pdfDrawInvoiceBody(doc, p, y) {
   if (yFooter + estimateFooterClusterHeight(yFooter) > PAGE_SAFE_BOTTOM) {
     doc.addPage();
     y = 24;
+    const pageNo = doc.internal.getNumberOfPages();
     doc.setFontSize(10.5);
     doc.setTextColor(28, 105, 52);
     pdfInvSetFont(doc, "bold");
     doc.text(
       catatan
-        ? "Halaman 2 — Catatan & penandatanganan"
-        : "Halaman 2 — Penandatanganan pembeli",
+        ? `Halaman ${pageNo} — Catatan & penandatanganan`
+        : `Halaman ${pageNo} — Penandatanganan pembeli`,
       LX,
       y,
     );
