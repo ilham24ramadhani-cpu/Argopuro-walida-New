@@ -3005,12 +3005,12 @@ function pdfDrawInvoiceBody(doc, p, y) {
   y += 6;
 
   if (pdfInvoiceModeBertahap) {
-    // ========== TABEL 2: DATA KLOTER PEMBAYARAN ==========
+    // ========== TABEL 2: DATA TAHAP PEMBAYARAN ==========
     y = pageBreakIfNeeded(y);
     doc.setFontSize(FS_SEC);
     pdfInvSetFont(doc, "bold");
     doc.setTextColor(25, 90, 40);
-    doc.text("DATA KLOTER PEMBAYARAN", LX, y);
+    doc.text("DATA TAHAP PEMBAYARAN", LX, y);
     doc.setFontSize(FS_SEC_SUB);
     pdfInvSetFont(doc, "normal");
     doc.setTextColor(88, 98, 92);
@@ -3077,14 +3077,14 @@ function pdfDrawInvoiceBody(doc, p, y) {
     doc.line(LX, y, tblRx, y);
     y += 6;
 
-    // Ringkasan sisa tagihan di halaman baru setelah rincian pembayaran bertahap
+    // Ringkasan tagihan di halaman baru setelah rincian pembayaran bertahap
     doc.addPage();
     const ringPageNo = doc.internal.getNumberOfPages();
     y = 24;
     doc.setFontSize(10.5);
     pdfInvSetFont(doc, "bold");
     doc.setTextColor(28, 105, 52);
-    doc.text(`Halaman ${ringPageNo} — Ringkasan sisa tagihan`, LX, y);
+    doc.text(`Halaman ${ringPageNo} — Ringkasan tagihan`, LX, y);
     pdfInvSetFont(doc, "normal");
     doc.setFontSize(8.2);
     doc.setTextColor(88, 98, 92);
@@ -3103,11 +3103,11 @@ function pdfDrawInvoiceBody(doc, p, y) {
     doc.line(LX, yRingBanner + 2, tblRx, yRingBanner + 2);
     y = yRingBanner + 8;
 
-    // ========== TABEL 3: RINGKASAN SISA TAGIHAN ==========
+    // ========== TABEL 3: RINGKASAN TAGIHAN ==========
     doc.setFontSize(FS_SEC);
     pdfInvSetFont(doc, "bold");
     doc.setTextColor(25, 90, 40);
-    doc.text("RINGKASAN SISA TAGIHAN", LX, y);
+    doc.text("RINGKASAN TAGIHAN", LX, y);
     doc.setFontSize(FS_SEC_SUB);
     pdfInvSetFont(doc, "normal");
     doc.setTextColor(88, 98, 92);
