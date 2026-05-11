@@ -1216,7 +1216,7 @@
                     <div class="card-body">
                       <p class="text-muted text-uppercase small mb-1">Total Pemasukan (Rp)</p>
                       <h3 class="fw-bold mb-0 text-success" id="keuanganTotalPemasukan">-</h3>
-                      <small class="text-muted">Dari pemesanan status pembayaran Lunas</small>
+                      <small class="text-muted">Dari pemesanan Lunas + cicilan bertahap (per kloter)</small>
                     </div>
                   </div>
                 </div>
@@ -1245,8 +1245,9 @@
                   <div class="alert alert-info d-flex align-items-start mb-3" role="alert">
                     <i class="bi bi-info-circle me-2 mt-1"></i>
                     <div class="small">
-                      <strong>Pemasukan</strong> dihitung otomatis dari <strong>pemesanan</strong> yang
-                      <strong>status pembayaran = Lunas</strong>. Data akan ikut berubah saat status pembayaran pemesanan diperbarui.
+                      <strong>Pemasukan</strong> dihitung dari <strong>pemesanan</strong>:
+                      <strong>Lunas</strong> (nilai penuh) dan <strong>Pembayaran Bertahap</strong> dengan nominal per kloter
+                      (termasuk pemesanan masih Ordering). Nilai bertahap = Σ pembayaran per kloter.
                     </div>
                   </div>
 
@@ -1260,6 +1261,7 @@
                           <th scope="col">ID Pembelian</th>
                           <th scope="col">Nama Pembeli</th>
                           <th scope="col">Tipe</th>
+                          <th scope="col">Sumber</th>
                           <th scope="col" class="text-end">Nilai (Rp)</th>
                         </tr>
                       </thead>

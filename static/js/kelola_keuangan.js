@@ -1,6 +1,6 @@
 // Data keuangan (MONGODB ONLY - NO localStorage fallback)
 let keuangan = [];
-// Data pemasukan (read-only) dari pemesanan yang statusPembayaran = Lunas
+// Data pemasukan (read-only): pemesanan Lunas (penuh) + cicilan bertahap (Σ per kloter)
 let pemasukan = [];
 let currentEditId = null;
 let currentDeleteId = null;
@@ -89,20 +89,55 @@ async function loadPemasukanData() {
 
     const res = await window.API.Pemesanan.getAll();
     const rows = unwrapArrayResponse(res);
-    const lunas = rows.filter(
-      (p) => String(p?.statusPembayaran || "").trim() === "Lunas",
+
+    function sumJumlahPembayaranKloterKeuangan(p) {
+      const lines = p?.kloter || p?.items;
+      if (!Array.isArray(lines)) return 0;
+      let s = 0;
+      lines.forEach((r) => {
+        const v = parseFloat(r?.jumlahPembayaranKloter);
+        if (Number.isFinite(v) && v > 0) s += v;
+      });
+      return Math.round(s * 100) / 100;
+    }
+
+    pemasukan = [];
+    rows.forEach((p) => {
+      const sb = String(p?.statusPembayaran || "").trim();
+      if (sb === "Lunas") {
+        pemasukan.push({
+          idPembelian: p.idPembelian || p.id || p._id,
+          namaPembeli: p.namaPembeli || "-",
+          tipePemesanan: p.tipePemesanan || "-",
+          tanggalPemesanan: p.tanggalPemesanan || p.tanggal || null,
+          nilai: Number(p.totalHarga || 0) || 0,
+          sumberPemasukan: "Lunas",
+          _raw: p,
+        });
+        return;
+      }
+      if (sb === "Pembayaran Bertahap") {
+        let sumK = parseFloat(p.totalPembayaranKloter);
+        if (!Number.isFinite(sumK) || sumK <= 0) {
+          sumK = sumJumlahPembayaranKloterKeuangan(p);
+        }
+        if (sumK > 0) {
+          pemasukan.push({
+            idPembelian: p.idPembelian || p.id || p._id,
+            namaPembeli: p.namaPembeli || "-",
+            tipePemesanan: p.tipePemesanan || "-",
+            tanggalPemesanan: p.tanggalPemesanan || p.tanggal || null,
+            nilai: sumK,
+            sumberPemasukan: "Cicilan",
+            _raw: p,
+          });
+        }
+      }
+    });
+
+    console.log(
+      `✅ Loaded ${pemasukan.length} pemasukan rows (Lunas + cicilan bertahap)`,
     );
-
-    pemasukan = lunas.map((p) => ({
-      idPembelian: p.idPembelian || p.id || p._id,
-      namaPembeli: p.namaPembeli || "-",
-      tipePemesanan: p.tipePemesanan || "-",
-      tanggalPemesanan: p.tanggalPemesanan || p.tanggal || null,
-      nilai: Number(p.totalHarga || 0) || 0,
-      _raw: p,
-    }));
-
-    console.log(`✅ Loaded ${pemasukan.length} pemasukan rows (Lunas)`);
     if (!Array.isArray(pemasukan)) pemasukan = [];
   } catch (error) {
     console.error("❌ Error loading pemasukan:", error);
@@ -430,9 +465,9 @@ async function displayPemasukan() {
   if (!filtered.length) {
     tableBody.innerHTML = `
       <tr>
-        <td colspan="6" class="text-center py-4 text-muted">
+        <td colspan="7" class="text-center py-4 text-muted">
           <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-          Tidak ada data pemasukan (status pembayaran Lunas)
+          Tidak ada data pemasukan (Lunas atau cicilan bertahap tercatat)
         </td>
       </tr>
     `;
@@ -444,6 +479,11 @@ async function displayPemasukan() {
       const tgl = x.tanggalPemesanan
         ? new Date(x.tanggalPemesanan).toLocaleDateString("id-ID")
         : "-";
+      const sumSrc = x.sumberPemasukan || "Lunas";
+      const srcBadge =
+        sumSrc === "Cicilan"
+          ? '<span class="badge bg-info text-dark">Cicilan</span>'
+          : '<span class="badge bg-success">Lunas</span>';
       return `
         <tr>
           <td>${i + 1}</td>
@@ -461,6 +501,7 @@ async function displayPemasukan() {
               ${x.tipePemesanan || "-"}
             </span>
           </td>
+          <td>${srcBadge}</td>
           <td class="text-end">Rp ${(x.nilai || 0).toLocaleString("id-ID")}</td>
         </tr>
       `;

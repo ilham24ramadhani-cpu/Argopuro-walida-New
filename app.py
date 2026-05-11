@@ -4700,11 +4700,48 @@ def _berat_kg_dari_baris_pemesanan(it):
     return 0.0
 
 
+def _jumlah_pembayaran_kloter_from_row(it):
+    """Nominal pembayaran tercatat per baris kloter (pembayaran bertahap). Non-negatif."""
+    if not isinstance(it, dict):
+        return 0.0
+    try:
+        v = float(it.get('jumlahPembayaranKloter') or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, v)
+
+
+def _sum_jumlah_pembayaran_kloter(kloter_list):
+    if not kloter_list:
+        return 0.0
+    return round(sum(_jumlah_pembayaran_kloter_from_row(row) for row in kloter_list), 2)
+
+
+def _compute_pemesanan_pembayaran_kloter_agg(status_bayar, total_harga, kloter_list):
+    """
+    totalPembayaranKloter = Σ jumlahPembayaranKloter per baris.
+    totalPembayaranSaatIni = total harga − Σ itu (sisa tagihan, tidak negatif).
+    Validasi: untuk Pembayaran Bertahap, Σ tidak boleh melebihi total.
+    Mengembalikan (sum_pay, sisa, error_string_atau_None).
+    """
+    rows = kloter_list if isinstance(kloter_list, list) else []
+    sum_pay = _sum_jumlah_pembayaran_kloter(rows)
+    th = float(total_harga or 0)
+    sisa = round(max(0.0, th - sum_pay), 2)
+    sb = (status_bayar or '').strip()
+    if sb == 'Pembayaran Bertahap':
+        tol = _total_harga_pemesanan_tolerance(th)
+        if sum_pay - th > tol:
+            return None, None, 'Jumlah pembayaran per kloter tidak boleh melebihi total harga pemesanan.'
+    return sum_pay, sisa, None
+
+
 def _normalize_pemesanan_kloter_from_body(data):
     """
     Normalisasi array `kloter` (model utama) atau `items` (kompatibel lama).
     Tiap kloter: tipeProduk, jenisKopi, prosesPengolahan, beratKg, hargaPerKg,
     subtotal; jumlahPesananKg disamakan dengan beratKg untuk alur stok/ordering.
+    Opsional: jumlahPembayaranKloter (Rp) untuk pembayaran bertahap per kloter.
     Mengembalikan (list_atau_None, pesan_error_atau_None).
     """
     raw = None
@@ -4736,7 +4773,8 @@ def _normalize_pemesanan_kloter_from_body(data):
         if jm <= 0 or hp <= 0:
             return None, f'Kloter {idx + 1}: berat (kg) dan harga per kg harus lebih dari 0'
         sub = round(jm * hp, 2)
-        out.append({
+        pay = _jumlah_pembayaran_kloter_from_row(it)
+        row_out = {
             'tipeProduk': tp,
             'jenisKopi': jk,
             'prosesPengolahan': pr,
@@ -4744,7 +4782,10 @@ def _normalize_pemesanan_kloter_from_body(data):
             'hargaPerKg': hp,
             'subtotal': sub,
             'jumlahPesananKg': jm,
-        })
+        }
+        if pay > 0:
+            row_out['jumlahPembayaranKloter'] = round(pay, 2)
+        out.append(row_out)
     if not out:
         return None, 'Tidak ada kloter yang valid'
     return out, None
@@ -5005,6 +5046,15 @@ def create_pemesanan():
         apb = (data.get('alamatPembeli') or '').strip()
         if apb:
             pemesanan_data['alamatPembeli'] = apb
+
+        klist_agg = pemesanan_data.get('kloter') or pemesanan_data.get('items') or []
+        sum_pay, sisa_bayar, agg_err = _compute_pemesanan_pembayaran_kloter_agg(
+            status_bayar, pemesanan_data['totalHarga'], klist_agg
+        )
+        if agg_err:
+            return jsonify({'error': agg_err}), 400
+        pemesanan_data['totalPembayaranKloter'] = sum_pay
+        pemesanan_data['totalPembayaranSaatIni'] = sisa_bayar
         
         print(f"🔵 [PEMESANAN CREATE] Inserting to MongoDB collection 'pemesanan': {pemesanan_data}")
         result = db.pemesanan.insert_one(pemesanan_data)
@@ -5170,6 +5220,21 @@ def update_pemesanan(pemesanan_id):
             else:
                 # Dokumen ordering ada → pemesanan selesai dari sisi stok → lunas (perilaku bisnis tetap).
                 update_data['statusPembayaran'] = 'Lunas'
+
+        # Agregat pembayaran per kloter (Σ per baris; sisa = total − Σ)
+        eff_bayar = update_data.get('statusPembayaran', pemesanan.get('statusPembayaran'))
+        eff_bayar = _normalize_status_pembayaran_canonical(eff_bayar) or (eff_bayar or 'Belum Lunas')
+        merged_total = float(update_data.get('totalHarga', pemesanan.get('totalHarga', 0)))
+        merged_kloter = update_data.get('kloter')
+        if merged_kloter is None:
+            merged_kloter = pemesanan.get('kloter') or pemesanan.get('items') or []
+        sum_pay, sisa_bayar, agg_err = _compute_pemesanan_pembayaran_kloter_agg(
+            eff_bayar, merged_total, merged_kloter
+        )
+        if agg_err:
+            return jsonify({'error': agg_err}), 400
+        update_data['totalPembayaranKloter'] = sum_pay
+        update_data['totalPembayaranSaatIni'] = sisa_bayar
         
         update_data['updatedAt'] = datetime.now()
 

@@ -224,6 +224,10 @@ function getPemesananKloterLinesFromDoc(p) {
             ? r.jumlahPesananKg
             : "",
       hargaPerKg: r.hargaPerKg != null ? r.hargaPerKg : "",
+      jumlahPembayaranKloter:
+        r.jumlahPembayaranKloter != null && r.jumlahPembayaranKloter !== ""
+          ? r.jumlahPembayaranKloter
+          : "",
     }));
   }
   return [
@@ -233,8 +237,37 @@ function getPemesananKloterLinesFromDoc(p) {
       prosesPengolahan: p.prosesPengolahan || "",
       beratKg: p.jumlahPesananKg != null ? p.jumlahPesananKg : "",
       hargaPerKg: p.hargaPerKg != null ? p.hargaPerKg : "",
+      jumlahPembayaranKloter:
+        p.jumlahPembayaranKloter != null && p.jumlahPembayaranKloter !== ""
+          ? p.jumlahPembayaranKloter
+          : "",
     },
   ];
+}
+
+/** Σ jumlahPembayaranKloter pada dokumen pemesanan. */
+function sumJumlahPembayaranKloterFromDoc(p) {
+  if (!p) return 0;
+  const rows = p.kloter || p.items;
+  if (!Array.isArray(rows)) return 0;
+  let s = 0;
+  rows.forEach((r) => {
+    const v = parseFloat(r.jumlahPembayaranKloter);
+    if (Number.isFinite(v) && v > 0) s += v;
+  });
+  return Math.round(s * 100) / 100;
+}
+
+/**
+ * Sisa tagihan = total harga − Σ pembayaran per kloter (sama dengan field totalPembayaranSaatIni di API).
+ */
+function totalPembayaranSaatIniFromDoc(p) {
+  if (!p) return 0;
+  const th = parseFloat(p.totalHarga) || 0;
+  const fromApi = parseFloat(p.totalPembayaranSaatIni);
+  if (Number.isFinite(fromApi) && fromApi >= 0) return Math.round(fromApi * 100) / 100;
+  const sum = sumJumlahPembayaranKloterFromDoc(p);
+  return Math.max(0, Math.round((th - sum) * 100) / 100);
 }
 
 function totalBeratKloterFromDoc(p) {
@@ -323,6 +356,15 @@ function addKloterRow(initial = {}) {
     initial.hargaPerKg !== "" && initial.hargaPerKg != null
       ? initial.hargaPerKg
       : "";
+  const payRaw = initial.jumlahPembayaranKloter;
+  const payNum = parseFloat(payRaw);
+  const payVal =
+    payRaw !== "" &&
+    payRaw != null &&
+    Number.isFinite(payNum) &&
+    payNum > 0
+      ? payNum
+      : "";
   const tr = document.createElement("tr");
   tr.className = "kloter-row";
   tr.innerHTML = `
@@ -332,6 +374,9 @@ function addKloterRow(initial = {}) {
     <td><input type="number" class="form-control form-control-sm kloter-berat text-end" placeholder="0" min="0" step="0.01" value="${berat === "" ? "" : escapeHtmlAttr(String(berat))}" required /></td>
     <td><input type="number" class="form-control form-control-sm kloter-harga text-end" placeholder="0" min="0" step="1000" value="${hp === "" ? "" : escapeHtmlAttr(String(hp))}" required /></td>
     <td class="text-end"><span class="kloter-subtotal small text-muted" data-subnilai="0">—</span></td>
+    <td class="text-end kloter-pembayaran-col d-none">
+      <input type="number" class="form-control form-control-sm kloter-pembayaran text-end" placeholder="0" min="0" step="1000" value="${payVal === "" ? "" : escapeHtmlAttr(String(payVal))}" title="Pembayaran masuk untuk kloter ini" />
+    </td>
     <td class="text-center p-0 align-middle"><button type="button" class="btn btn-sm btn-outline-danger border-0" data-remove-kloter="1" onclick="removeKloterRow(this)" title="Hapus kloter"><i class="bi bi-x-lg"></i></button></td>
   `;
   tb.appendChild(tr);
@@ -377,19 +422,23 @@ function collectKloterFromForm() {
     const pr = (tr.querySelector(".kloter-proses")?.value || "").trim();
     const berat = parseFloat(tr.querySelector(".kloter-berat")?.value || 0);
     const hp = parseFloat(tr.querySelector(".kloter-harga")?.value || 0);
+    const bayarRaw = parseFloat(tr.querySelector(".kloter-pembayaran")?.value || 0);
+    const bayar =
+      Number.isFinite(bayarRaw) && bayarRaw > 0 ? Math.round(bayarRaw * 100) / 100 : 0;
     out.push({
       tipeProduk: tipe,
       jenisKopi: jk,
       prosesPengolahan: pr,
       beratKg: berat,
       hargaPerKg: hp,
+      jumlahPembayaranKloter: bayar,
     });
   });
   return out;
 }
 
-// Calculate total harga (Σ subtotal kloter + pajak + pengiriman)
-function calculateTotalHarga() {
+/** Total rupiah pemesanan dari form (subtotal kloter + pajak + kirim). */
+function getTotalHargaNumericFromForm() {
   const tb = document.getElementById("tbodyKloterPemesanan");
   let subtotalBarang = 0;
   if (tb) {
@@ -407,12 +456,49 @@ function calculateTotalHarga() {
   );
   const pajak = Number.isFinite(pajakRaw) ? Math.max(0, pajakRaw) : 0;
   const kirim = Number.isFinite(kirimRaw) ? Math.max(0, kirimRaw) : 0;
-  const total = subtotalBarang + pajak + kirim;
+  return subtotalBarang + pajak + kirim;
+}
+
+function updateRingkasanPembayaranBertahap() {
+  const wrap = document.getElementById("wrapRingkasanPembayaranBertahap");
+  const elSum = document.getElementById("displaySumPembayaranKloter");
+  const elSisa = document.getElementById("displaySisaPembayaranBertahap");
+  if (!wrap || wrap.classList.contains("d-none")) return;
+  const tb = document.getElementById("tbodyKloterPemesanan");
+  let sum = 0;
+  if (tb) {
+    tb.querySelectorAll("tr.kloter-row .kloter-pembayaran").forEach((inp) => {
+      const v = parseFloat(inp.value || 0);
+      if (Number.isFinite(v) && v > 0) sum += v;
+    });
+  }
+  sum = Math.round(sum * 100) / 100;
+  const total = getTotalHargaNumericFromForm();
+  const sisa = Math.max(0, Math.round((total - sum) * 100) / 100);
+  if (elSum) elSum.textContent = `Rp ${sum.toLocaleString("id-ID")}`;
+  if (elSisa) elSisa.textContent = `Rp ${sisa.toLocaleString("id-ID")}`;
+}
+
+function syncPembayaranKloterColumnsVisibility() {
+  const sel = document.getElementById("statusPembayaran");
+  const on = sel && sel.value === "Pembayaran Bertahap";
+  document.querySelectorAll(".kloter-pembayaran-col").forEach((el) => {
+    el.classList.toggle("d-none", !on);
+  });
+  const wrap = document.getElementById("wrapRingkasanPembayaranBertahap");
+  if (wrap) wrap.classList.toggle("d-none", !on);
+  updateRingkasanPembayaranBertahap();
+}
+
+// Calculate total harga (Σ subtotal kloter + pajak + pengiriman)
+function calculateTotalHarga() {
+  const total = getTotalHargaNumericFromForm();
 
   const th = document.getElementById("totalHarga");
   if (th) {
     th.value = total.toLocaleString("id-ID").replace(/\./g, ",");
   }
+  updateRingkasanPembayaranBertahap();
 }
 
 // ==================== MASTER PEMBELI (tab Data Pembeli) ====================
@@ -834,7 +920,7 @@ function applyFilterPemesanan() {
     if (filteredPemesanan.length === 0) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="11" class="text-center py-4 text-muted">
+          <td colspan="12" class="text-center py-4 text-muted">
             <i class="bi bi-inbox fs-1 d-block mb-2"></i>
             Tidak ada data pemesanan
           </td>
@@ -865,6 +951,19 @@ function applyFilterPemesanan() {
         <td>${escapeHtmlAttr(ringkasProdukUntukTabel(p))}</td>
         <td>${totalBeratKloterFromDoc(p).toLocaleString("id-ID")} kg</td>
         <td>Rp ${(p.totalHarga || 0).toLocaleString("id-ID")}</td>
+        <td class="text-end">
+          ${(() => {
+            const sisa = totalPembayaranSaatIniFromDoc(p);
+            const sumK = sumJumlahPembayaranKloterFromDoc(p);
+            const isBt =
+              String(p.statusPembayaran || "").trim() === "Pembayaran Bertahap";
+            if (isBt || sumK > 0) {
+              return `<span class="fw-semibold">Rp ${sisa.toLocaleString("id-ID")}</span>
+                <div class="small text-muted">Σ kloter: Rp ${sumK.toLocaleString("id-ID")}</div>`;
+            }
+            return '<span class="text-muted">—</span>';
+          })()}
+        </td>
         <td>
           <span class="badge ${
             (p.statusPembayaran || "Belum Lunas") === "Lunas"
@@ -915,7 +1014,7 @@ function applyFilterPemesanan() {
     console.error("❌ Error displaying pemesanan:", error);
     tableBody.innerHTML = `
         <tr>
-          <td colspan="11" class="text-center py-4 text-danger">
+          <td colspan="12" class="text-center py-4 text-danger">
             <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
             Error menampilkan data: ${error.message}
           </td>
@@ -1035,6 +1134,7 @@ async function openModal(mode = "add") {
 
     await loadMasterDataOptions();
     renderKloterTable([{}]);
+    syncPembayaranKloterColumnsVisibility();
   } else {
     modalLabel.textContent = "Edit Pemesanan";
     const btnCetak = document.getElementById("btnSimpanCetakInvoice");
@@ -1094,6 +1194,7 @@ async function editPemesanan(id) {
       p.statusPemesanan || "Ordering";
     const spb = document.getElementById("statusPembayaran");
     if (spb) spb.value = p.statusPembayaran || "Belum Lunas";
+    syncPembayaranKloterColumnsVisibility();
     const cpn = document.getElementById("catatanPemesanan");
     if (cpn) cpn.value = p.catatanPemesanan || "";
     document.getElementById("tanggalPemesanan").value =
@@ -1192,13 +1293,26 @@ async function savePemesanan(cetakInvoice) {
     }
   }
 
-  const kloterPayload = kloterRaw.map((k) => ({
-    tipeProduk: k.tipeProduk,
-    jenisKopi: k.jenisKopi,
-    prosesPengolahan: k.prosesPengolahan,
-    beratKg: k.beratKg,
-    hargaPerKg: k.hargaPerKg,
-  }));
+  const statusPemesanan = document.getElementById("statusPemesanan").value;
+  const statusPembayaran =
+    document.getElementById("statusPembayaran")?.value || "Belum Lunas";
+
+  const kloterPayload = kloterRaw.map((k) => {
+    const row = {
+      tipeProduk: k.tipeProduk,
+      jenisKopi: k.jenisKopi,
+      prosesPengolahan: k.prosesPengolahan,
+      beratKg: k.beratKg,
+      hargaPerKg: k.hargaPerKg,
+    };
+    if (
+      statusPembayaran === "Pembayaran Bertahap" &&
+      k.jumlahPembayaranKloter > 0
+    ) {
+      row.jumlahPembayaranKloter = k.jumlahPembayaranKloter;
+    }
+    return row;
+  });
 
   let biayaPajak = parseFloat(
     document.getElementById("biayaPajak")?.value || 0,
@@ -1217,8 +1331,19 @@ async function savePemesanan(cetakInvoice) {
   );
   const totalHarga = subtotalBarang + biayaPajak + biayaPengiriman;
 
-  const statusPemesanan = document.getElementById("statusPemesanan").value;
-  const statusPembayaran = document.getElementById("statusPembayaran")?.value || "Belum Lunas";
+  if (statusPembayaran === "Pembayaran Bertahap") {
+    const sumPay = kloterRaw.reduce(
+      (s, k) => s + (parseFloat(k.jumlahPembayaranKloter) || 0),
+      0,
+    );
+    if (sumPay > totalHarga + 1e-6) {
+      alert(
+        "Jumlah pembayaran per kloter (Σ) tidak boleh melebihi total harga pemesanan.",
+      );
+      return;
+    }
+  }
+
   const catatanPemesanan = (
     document.getElementById("catatanPemesanan")?.value || ""
   ).trim();
@@ -1610,12 +1735,18 @@ async function loadPemesananDataForOrdering() {
         .map((L) => {
           const w = parseFloat(L.beratKg) || 0;
           const hp = parseFloat(L.hargaPerKg) || 0;
+          const pay = parseFloat(L.jumlahPembayaranKloter) || 0;
+          const payCell =
+            pay > 0
+              ? `Rp ${pay.toLocaleString("id-ID")}`
+              : '<span class="text-muted">—</span>';
           return `<tr>
             <td>${escapeHtmlAttr(L.tipeProduk || "—")}</td>
             <td>${escapeHtmlAttr(L.jenisKopi || "—")}</td>
             <td>${escapeHtmlAttr(L.prosesPengolahan || "—")}</td>
             <td class="text-end">${w.toLocaleString("id-ID")}</td>
             <td class="text-end">${hp.toLocaleString("id-ID")}</td>
+            <td class="text-end">${payCell}</td>
           </tr>`;
         })
         .join("");
@@ -2793,6 +2924,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
   }
 
+  const statusPembayaranEl = document.getElementById("statusPembayaran");
+  if (statusPembayaranEl) {
+    statusPembayaranEl.addEventListener("change", syncPembayaranKloterColumnsVisibility);
+  }
+
   // Expose functions globally for onclick/onchange handlers (prevent ReferenceError)
   window.openModal = openModal;
   window.openModalOrdering = openModalOrdering;
@@ -2805,6 +2941,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   window.applyFilterPemesanan = applyFilterPemesanan;
   window.toggleNegaraField = toggleNegaraField;
   window.calculateTotalHarga = calculateTotalHarga;
+  window.syncPembayaranKloterColumnsVisibility = syncPembayaranKloterColumnsVisibility;
   // loadKemasanOptions dihapus - kemasan tidak lagi digunakan
   window.loadPemesananDataForOrdering = loadPemesananDataForOrdering;
   window.applyFilterPembeliMaster = applyFilterPembeliMaster;

@@ -5147,6 +5147,29 @@ function displayPemasok() {
     .join("");
 }
 
+/** Σ pembayaran per kloter untuk laporan (fallback baca baris jika agregat belum ada). */
+function laporanSumPembayaranKloterPemesanan(p) {
+  if (!p) return 0;
+  const agg = parseFloat(p.totalPembayaranKloter);
+  if (Number.isFinite(agg) && agg > 0) return Math.round(agg * 100) / 100;
+  const rows = p.kloter || p.items;
+  if (!Array.isArray(rows)) return 0;
+  let s = 0;
+  rows.forEach((r) => {
+    const v = safeNumberLaporan(r?.jumlahPembayaranKloter);
+    if (v > 0) s += v;
+  });
+  return Math.round(s * 100) / 100;
+}
+
+/** Nilai yang dihitung sebagai pemasukan untuk satu dokumen pemesanan. */
+function laporanNilaiPemasukanDariPemesanan(p) {
+  const sb = String(p?.statusPembayaran || "").trim();
+  if (sb === "Lunas") return safeNumberLaporan(p.totalHarga);
+  if (sb === "Pembayaran Bertahap") return laporanSumPembayaranKloterPemesanan(p);
+  return 0;
+}
+
 // Display tabel keuangan
 function displayKeuangan() {
   // Data sudah di-load dari MongoDB di loadAllReportData()
@@ -5168,12 +5191,17 @@ function displayKeuangan() {
 
   // Filter waktu untuk pemasukan (pemesanan.tanggalPemesanan)
   const pemRows = unwrapArrayResponseLaporan(pemesanan);
-  const lunasRows = pemRows.filter(
-    (p) => String(p?.statusPembayaran || "").trim() === "Lunas",
-  );
+  const pemasukanSourceRows = pemRows.filter((p) => {
+    const sb = String(p?.statusPembayaran || "").trim();
+    if (sb === "Lunas") return true;
+    if (sb === "Pembayaran Bertahap" && laporanSumPembayaranKloterPemesanan(p) > 0) {
+      return true;
+    }
+    return false;
+  });
   const filteredPemasukan = applyTableFilter(
     "keuangan",
-    lunasRows,
+    pemasukanSourceRows,
     (item) => item.tanggalPemesanan,
   );
 
@@ -5183,7 +5211,7 @@ function displayKeuangan() {
     0,
   );
   const totalPemasukan = (filteredPemasukan || []).reduce(
-    (s, x) => s + safeNumberLaporan(x?.totalHarga),
+    (s, x) => s + laporanNilaiPemasukanDariPemesanan(x),
     0,
   );
   const saldo = totalPemasukan - totalPengeluaran;
@@ -5196,9 +5224,9 @@ function displayKeuangan() {
   if (!filteredPemasukan.length) {
     tbodyPemasukan.innerHTML = `
       <tr>
-        <td colspan="6" class="text-center text-muted py-4">
+        <td colspan="7" class="text-center text-muted py-4">
           <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-          Tidak ada data pemasukan (pemesanan Lunas) sesuai filter.
+          Tidak ada data pemasukan (Lunas atau cicilan bertahap tercatat) sesuai filter.
         </td>
       </tr>
     `;
@@ -5216,6 +5244,12 @@ function displayKeuangan() {
             : tipe === "E-commerce"
               ? "bg-info text-dark"
               : "bg-primary";
+        const sb = String(p?.statusPembayaran || "").trim();
+        const srcBadge =
+          sb === "Pembayaran Bertahap"
+            ? '<span class="badge bg-info text-dark">Cicilan</span>'
+            : '<span class="badge bg-success">Lunas</span>';
+        const nilaiPem = laporanNilaiPemasukanDariPemesanan(p);
         return `
           <tr>
             <td>${idx + 1}</td>
@@ -5223,7 +5257,8 @@ function displayKeuangan() {
             <td><strong>${escapeHtmlLaporan(p.idPembelian || "-")}</strong></td>
             <td>${escapeHtmlLaporan(p.namaPembeli || "-")}</td>
             <td><span class="badge ${tipeBadge}">${escapeHtmlLaporan(tipe)}</span></td>
-            <td class="text-end">${formatCurrencyNumeric(safeNumberLaporan(p.totalHarga))}</td>
+            <td>${srcBadge}</td>
+            <td class="text-end">${formatCurrencyNumeric(nilaiPem)}</td>
           </tr>
         `;
       })
