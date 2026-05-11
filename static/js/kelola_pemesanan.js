@@ -2600,6 +2600,11 @@ function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
   const bodyH = bodyPadTop + displayLines.length * lineH + bodyPadBottom;
   const tableH = headerH + bodyH;
 
+  if (y + tableH > 285) {
+    doc.addPage();
+    y = 22;
+  }
+
   doc.setDrawColor(46, 125, 50);
   doc.setLineWidth(0.22);
   doc.roundedRect(LX, y, W, tableH, 1.2, 1.2, "S");
@@ -2629,6 +2634,33 @@ function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
   doc.setLineWidth(0.1);
   doc.setFontSize(9);
   return y + tableH + marginBottom;
+}
+
+/**
+ * Perkiraan tinggi tabel catatan (mm), selaras perhitungan pdfDrawCatatanPemesananTable.
+ */
+function pdfEstimateCatatanTableHeight(doc, catatanRaw, W, marginBottom) {
+  const mb = Number.isFinite(marginBottom) ? marginBottom : 6;
+  const padX = 3.5;
+  const innerW = W - padX * 2;
+  const decoded = pdfDecodeHtmlEntities(String(catatanRaw || "").trim());
+  const blocks = decoded
+    .split(/\r?\n/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  const lineH = 3.85;
+  const headerH = 7;
+  const bodyPadTop = 4;
+  const bodyPadBottom = 4;
+  const displayLines = [];
+  doc.setFontSize(8.5);
+  doc.setFont(undefined, "normal");
+  blocks.forEach((blk, idx) => {
+    doc.splitTextToSize(blk, innerW).forEach((ln) => displayLines.push(ln));
+    if (idx < blocks.length - 1) displayLines.push("");
+  });
+  const bodyH = bodyPadTop + displayLines.length * lineH + bodyPadBottom;
+  return headerH + bodyH + mb;
 }
 
 /** Warna badge status pembayaran: teks putih tebal di atas bg */
@@ -2745,9 +2777,9 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const pdfPayRows = pdfPembayaranBertahapRowsForInvoice(p);
 
   const pageBreakIfNeeded = (yy) => {
-    if (yy > 268) {
+    if (yy > 258) {
       doc.addPage();
-      return 18;
+      return 20;
     }
     return yy;
   };
@@ -3103,11 +3135,70 @@ function pdfDrawInvoiceBody(doc, p, y) {
     return boxTop + boxH;
   };
 
-  const yFooter = y + 3;
+  const WCAT = 100;
+  const PAGE_SAFE_BOTTOM = 281;
+
+  const estimateFooterClusterHeight = (yProbe) => {
+    if (catatan) {
+      const outerLTtd = LX + WCAT + 4;
+      const sigL = outerLTtd + boxPad;
+      const sigR = RX - boxPad;
+      doc.setFontSize(9);
+      doc.setFont(undefined, "bold");
+      const namaLinesSig = doc.splitTextToSize(namaPembeliTtd, sigR - sigL);
+      doc.setFont(undefined, "normal");
+      const geo = computeTtdLayout(yProbe, sigL, sigR, namaLinesSig);
+      const hCat = pdfEstimateCatatanTableHeight(doc, catatan, WCAT, 4);
+      return Math.max(hCat + 4, geo.boxH + 14) + 8;
+    }
+    const sigR = RX - boxPad;
+    const sigL = sigR - 68;
+    doc.setFontSize(9);
+    doc.setFont(undefined, "bold");
+    const namaLinesSig = doc.splitTextToSize(namaPembeliTtd, sigR - sigL);
+    doc.setFont(undefined, "normal");
+    const geo = computeTtdLayout(yProbe + 2, sigL, sigR, namaLinesSig);
+    return geo.boxH + 22;
+  };
+
+  let yFooter = y + 8;
+  if (yFooter + estimateFooterClusterHeight(yFooter) > PAGE_SAFE_BOTTOM) {
+    doc.addPage();
+    y = 24;
+    doc.setFontSize(10.5);
+    doc.setTextColor(28, 105, 52);
+    doc.setFont(undefined, "bold");
+    doc.text(
+      catatan
+        ? "Halaman 2 — Catatan & penandatanganan"
+        : "Halaman 2 — Penandatanganan pembeli",
+      LX,
+      y,
+    );
+    doc.setFont(undefined, "normal");
+    doc.setFontSize(8.2);
+    doc.setTextColor(88, 98, 92);
+    const sub2 = doc.splitTextToSize(
+      catatan
+        ? "Catatan dan tanda tangan pembeli ditampilkan di halaman ini agar tidak terpotong oleh tabel rincian di halaman sebelumnya."
+        : "Tanda tangan pembeli ditampilkan di halaman ini agar tidak terpotong oleh rincian di halaman sebelumnya.",
+      tblRx - LX,
+    );
+    let ys = y + 5.5;
+    sub2.forEach((ln) => {
+      doc.text(ln, LX, ys);
+      ys += 4.1;
+    });
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(186, 202, 190);
+    doc.setLineWidth(0.22);
+    doc.line(LX, ys + 2, tblRx, ys + 2);
+    yFooter = ys + 8;
+  }
+
   let yBottom = yFooter;
 
   if (catatan) {
-    const WCAT = 100;
     const outerLTtd = LX + WCAT + 4;
     const sigL = outerLTtd + boxPad;
     const sigR = RX - boxPad;
