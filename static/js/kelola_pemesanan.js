@@ -2781,12 +2781,13 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const FS_SEC_SUB = 7.5;
   const LH_ROW = 4;
   const LH_PEMBELI = 4.5;
-  const C_NO = 16;
-  const C_DESC = 24;
-  const W_DESC = 95;
-  const C_QTY = 122;
-  const C_HP = 148;
-  const C_SUB = 180;
+  /** Tepi kanan kolom nomor urut (jsPDF: align "right"). */
+  const C_NO_R = 23;
+  const C_DESC = 26;
+  const C_AMT = tblRx - 3;
+  const C_HP = C_AMT - 34;
+  const C_QTY = C_HP - 28;
+  const W_DESC = Math.max(72, C_QTY - C_DESC - 3);
 
   const bayarLabel = (p.statusPembayaran || "Belum Lunas").trim();
   const orderLabel = (p.statusPemesanan || "—").trim();
@@ -2926,11 +2927,11 @@ function pdfDrawInvoiceBody(doc, p, y) {
   y += 9;
   let yHdr = y;
   y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, HDR_H, [
-    { label: "No", x: C_NO },
+    { label: "No", x: C_NO_R, opt: { align: "right" } },
     { label: "Item (tipe · jenis · proses)", x: C_DESC },
     { label: "Kg", x: C_QTY, opt: { align: "right" } },
     { label: "@/kg", x: C_HP, opt: { align: "right" } },
-    { label: "Subtotal (Rp)", x: C_SUB, opt: { align: "right" } },
+    { label: "Subtotal (Rp)", x: C_AMT, opt: { align: "right" } },
   ]);
 
   doc.setFontSize(FS_BODY);
@@ -2941,7 +2942,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     const desk = `${row.tipeProduk || "-"} · ${row.jenisKopi || "-"} · ${row.prosesPengolahan || "-"}`;
     const dLines = doc.splitTextToSize(desk, W_DESC);
     const yStartBlock = y;
-    doc.text(String(idx + 1), C_NO, yStartBlock);
+    doc.text(String(idx + 1), C_NO_R, yStartBlock, { align: "right" });
     dLines.forEach((ln) => {
       doc.text(ln, C_DESC, y);
       y += LH_ROW;
@@ -2951,7 +2952,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     const subtotalBaris = jumlahKg * hargaKg;
     doc.text(pdfFmtIdNumber(jumlahKg), C_QTY, yStartBlock, { align: "right" });
     doc.text(pdfFmtIdNumber(hargaKg), C_HP, yStartBlock, { align: "right" });
-    doc.text(pdfFmtIdNumber(subtotalBaris), C_SUB, yStartBlock, {
+    doc.text(pdfFmtIdNumber(subtotalBaris), C_AMT, yStartBlock, {
       align: "right",
     });
     y = Math.max(y, yStartBlock + 5.5);
@@ -2967,10 +2968,10 @@ function pdfDrawInvoiceBody(doc, p, y) {
   pdfInvSetFont(doc, "normal");
   doc.setTextColor(55, 65, 60);
   doc.text("Pajak (Rp)", C_DESC, y);
-  doc.text(pdfFmtIdNumber(pajakInv), C_SUB, y, { align: "right" });
+  doc.text(pdfFmtIdNumber(pajakInv), C_AMT, y, { align: "right" });
   y += 5;
   doc.text("Pengiriman (Rp)", C_DESC, y);
-  doc.text(pdfFmtIdNumber(kirimInv), C_SUB, y, { align: "right" });
+  doc.text(pdfFmtIdNumber(kirimInv), C_AMT, y, { align: "right" });
   y += 5.5;
   doc.setDrawColor(46, 125, 50);
   doc.setLineWidth(0.28);
@@ -2980,7 +2981,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
   pdfInvSetFont(doc, "bold");
   doc.setTextColor(25, 90, 40);
   doc.text("TOTAL TAGIHAN (Rp)", C_DESC, y);
-  doc.text(pdfFmtIdNumber(p.totalHarga || 0), C_SUB, y, { align: "right" });
+  doc.text(pdfFmtIdNumber(p.totalHarga || 0), C_AMT, y, { align: "right" });
   doc.setTextColor(0, 0, 0);
   pdfInvSetFont(doc, "normal");
   doc.setFontSize(FS_BODY);
@@ -3004,9 +3005,9 @@ function pdfDrawInvoiceBody(doc, p, y) {
   y += 9;
   yHdr = y;
   y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, HDR_H, [
-    { label: "No", x: C_NO },
+    { label: "No", x: C_NO_R, opt: { align: "right" } },
     { label: "Keterangan", x: C_DESC },
-    { label: "Nominal (Rp)", x: C_SUB, opt: { align: "right" } },
+    { label: "Nominal (Rp)", x: C_AMT, opt: { align: "right" } },
   ]);
   doc.setFontSize(FS_BODY);
   pdfInvSetFont(doc, "normal");
@@ -3025,15 +3026,16 @@ function pdfDrawInvoiceBody(doc, p, y) {
       y = pageBreakIfNeeded(y);
       const cat = String(ex.catatan || "").trim() || `Baris ${ix + 1}`;
       const jj = parseFloat(ex.jumlahRp) || 0;
-      const catLines = doc.splitTextToSize(cat, W_DESC + 28);
+      const wKet = Math.max(72, C_AMT - C_DESC - 4);
+      const catLines = doc.splitTextToSize(cat, wKet);
       const y0 = y;
-      doc.text(String(ix + 1), C_NO, y0);
+      doc.text(String(ix + 1), C_NO_R, y0, { align: "right" });
       pdfInvSetFont(doc, "normal");
       catLines.forEach((ln) => {
         doc.text(ln, C_DESC, y);
         y += LH_ROW;
       });
-      doc.text(jj > 0 ? pdfFmtIdNumber(jj) : "—", C_SUB, y0, { align: "right" });
+      doc.text(jj > 0 ? pdfFmtIdNumber(jj) : "—", C_AMT, y0, { align: "right" });
       y = Math.max(y, y0 + 5.5);
       drawRowSep(y);
       y += 2.2;
@@ -3058,32 +3060,32 @@ function pdfDrawInvoiceBody(doc, p, y) {
   y += 9;
   yHdr = y;
   y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, HDR_H, [
-    { label: "No", x: C_NO },
+    { label: "No", x: C_NO_R, opt: { align: "right" } },
     { label: "Uraian", x: C_DESC },
-    { label: "Nilai (Rp)", x: C_SUB, opt: { align: "right" } },
+    { label: "Nilai (Rp)", x: C_AMT, opt: { align: "right" } },
   ]);
   doc.setFontSize(FS_BODY);
   pdfInvSetFont(doc, "normal");
   doc.setTextColor(55, 55, 55);
-  doc.text("1", C_NO, y);
+  doc.text("1", C_NO_R, y, { align: "right" });
   doc.text("Total tagihan", C_DESC, y);
-  doc.text(pdfFmtIdNumber(totalInv), C_SUB, y, { align: "right" });
+  doc.text(pdfFmtIdNumber(totalInv), C_AMT, y, { align: "right" });
   y += 5.5;
   drawRowSep(y);
   y += 2.5;
-  doc.text("2", C_NO, y);
-  doc.text("Terbayar (Σ tercatat)", C_DESC, y);
-  doc.text(pdfFmtIdNumber(sumBayarInv), C_SUB, y, { align: "right" });
+  doc.text("2", C_NO_R, y, { align: "right" });
+  doc.text("Terbayar (total tercatat)", C_DESC, y);
+  doc.text(pdfFmtIdNumber(sumBayarInv), C_AMT, y, { align: "right" });
   y += 5.5;
   drawRowSep(y);
   y += 2.5;
-  doc.text("3", C_NO, y);
+  doc.text("3", C_NO_R, y, { align: "right" });
   pdfInvSetFont(doc, "bold");
   doc.setFontSize(8.5);
   doc.setTextColor(55, 55, 55);
   doc.text("Sisa tagihan", C_DESC, y);
   doc.setTextColor(180, 90, 30);
-  doc.text(pdfFmtIdNumber(sisaInv), C_SUB, y, { align: "right" });
+  doc.text(pdfFmtIdNumber(sisaInv), C_AMT, y, { align: "right" });
   doc.setTextColor(0, 0, 0);
   pdfInvSetFont(doc, "normal");
   doc.setFontSize(9);
