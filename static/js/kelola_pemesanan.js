@@ -3010,7 +3010,6 @@ function pdfDrawInvoiceBody(doc, p, y) {
     { label: "Nominal (Rp)", x: C_AMT, opt: { align: "right" } },
   ]);
   doc.setFontSize(FS_BODY);
-  pdfInvSetFont(doc, "normal");
   if (pdfPayRows.length === 0) {
     y = pageBreakIfNeeded(y);
     pdfInvSetFont(doc, "italic");
@@ -3022,6 +3021,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     drawRowSep(y);
     y += 2.5;
   } else {
+    pdfInvSetFont(doc, "bold");
     pdfPayRows.forEach((ex, ix) => {
       y = pageBreakIfNeeded(y);
       const cat = String(ex.catatan || "").trim() || `Baris ${ix + 1}`;
@@ -3030,7 +3030,6 @@ function pdfDrawInvoiceBody(doc, p, y) {
       const catLines = doc.splitTextToSize(cat, wKet);
       const y0 = y;
       doc.text(String(ix + 1), C_NO_R, y0, { align: "right" });
-      pdfInvSetFont(doc, "normal");
       catLines.forEach((ln) => {
         doc.text(ln, C_DESC, y);
         y += LH_ROW;
@@ -3040,7 +3039,23 @@ function pdfDrawInvoiceBody(doc, p, y) {
       drawRowSep(y);
       y += 2.2;
     });
+    pdfInvSetFont(doc, "normal");
   }
+
+  y = pageBreakIfNeeded(y);
+  doc.setDrawColor(46, 125, 50);
+  doc.setLineWidth(0.28);
+  doc.line(LX, y, tblRx, y);
+  y += 5;
+  doc.setFontSize(9.5);
+  pdfInvSetFont(doc, "bold");
+  doc.setTextColor(25, 90, 40);
+  doc.text("TOTAL TERBAYAR (Rp)", C_DESC, y);
+  doc.text(pdfFmtIdNumber(sumBayarInv), C_AMT, y, { align: "right" });
+  doc.setTextColor(0, 0, 0);
+  pdfInvSetFont(doc, "normal");
+  doc.setFontSize(FS_BODY);
+  y += 7;
   doc.setDrawColor(46, 125, 50);
   doc.setLineWidth(0.22);
   doc.line(LX, y, tblRx, y);
@@ -3064,31 +3079,27 @@ function pdfDrawInvoiceBody(doc, p, y) {
     { label: "Uraian", x: C_DESC },
     { label: "Nilai (Rp)", x: C_AMT, opt: { align: "right" } },
   ]);
-  doc.setFontSize(FS_BODY);
-  pdfInvSetFont(doc, "normal");
-  doc.setTextColor(55, 55, 55);
+  doc.setFontSize(9.5);
+  pdfInvSetFont(doc, "bold");
+  doc.setTextColor(25, 90, 40);
   doc.text("1", C_NO_R, y, { align: "right" });
   doc.text("Total tagihan", C_DESC, y);
   doc.text(pdfFmtIdNumber(totalInv), C_AMT, y, { align: "right" });
-  y += 5.5;
+  y += 6;
   drawRowSep(y);
   y += 2.5;
   doc.text("2", C_NO_R, y, { align: "right" });
   doc.text("Terbayar (total tercatat)", C_DESC, y);
   doc.text(pdfFmtIdNumber(sumBayarInv), C_AMT, y, { align: "right" });
-  y += 5.5;
+  y += 6;
   drawRowSep(y);
   y += 2.5;
   doc.text("3", C_NO_R, y, { align: "right" });
-  pdfInvSetFont(doc, "bold");
-  doc.setFontSize(8.5);
-  doc.setTextColor(55, 55, 55);
   doc.text("Sisa tagihan", C_DESC, y);
-  doc.setTextColor(180, 90, 30);
   doc.text(pdfFmtIdNumber(sisaInv), C_AMT, y, { align: "right" });
   doc.setTextColor(0, 0, 0);
   pdfInvSetFont(doc, "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(FS_BODY);
   y += 6;
   doc.setDrawColor(46, 125, 50);
   doc.setLineWidth(0.22);
