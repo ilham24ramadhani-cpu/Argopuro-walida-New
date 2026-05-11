@@ -5181,6 +5181,38 @@ def update_pemesanan(pemesanan_id):
         new_status_pem = (update_data.get('statusPemesanan', old_status_pem) or '').strip()
         new_status_bayar = update_data.get('statusPembayaran', old_status_bayar)
 
+        # --- Pembayaran bertahap: sisa tagihan > 0 → tidak boleh Complete atau Lunas ---
+        merged_k_val = update_data.get('kloter')
+        if merged_k_val is None:
+            merged_k_val = pemesanan.get('kloter') or pemesanan.get('items') or []
+        merged_th_val = float(update_data.get('totalHarga', pemesanan.get('totalHarga', 0)))
+        pending_bayar_val = update_data.get('statusPembayaran', old_status_bayar)
+        pending_bayar_val = _normalize_status_pembayaran_canonical(pending_bayar_val) or pending_bayar_val
+        _sum_early, sisa_val, e_agg_early = _compute_pemesanan_pembayaran_kloter_agg(
+            pending_bayar_val, merged_th_val, merged_k_val
+        )
+        if e_agg_early:
+            return jsonify({'error': e_agg_early}), 400
+        tol_sisa = 1.0
+        bertahap_konteks = (
+            old_status_bayar == 'Pembayaran Bertahap' or pending_bayar_val == 'Pembayaran Bertahap'
+        )
+        if bertahap_konteks and sisa_val > tol_sisa:
+            if new_status_pem == 'Complete':
+                return jsonify({
+                    'error': (
+                        'Pemesanan dengan pembayaran bertahap masih memiliki sisa tagihan. '
+                        'Lunasi hingga sisa Rp 0 untuk dapat menyelesaikan pemesanan (Complete).'
+                    )
+                }), 400
+            if pending_bayar_val == 'Lunas':
+                return jsonify({
+                    'error': (
+                        'Pemesanan dengan pembayaran bertahap masih memiliki sisa tagihan. '
+                        'Status pembayaran tidak dapat diubah ke Lunas sebelum sisa Rp 0.'
+                    )
+                }), 400
+
         # Jika dokumen sudah Complete, pembayaran harus tetap Lunas (jangan bisa diturunkan).
         if old_status_pem == 'Complete' and new_status_bayar != 'Lunas':
             return jsonify({
@@ -5364,6 +5396,22 @@ def proses_ordering():
         pemesanan = db.pemesanan.find_one({'idPembelian': data['idPembelian']})
         if not pemesanan:
             return jsonify({'error': 'Pemesanan not found'}), 404
+
+        sb_order = _normalize_status_pembayaran_canonical(pemesanan.get('statusPembayaran')) or (
+            pemesanan.get('statusPembayaran') or ''
+        )
+        if sb_order == 'Pembayaran Bertahap':
+            klist_o = pemesanan.get('kloter') or pemesanan.get('items') or []
+            th_o = float(pemesanan.get('totalHarga') or 0)
+            _s_o, sisa_o, _e_o = _compute_pemesanan_pembayaran_kloter_agg('Pembayaran Bertahap', th_o, klist_o)
+            if sisa_o > 1.0:
+                return jsonify({
+                    'error': (
+                        'Pemesanan pembayaran bertahap masih memiliki sisa tagihan. '
+                        'Lunasi hingga sisa Rp 0 sebelum proses ordering (stok / Complete).'
+                    ),
+                    'sisaTagihan': sisa_o,
+                }), 400
         
         id_pb = data['idPembelian']
         existing_ordering = db.ordering.find_one({'idPembelian': id_pb})
@@ -5379,18 +5427,35 @@ def proses_ordering():
             if hp_loose > 0:
                 # Stok sudah pernah dialokasikan untuk ID pembelian ini — jangan proses ulang (hindari double deduction)
                 if cur_status != 'Complete':
-                    db.pemesanan.update_one(
-                        {'_id': pemesanan['_id']},
-                        {'$set': {
-                            'statusPemesanan': 'Complete',
-                            'statusPembayaran': 'Lunas',
-                            'updatedAt': datetime.now(),
-                        }},
+                    sb_fix = _normalize_status_pembayaran_canonical(pemesanan.get('statusPembayaran')) or (
+                        pemesanan.get('statusPembayaran') or ''
                     )
-                    print(
-                        f"✅ [ORDERING PROSES] Sinkron status pemesanan → Complete untuk {id_pb} "
-                        f"(ordering ada, hasilProduksi={hp_loose}, isFromOrdering match={hp_strict})"
-                    )
+                    klist_fix = pemesanan.get('kloter') or pemesanan.get('items') or []
+                    th_fix = float(pemesanan.get('totalHarga') or 0)
+                    sisa_fix = 0.0
+                    if sb_fix == 'Pembayaran Bertahap':
+                        _sf, sisa_fix, _ef = _compute_pemesanan_pembayaran_kloter_agg(
+                            'Pembayaran Bertahap', th_fix, klist_fix
+                        )
+                    skip_lunas_complete = sb_fix == 'Pembayaran Bertahap' and sisa_fix > 1.0
+                    if skip_lunas_complete:
+                        print(
+                            f"⚠️ [ORDERING PROSES] Lewati sinkron Complete/Lunas untuk {id_pb}: "
+                            f"pembayaran bertahap masih ada sisa tagihan ({sisa_fix})."
+                        )
+                    else:
+                        db.pemesanan.update_one(
+                            {'_id': pemesanan['_id']},
+                            {'$set': {
+                                'statusPemesanan': 'Complete',
+                                'statusPembayaran': 'Lunas',
+                                'updatedAt': datetime.now(),
+                            }},
+                        )
+                        print(
+                            f"✅ [ORDERING PROSES] Sinkron status pemesanan → Complete untuk {id_pb} "
+                            f"(ordering ada, hasilProduksi={hp_loose}, isFromOrdering match={hp_strict})"
+                        )
                 ord_doc = db.ordering.find_one({'idPembelian': id_pb})
                 return jsonify({
                     'success': True,
