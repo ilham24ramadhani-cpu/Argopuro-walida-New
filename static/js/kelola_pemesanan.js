@@ -213,7 +213,7 @@ function getPemesananKloterLinesFromDoc(p) {
   if (!p) return [];
   const rows = p.kloter || p.items;
   if (Array.isArray(rows) && rows.length > 0) {
-    return rows.map((r) => ({
+    const mapped = rows.map((r) => ({
       tipeProduk: r.tipeProduk || "",
       jenisKopi: r.jenisKopi || "",
       prosesPengolahan: r.prosesPengolahan || "",
@@ -229,6 +229,8 @@ function getPemesananKloterLinesFromDoc(p) {
           ? r.jumlahPembayaranKloter
           : "",
     }));
+    // Penyimpanan mengikuti urutan tambah (lama → baru); tampilan: terbaru di atas.
+    return mapped.slice().reverse();
   }
   return [
     {
