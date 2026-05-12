@@ -240,7 +240,6 @@ function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p) {
   const pad = invoicePxToMm(32) * 0.12 + 3;
   const gap = invoicePxToMm(24);
   const lblW = invoicePxToMm(160);
-  const rowH = invoicePxToMm(8) + 3.2;
   const titleBarH = 7;
   const W = RX - LX;
   const innerW = W - pad * 2;
@@ -257,7 +256,18 @@ function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p) {
   const orderLabel = (p?.statusPemesanan || "—").trim();
   const bayarLabel = (p?.statusPembayaran || "Belum Lunas").trim();
 
-  const bodyH = rowH * 2 + pad * 0.4;
+  /** Jarak pusat vertikal antar baris: tinggi badge (22px) + gap 8px — rowH lama < tinggi badge sehingga badge overlap. */
+  const badgeH = invoicePxToMm(22);
+  const statusRowGap = invoicePxToMm(8);
+  const rowPitch = badgeH + statusRowGap;
+  const lineMm = (FT * 25.4) / 72;
+  const innerTop = yTop + titleBarH + pad;
+  const cy1 = innerTop + badgeH * 0.5 + 0.25;
+  const cy2 = cy1 + rowPitch;
+  const y1 = cy1 + lineMm * 0.38;
+  const y2 = cy2 + lineMm * 0.38;
+  const bodyBottom = cy2 + badgeH * 0.5 + pad * 0.45;
+  const bodyH = bodyBottom - innerTop;
   const boxH = titleBarH + bodyH + pad;
 
   doc.setFillColor(...INV_GRAY_BOX_RGB);
@@ -276,12 +286,6 @@ function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p) {
   doc.setTextColor(38, 38, 38);
   doc.text("Ringkasan dokumen", LX + pad, yTop + titleBarH * 0.62);
   pdfInvSetFont(doc, "normal");
-
-  const yBase = yTop + titleBarH + pad + rowH * 0.62;
-  const y1 = yBase;
-  const y2 = y1 + rowH;
-  const cy1 = y1 - 1.4 + rowH * 0.42;
-  const cy2 = y2 - 1.4 + rowH * 0.42;
 
   doc.setFontSize(FT);
   pdfInvSetFont(doc, "bold");
