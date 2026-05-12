@@ -4700,8 +4700,34 @@ def _berat_kg_dari_baris_pemesanan(it):
     return 0.0
 
 
-def _jumlah_pembayaran_kloter_from_row(it):
-    """Nominal pembayaran tercatat per baris kloter (pembayaran bertahap). Non-negatif."""
+def _bool_coerce_lunas_default_true(raw):
+    """True jika pembayaran dianggap lunas (masuk total terbayar / pemasukan). Default True untuk dokumen lama."""
+    if raw is None:
+        return True
+    if isinstance(raw, bool):
+        return raw
+    s = str(raw).strip().lower()
+    if s in ('false', '0', 'no', 'tidak', 'belum', 'belum lunas'):
+        return False
+    if s in ('true', '1', 'yes', 'ya', 'lunas'):
+        return True
+    return True
+
+
+def _pembayaran_kloter_lunas_true(it):
+    if not isinstance(it, dict):
+        return True
+    return _bool_coerce_lunas_default_true(it.get('pembayaranKloterLunas'))
+
+
+def _termin_lunas_true(it):
+    if not isinstance(it, dict):
+        return True
+    return _bool_coerce_lunas_default_true(it.get('terminLunas'))
+
+
+def _jumlah_pembayaran_kloter_nominal(it):
+    """Nominal jumlahPembayaranKloter per baris (tanpa filter lunas)."""
     if not isinstance(it, dict):
         return 0.0
     try:
@@ -4711,16 +4737,32 @@ def _jumlah_pembayaran_kloter_from_row(it):
     return max(0.0, v)
 
 
+def _jumlah_pembayaran_kloter_from_row(it):
+    """Nominal yang masuk total terbayar: hanya jika pembayaranKloterLunas (default True)."""
+    if not _pembayaran_kloter_lunas_true(it):
+        return 0.0
+    return _jumlah_pembayaran_kloter_nominal(it)
+
+
 def _sum_jumlah_pembayaran_kloter(kloter_list):
+    """Σ nominal per kloter yang sudah lunas (masuk sisa tagihan / agregat)."""
     if not kloter_list:
         return 0.0
     return round(sum(_jumlah_pembayaran_kloter_from_row(row) for row in kloter_list), 2)
 
 
+def _sum_jumlah_pembayaran_kloter_semua(kloter_list):
+    """Σ semua nominal per kloter (validasi tidak melebihi total)."""
+    if not kloter_list:
+        return 0.0
+    return round(sum(_jumlah_pembayaran_kloter_nominal(row) for row in kloter_list), 2)
+
+
 def _normalize_pembayaran_bertahap_baris_tambahan(data):
     """
     Array opsional pembayaran bertahap tambahan (termin / gabungan), selain nominal per baris kloter produk.
-    Maksimal 30 baris. Tiap elemen: { jumlahRp: number, catatan?: str }.
+    Maksimal 30 baris. Tiap elemen: { jumlahRp: number, catatan?: str, terminLunas?: bool }.
+    terminLunas=False: nominal tercatat tetapi tidak masuk total terbayar / pemasukan hingga diubah.
     Mengembalikan (list_tersimpan, pesan_error_atau_None).
     """
     raw = data.get('pembayaranBertahapBaris')
@@ -4746,11 +4788,30 @@ def _normalize_pembayaran_bertahap_baris_tambahan(data):
         cat = (str(it.get('catatan') or '')).strip()
         if cat:
             row['catatan'] = cat[:500]
+        row['terminLunas'] = _termin_lunas_true(it)
         out.append(row)
     return out, None
 
 
 def _sum_pembayaran_bertahap_baris_tambahan(baris_list):
+    """Σ jumlahRp hanya baris terminLunas (default True). Masuk total terbayar / sisa."""
+    if not baris_list or not isinstance(baris_list, list):
+        return 0.0
+    s = 0.0
+    for it in baris_list:
+        if not isinstance(it, dict):
+            continue
+        if not _termin_lunas_true(it):
+            continue
+        try:
+            s += float(it.get('jumlahRp') or 0)
+        except (TypeError, ValueError):
+            continue
+    return round(max(0.0, s), 2)
+
+
+def _sum_pembayaran_bertahap_baris_tambahan_semua(baris_list):
+    """Σ semua jumlahRp (validasi batas total tagihan)."""
     if not baris_list or not isinstance(baris_list, list):
         return 0.0
     s = 0.0
@@ -4766,22 +4827,30 @@ def _sum_pembayaran_bertahap_baris_tambahan(baris_list):
 
 def _compute_pemesanan_pembayaran_kloter_agg(status_bayar, total_harga, kloter_list, baris_tambahan=None):
     """
-    totalPembayaranKloter = Σ jumlahPembayaranKloter per baris kloter + Σ pembayaranBertahapBaris[].jumlahRp.
-    totalPembayaranSaatIni = total harga − Σ itu (sisa tagihan, tidak negatif).
-    Validasi: untuk Pembayaran Bertahap, Σ tidak boleh melebihi total.
-    Mengembalikan (sum_pay, sisa, error_string_atau_None).
+    totalPembayaranKloter (tersimpan) = Σ yang sudah lunas: per kloter (pembayaranKloterLunas) +
+    baris tambahan dengan terminLunas.
+    totalPembayaranSaatIni = total harga − Σ itu (sisa tagihan).
+    Validasi: jumlah semua nominal (termasuk belum lunas) tidak boleh melebihi total.
+    Mengembalikan (sum_pay_lunas, sisa, error_string_atau_None).
     """
     rows = kloter_list if isinstance(kloter_list, list) else []
-    sum_pay = _sum_jumlah_pembayaran_kloter(rows)
-    sum_pay = round(sum_pay + _sum_pembayaran_bertahap_baris_tambahan(baris_tambahan), 2)
+    sum_lunas = _sum_jumlah_pembayaran_kloter(rows)
+    sum_lunas = round(sum_lunas + _sum_pembayaran_bertahap_baris_tambahan(baris_tambahan), 2)
+    sum_semua = round(
+        _sum_jumlah_pembayaran_kloter_semua(rows)
+        + _sum_pembayaran_bertahap_baris_tambahan_semua(baris_tambahan),
+        2,
+    )
     th = float(total_harga or 0)
-    sisa = round(max(0.0, th - sum_pay), 2)
+    sisa = round(max(0.0, th - sum_lunas), 2)
     sb = (status_bayar or '').strip()
     if sb == 'Pembayaran Bertahap':
         tol = _total_harga_pemesanan_tolerance(th)
-        if sum_pay - th > tol:
-            return None, None, 'Jumlah pembayaran (per kloter + tambahan) tidak boleh melebihi total harga pemesanan.'
-    return sum_pay, sisa, None
+        if sum_semua - th > tol:
+            return None, None, 'Jumlah nominal pembayaran (termasuk yang belum lunas) tidak boleh melebihi total harga pemesanan.'
+        if sum_lunas - th > tol:
+            return None, None, 'Jumlah pembayaran yang sudah lunas tidak boleh melebihi total harga pemesanan.'
+    return sum_lunas, sisa, None
 
 
 def _normalize_pemesanan_kloter_from_body(data):
@@ -4821,7 +4890,7 @@ def _normalize_pemesanan_kloter_from_body(data):
         if jm <= 0 or hp <= 0:
             return None, f'Kloter {idx + 1}: berat (kg) dan harga per kg harus lebih dari 0'
         sub = round(jm * hp, 2)
-        pay = _jumlah_pembayaran_kloter_from_row(it)
+        pay = _jumlah_pembayaran_kloter_nominal(it)
         row_out = {
             'tipeProduk': tp,
             'jenisKopi': jk,
@@ -4833,6 +4902,7 @@ def _normalize_pemesanan_kloter_from_body(data):
         }
         if pay > 0:
             row_out['jumlahPembayaranKloter'] = round(pay, 2)
+            row_out['pembayaranKloterLunas'] = _pembayaran_kloter_lunas_true(it)
         out.append(row_out)
     if not out:
         return None, 'Tidak ada kloter yang valid'

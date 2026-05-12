@@ -978,9 +978,11 @@
                   Pembayaran bertahap
                 </h6>
                 <p class="small text-muted mb-3">
-                  Catat setiap penerimaan uang (DP, termin, cicilan, dll.) pada baris di bawah. Gunakan
-                  kolom <strong>Catatan</strong> untuk keterangan. Maksimal <strong>30 baris</strong>.
-                  Bagian ini hanya tampil jika status pembayaran <strong>Pembayaran Bertahap</strong>.
+                  Catat setiap penerimaan uang (DP, termin, cicilan, dll.). Centang
+                  <strong>Lunas</strong> jika uang sudah diterima — nominal tersebut masuk
+                  <strong>total terbayar</strong> dan <strong>pemasukan</strong>. Tanpa centang = belum lunas (hanya catatan, tidak masuk pemasukan).
+                  Maksimal <strong>30 baris</strong>. Bagian ini hanya tampil jika status pembayaran
+                  <strong>Pembayaran Bertahap</strong>.
                 </p>
                 <div class="table-responsive">
                   <table class="table table-sm table-bordered align-middle mb-2">
@@ -989,6 +991,9 @@
                         <th style="width: 3rem">No</th>
                         <th>Catatan</th>
                         <th class="text-end" style="min-width: 9rem">Pembayaran masuk (Rp)</th>
+                        <th class="text-center" style="width: 6.5rem" title="Sudah diterima — masuk pemasukan & total terbayar">
+                          Lunas
+                        </th>
                         <th class="text-center" style="width: 3rem"></th>
                       </tr>
                     </thead>
@@ -1008,21 +1013,28 @@
                   class="mt-3 p-2 rounded-2 bg-light border small"
                 >
                   <div class="row g-2">
-                    <div class="col-md-6">
-                      <span class="text-muted">Σ Pembayaran tercatat:</span>
+                    <div class="col-md-4">
+                      <span class="text-muted">Sudah lunas (masuk total terbayar &amp; pemasukan):</span>
                       <strong class="d-block text-primary" id="displaySumPembayaranKloter"
                         >Rp 0</strong
                       >
                     </div>
-                    <div class="col-md-6">
-                      <span class="text-muted">Sisa tagihan (total − Σ):</span>
+                    <div class="col-md-4">
+                      <span class="text-muted">Belum lunas (hanya catatan):</span>
+                      <strong class="d-block text-secondary" id="displaySumPembayaranBelumLunas"
+                        >Rp 0</strong
+                      >
+                    </div>
+                    <div class="col-md-4">
+                      <span class="text-muted">Sisa tagihan (total − sudah lunas):</span>
                       <strong class="d-block text-success" id="displaySisaPembayaranBertahap"
                         >Rp 0</strong
                       >
                     </div>
                   </div>
                   <p class="mb-0 mt-2 text-muted">
-                    Dihitung dari <strong>total pemesanan</strong> dikurangi semua nominal di atas.
+                    Sisa dihitung dari <strong>total pemesanan</strong> dikurangi hanya nominal yang
+                    <strong>Lunas</strong> dicentang.
                   </p>
                 </div>
               </div>

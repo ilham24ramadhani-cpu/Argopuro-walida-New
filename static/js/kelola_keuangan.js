@@ -90,20 +90,33 @@ async function loadPemasukanData() {
     const res = await window.API.Pemesanan.getAll();
     const rows = unwrapArrayResponse(res);
 
+    function barisPembayaranLunasTrue(raw) {
+      if (raw === undefined || raw === null) return true;
+      if (typeof raw === "boolean") return raw;
+      const s = String(raw).trim().toLowerCase();
+      if (["false", "0", "no", "tidak", "belum lunas", "belum"].includes(s))
+        return false;
+      return true;
+    }
+
     function sumJumlahPembayaranKloterKeuangan(p) {
       const lines = p?.kloter || p?.items;
       let s = 0;
       if (Array.isArray(lines)) {
         lines.forEach((r) => {
           const v = parseFloat(r?.jumlahPembayaranKloter);
-          if (Number.isFinite(v) && v > 0) s += v;
+          if (!Number.isFinite(v) || v <= 0) return;
+          if (!barisPembayaranLunasTrue(r?.pembayaranKloterLunas)) return;
+          s += v;
         });
       }
       const extra = p?.pembayaranBertahapBaris;
       if (Array.isArray(extra)) {
         extra.forEach((it) => {
           const v = parseFloat(it?.jumlahRp);
-          if (Number.isFinite(v) && v > 0) s += v;
+          if (!Number.isFinite(v) || v <= 0) return;
+          if (!barisPembayaranLunasTrue(it?.terminLunas)) return;
+          s += v;
         });
       }
       return Math.round(s * 100) / 100;

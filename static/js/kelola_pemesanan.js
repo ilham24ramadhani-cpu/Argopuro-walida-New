@@ -228,6 +228,7 @@ function getPemesananKloterLinesFromDoc(p) {
         r.jumlahPembayaranKloter != null && r.jumlahPembayaranKloter !== ""
           ? r.jumlahPembayaranKloter
           : "",
+      pembayaranKloterLunas: r.pembayaranKloterLunas,
     }));
     // Penyimpanan mengikuti urutan tambah (lama → baru); tampilan: terbaru di atas.
     return mapped.slice().reverse();
@@ -247,7 +248,16 @@ function getPemesananKloterLinesFromDoc(p) {
   ];
 }
 
-/** Σ pembayaran tercatat (per baris kloter + pembayaranBertahapBaris). */
+/** True = nominal masuk total terbayar & pemasukan (default untuk dokumen lama). */
+function pembayaranBarisLunasTrue(raw) {
+  if (raw === undefined || raw === null) return true;
+  if (typeof raw === "boolean") return raw;
+  const s = String(raw).trim().toLowerCase();
+  if (["false", "0", "no", "tidak", "belum lunas", "belum"].includes(s)) return false;
+  return true;
+}
+
+/** Σ pembayaran yang sudah lunas (per kloter + pembayaranBertahapBaris). Selaras totalPembayaranKloter di API. */
 function sumJumlahPembayaranKloterFromDoc(p) {
   if (!p) return 0;
   const agg = parseFloat(p.totalPembayaranKloter);
@@ -257,14 +267,18 @@ function sumJumlahPembayaranKloterFromDoc(p) {
   if (Array.isArray(rows)) {
     rows.forEach((r) => {
       const v = parseFloat(r.jumlahPembayaranKloter);
-      if (Number.isFinite(v) && v > 0) s += v;
+      if (!Number.isFinite(v) || v <= 0) return;
+      if (!pembayaranBarisLunasTrue(r.pembayaranKloterLunas)) return;
+      s += v;
     });
   }
   const extra = p.pembayaranBertahapBaris;
   if (Array.isArray(extra)) {
     extra.forEach((it) => {
       const v = parseFloat(it?.jumlahRp);
-      if (Number.isFinite(v) && v > 0) s += v;
+      if (!Number.isFinite(v) || v <= 0) return;
+      if (!pembayaranBarisLunasTrue(it.terminLunas)) return;
+      s += v;
     });
   }
   return Math.round(s * 100) / 100;
@@ -419,6 +433,11 @@ function pembayaranBertahapBarisUntukFormDariDoc(p) {
         const ct = String(b?.catatan || "").trim();
         return jj > 0 || ct.length > 0;
       })
+      .map((b) => ({
+        jumlahRp: b.jumlahRp,
+        catatan: b.catatan != null ? b.catatan : "",
+        terminLunas: pembayaranBarisLunasTrue(b.terminLunas),
+      }))
       .slice(0, MAX_PEMBAYARAN_BERTAHAP_BARIS_TAMBAHAN);
   }
   const lines = getPemesananKloterLinesFromDoc(p);
@@ -427,7 +446,7 @@ function pembayaranBertahapBarisUntukFormDariDoc(p) {
     const j = parseFloat(L.jumlahPembayaranKloter);
     if (Number.isFinite(j) && j > 0) {
       const cat = [L.tipeProduk, L.jenisKopi, L.prosesPengolahan].filter(Boolean).join(" · ") || `Kloter ${i + 1}`;
-      out.push({ catatan: cat, jumlahRp: j });
+      out.push({ catatan: cat, jumlahRp: j, terminLunas: true });
     }
   });
   return out.slice(0, MAX_PEMBAYARAN_BERTAHAP_BARIS_TAMBAHAN);
@@ -470,11 +489,16 @@ function addPembayaranBertahapTambahanRow(prefill) {
     Number.isFinite(jr0) && jr0 > 0 ? escapeHtmlAttr(String(prefill.jumlahRp)) : "";
   const catRaw = prefill != null && prefill.catatan != null ? String(prefill.catatan) : "";
   const catVal = escapeHtmlAttr(catRaw);
+  const lunasChecked =
+    prefill != null && prefill.terminLunas === false ? "" : " checked";
   const tr = document.createElement("tr");
   tr.innerHTML = `
       <td class="text-muted"></td>
       <td><input type="text" class="form-control form-control-sm bertahap-baris-catatan" maxlength="500" placeholder="Mis. Termin 2, DP, dll." value="${catVal}" /></td>
       <td><input type="number" class="form-control form-control-sm bertahap-baris-jumlah text-end" placeholder="0" min="0" step="1000" value="${jumlahVal}" title="Nominal masuk" /></td>
+      <td class="text-center align-middle">
+        <input type="checkbox" class="form-check-input bertahap-baris-lunas m-0" title="Sudah diterima — masuk total terbayar & pemasukan"${lunasChecked} />
+      </td>
       <td class="text-center">
         <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="removePembayaranBertahapTambahanRow(this)" title="Hapus baris"><i class="bi bi-trash"></i></button>
       </td>`;
@@ -484,6 +508,10 @@ function addPembayaranBertahapTambahanRow(prefill) {
     el.addEventListener("input", () => updateRingkasanPembayaranBertahap());
     el.addEventListener("change", () => updateRingkasanPembayaranBertahap());
   });
+  const cbL = tr.querySelector(".bertahap-baris-lunas");
+  if (cbL) {
+    cbL.addEventListener("change", () => updateRingkasanPembayaranBertahap());
+  }
   syncBtnTambahPembayaranBertahapBaris();
   updateRingkasanPembayaranBertahap();
 }
@@ -506,8 +534,9 @@ function collectPembayaranBertahapBarisFromForm() {
     const cat = (tr.querySelector(".bertahap-baris-catatan")?.value || "").trim();
     const jr = parseFloat(tr.querySelector(".bertahap-baris-jumlah")?.value || 0);
     const j = Number.isFinite(jr) && jr > 0 ? Math.round(jr * 100) / 100 : 0;
+    const terminLunas = !!tr.querySelector(".bertahap-baris-lunas")?.checked;
     if (j <= 0 && !cat) return;
-    const row = { jumlahRp: j };
+    const row = { jumlahRp: j, terminLunas };
     if (cat) row.catatan = cat;
     out.push(row);
   });
@@ -521,19 +550,28 @@ function renderPembayaranBertahapBarisTambahan(rows) {
     addPembayaranBertahapTambahanRow({
       jumlahRp: r.jumlahRp,
       catatan: r.catatan != null ? r.catatan : "",
+      terminLunas: r.terminLunas !== false,
     });
   });
 }
 
-function sumAllPembayaranBertahapFromForm() {
+function sumPembayaranBertahapFromFormByLunas(wantLunas) {
+  const tb = document.getElementById("tbodyPembayaranBertahapTambahan");
+  if (!tb) return 0;
   let sum = 0;
-  document
-    .querySelectorAll("#tbodyPembayaranBertahapTambahan input.bertahap-baris-jumlah")
-    .forEach((inp) => {
-      const v = parseFloat(inp.value || 0);
-      if (Number.isFinite(v) && v > 0) sum += v;
-    });
+  tb.querySelectorAll("tr").forEach((tr) => {
+    const lunas = !!tr.querySelector(".bertahap-baris-lunas")?.checked;
+    if (lunas !== wantLunas) return;
+    const v = parseFloat(tr.querySelector(".bertahap-baris-jumlah")?.value || 0);
+    if (Number.isFinite(v) && v > 0) sum += v;
+  });
   return Math.round(sum * 100) / 100;
+}
+
+function sumAllPembayaranBertahapFromForm() {
+  return (
+    Math.round((sumPembayaranBertahapFromFormByLunas(true) + sumPembayaranBertahapFromFormByLunas(false)) * 100) / 100
+  );
 }
 
 function renderKloterTable(rows) {
@@ -591,15 +629,18 @@ function getTotalHargaNumericFromForm() {
 function updateRingkasanPembayaranBertahap() {
   const wrapForm = document.getElementById("wrapFormPembayaranPerKloter");
   const elSum = document.getElementById("displaySumPembayaranKloter");
+  const elBelum = document.getElementById("displaySumPembayaranBelumLunas");
   const elSisa = document.getElementById("displaySisaPembayaranBertahap");
   if (!wrapForm || wrapForm.classList.contains("d-none")) {
     updateBertahapStatusLocks();
     return;
   }
-  const sum = sumAllPembayaranBertahapFromForm();
+  const sumLunas = sumPembayaranBertahapFromFormByLunas(true);
+  const sumBelum = sumPembayaranBertahapFromFormByLunas(false);
   const total = getTotalHargaNumericFromForm();
-  const sisa = Math.max(0, Math.round((total - sum) * 100) / 100);
-  if (elSum) elSum.textContent = `Rp ${sum.toLocaleString("id-ID")}`;
+  const sisa = Math.max(0, Math.round((total - sumLunas) * 100) / 100);
+  if (elSum) elSum.textContent = `Rp ${sumLunas.toLocaleString("id-ID")}`;
+  if (elBelum) elBelum.textContent = `Rp ${sumBelum.toLocaleString("id-ID")}`;
   if (elSisa) elSisa.textContent = `Rp ${sisa.toLocaleString("id-ID")}`;
   updateBertahapStatusLocks();
 }
@@ -617,13 +658,13 @@ function syncPembayaranBertahapSections() {
   updateRingkasanPembayaranBertahap();
 }
 
-/** Sisa tagihan dari form (pembayaran bertahap). */
+/** Sisa tagihan dari form (pembayaran bertahap): total − hanya baris termin lunas. */
 function computeSisaTagihanFormPreview() {
   const sp = document.getElementById("statusPembayaran")?.value;
   if (sp !== "Pembayaran Bertahap") return 0;
-  const sum = sumAllPembayaranBertahapFromForm();
+  const sumLunas = sumPembayaranBertahapFromFormByLunas(true);
   const total = getTotalHargaNumericFromForm();
-  return Math.max(0, Math.round((total - sum) * 100) / 100);
+  return Math.max(0, Math.round((total - sumLunas) * 100) / 100);
 }
 
 /**
@@ -1511,14 +1552,15 @@ async function savePemesanan(cetakInvoice) {
   const totalHarga = subtotalBarang + biayaPajak + biayaPengiriman;
 
   if (statusPembayaran === "Pembayaran Bertahap") {
-    const sumPay = sumAllPembayaranBertahapFromForm();
-    if (sumPay > totalHarga + 1e-6) {
+    const sumSemua = sumAllPembayaranBertahapFromForm();
+    if (sumSemua > totalHarga + 1e-6) {
       alert(
-        "Jumlah pembayaran tercatat (Σ) tidak boleh melebihi total harga pemesanan.",
+        "Jumlah nominal pembayaran (termasuk yang belum lunas) tidak boleh melebihi total harga pemesanan.",
       );
       return;
     }
-    const sisaSave = Math.max(0, Math.round((totalHarga - sumPay) * 100) / 100);
+    const sumLunas = sumPembayaranBertahapFromFormByLunas(true);
+    const sisaSave = Math.max(0, Math.round((totalHarga - sumLunas) * 100) / 100);
     if (sisaSave > 1 && statusPemesanan === "Complete") {
       alert(
         "Pembayaran bertahap: masih ada sisa tagihan. Lunasi hingga sisa Rp 0 sebelum menyelesaikan pemesanan (Complete).",
@@ -1528,11 +1570,11 @@ async function savePemesanan(cetakInvoice) {
   }
 
   if (statusPembayaran === "Lunas") {
-    const sumAll = sumAllPembayaranBertahapFromForm();
-    const sisaL = Math.max(0, Math.round((totalHarga - sumAll) * 100) / 100);
-    if (sumAll > 0 && sisaL > 1) {
+    const sumLunas = sumPembayaranBertahapFromFormByLunas(true);
+    const sisaL = Math.max(0, Math.round((totalHarga - sumLunas) * 100) / 100);
+    if (sumLunas > 0 && sisaL > 1) {
       alert(
-        "Masih ada sisa tagihan dari pembayaran bertahap. Lunasi hingga sisa Rp 0 sebelum mengatur status pembayaran ke Lunas.",
+        "Masih ada sisa tagihan dari pembayaran bertahap. Centang Lunas atau lunasi hingga sisa Rp 0 sebelum mengatur status pembayaran ke Lunas.",
       );
       return;
     }
@@ -2760,7 +2802,7 @@ function pdfPembayaranBertahapRowsForInvoice(p) {
     const jj = parseFloat(row.jumlahPembayaranKloter) || 0;
     if (jj > 0) {
       const desk = `${row.tipeProduk || "-"} · ${row.jenisKopi || "-"} · ${row.prosesPengolahan || "-"}`;
-      out.push({ catatan: desk, jumlahRp: jj });
+      out.push({ catatan: desk, jumlahRp: jj, terminLunas: true });
     }
   });
   return out;
@@ -3056,10 +3098,12 @@ function pdfDrawInvoiceBody(doc, p, y) {
       pdfInvSetFont(doc, "bold");
       pdfPayRows.forEach((ex, ix) => {
         y = pageBreakIfNeeded(y);
-        const cat = String(ex.catatan || "").trim() || `Baris ${ix + 1}`;
+        const lunas = pembayaranBarisLunasTrue(ex.terminLunas);
+        const catBase = String(ex.catatan || "").trim() || `Baris ${ix + 1}`;
+        const catShow = lunas ? catBase : `${catBase} — belum lunas`;
         const jj = parseFloat(ex.jumlahRp) || 0;
         const wKet = Math.max(72, C_AMT - C_DESC - 4);
-        const catLines = doc.splitTextToSize(cat, wKet);
+        const catLines = doc.splitTextToSize(catShow, wKet);
         const y0 = y;
         doc.text(String(ix + 1), C_NO_R, y0, { align: "right" });
         catLines.forEach((ln) => {

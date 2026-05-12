@@ -5147,7 +5147,16 @@ function displayPemasok() {
     .join("");
 }
 
-/** Σ pembayaran per kloter untuk laporan (fallback baca baris jika agregat belum ada). */
+function laporanBarisPembayaranLunasTrue(raw) {
+  if (raw === undefined || raw === null) return true;
+  if (typeof raw === "boolean") return raw;
+  const s = String(raw).trim().toLowerCase();
+  if (["false", "0", "no", "tidak", "belum lunas", "belum"].includes(s))
+    return false;
+  return true;
+}
+
+/** Σ pembayaran per kloter untuk laporan (fallback baca baris jika agregat belum ada). Hanya baris lunas. */
 function laporanSumPembayaranKloterPemesanan(p) {
   if (!p) return 0;
   const agg = parseFloat(p.totalPembayaranKloter);
@@ -5157,14 +5166,18 @@ function laporanSumPembayaranKloterPemesanan(p) {
   if (Array.isArray(rows)) {
     rows.forEach((r) => {
       const v = safeNumberLaporan(r?.jumlahPembayaranKloter);
-      if (v > 0) s += v;
+      if (v <= 0) return;
+      if (!laporanBarisPembayaranLunasTrue(r?.pembayaranKloterLunas)) return;
+      s += v;
     });
   }
   const extra = p.pembayaranBertahapBaris;
   if (Array.isArray(extra)) {
     extra.forEach((it) => {
       const v = safeNumberLaporan(it?.jumlahRp);
-      if (v > 0) s += v;
+      if (v <= 0) return;
+      if (!laporanBarisPembayaranLunasTrue(it?.terminLunas)) return;
+      s += v;
     });
   }
   return Math.round(s * 100) / 100;
