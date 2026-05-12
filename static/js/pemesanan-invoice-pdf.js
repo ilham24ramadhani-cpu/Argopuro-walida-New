@@ -448,11 +448,14 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const FS_RING_TTL = 10;
   const FS_LABEL = 8.5;
   const FS_BODY = 8;
+  /** Isi tabel invoice: sedikit lebih besar agar selaras dengan blok PEMBELI (8,5 pt). */
+  const FS_TABLE = 8.5;
+  const FS_TABLE_HEAD = 8.5;
   const FS_SEC = 11;
   const FS_SEC_SUB = 7.5;
   const LH_ROW = 4;
+  const LH_TABLE = 4.35;
   const LH_PEMBELI = 4.5;
-  /** Tepi kanan kolom nomor urut (jsPDF: align "right"). */
   /** Grid kolom DATA PEMESANAN (mm): angka rata kanan di tepi kolom, Status setelah Pemb. */
   const C_NO_R = 20;
   const C_DESC = 23;
@@ -462,7 +465,18 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const C_PAY_R = 128;
   const C_STAT_X = 131;
   const W_DESC = Math.max(46, C_QTY_R - C_DESC - 3);
-  const W_STATUS = Math.max(18, tblRx - C_STAT_X - 2);
+  const W_STATUS = Math.max(20, tblRx - C_STAT_X - 2);
+  /** Garis vertikal grid (sisi kiri tiap zona kolom). */
+  const V_GRID_X = [
+    LX,
+    C_NO_R + 2,
+    C_QTY_R - 11,
+    C_HP_R - 13,
+    C_SUB_R - 17,
+    C_PAY_R - 23,
+    C_STAT_X - 1.5,
+    tblRx,
+  ];
 
   const bayarLabel = (p.statusPembayaran || "Belum Lunas").trim();
   const orderLabel = (p.statusPemesanan || "—").trim();
@@ -480,6 +494,17 @@ function pdfDrawInvoiceBody(doc, p, y) {
     doc.setDrawColor(220, 228, 222);
     doc.setLineWidth(0.1);
     doc.line(LX, yy, tblRx, yy);
+  };
+
+  const drawInvoiceTableVerticalGrid = (yTop, yBottom) => {
+    if (yBottom <= yTop) return;
+    doc.setDrawColor(228, 234, 230);
+    doc.setLineWidth(0.08);
+    V_GRID_X.forEach((vx) => {
+      doc.line(vx, yTop, vx, yBottom);
+    });
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.1);
   };
 
   // --- Ringkasan dokumen: identitas & status (tanpa duplikat angka keuangan) ---
@@ -603,7 +628,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
   );
   doc.setTextColor(0, 0, 0);
   y += 9;
-  let yHdr = y;
+  const yHdr = y;
   y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, HDR_H, [
     { label: "No", x: C_NO_R, opt: { align: "right" } },
     { label: "Item (tipe · jenis · proses)", x: C_DESC },
@@ -612,9 +637,10 @@ function pdfDrawInvoiceBody(doc, p, y) {
     { label: "Subtotal", x: C_SUB_R, opt: { align: "right" } },
     { label: "Pemb. (Rp)", x: C_PAY_R, opt: { align: "right" } },
     { label: "Status", x: C_STAT_X },
-  ], 7);
+  ], FS_TABLE_HEAD);
 
-  doc.setFontSize(FS_BODY);
+  const yTableGridTop = y;
+  doc.setFontSize(FS_TABLE);
   pdfInvSetFont(doc, "normal");
   const invLines = getPemesananKloterLinesFromDoc(p);
   let rowIdx = 0;
@@ -629,6 +655,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     emphasizeUnpaid,
   }) => {
     const yStartBlock = y;
+    doc.setFontSize(FS_TABLE);
     if (emphasizeUnpaid) {
       doc.setTextColor(200, 42, 42);
       pdfInvSetFont(doc, "bold");
@@ -640,26 +667,29 @@ function pdfDrawInvoiceBody(doc, p, y) {
     doc.text(String(rowIdx), C_NO_R, yStartBlock, { align: "right" });
     itemLines.forEach((ln) => {
       doc.text(ln, C_DESC, y);
-      y += LH_ROW;
+      y += LH_TABLE;
     });
     doc.text(kgStr, C_QTY_R, yStartBlock, { align: "right" });
     doc.text(hpStr, C_HP_R, yStartBlock, { align: "right" });
     doc.text(subStr, C_SUB_R, yStartBlock, { align: "right" });
     doc.text(payStr, C_PAY_R, yStartBlock, { align: "right" });
-    doc.setFontSize(7);
     const stLines = doc.splitTextToSize(String(statusStr || "—"), W_STATUS);
     let ys = yStartBlock;
     stLines.forEach((ln) => {
       doc.text(ln, C_STAT_X, ys);
-      ys += 3.5;
+      ys += LH_TABLE;
     });
-    doc.setFontSize(FS_BODY);
-    doc.setTextColor(0, 0, 0);
-    pdfInvSetFont(doc, "normal");
-    const hStatus = stLines.length > 0 ? stLines.length * 3.5 + 1.2 : 5.5;
+    if (!emphasizeUnpaid) {
+      doc.setTextColor(0, 0, 0);
+      pdfInvSetFont(doc, "normal");
+    }
+    const hStatus =
+      stLines.length > 0 ? stLines.length * LH_TABLE + 1 : LH_TABLE + 2;
     y = Math.max(y, yStartBlock + hStatus);
     drawRowSep(y);
     y += 2.2;
+    doc.setTextColor(0, 0, 0);
+    pdfInvSetFont(doc, "normal");
   };
 
   invLines.forEach((row) => {
@@ -708,19 +738,21 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.line(LX, y, tblRx, y);
   y += 4;
 
-  /** Baris ringkasan: label di kolom Item, nominal di kolom Subtotal atau Pemb. */
+  /** Baris ringkasan: label di kolom Item, nominal di kolom Subtotal atau Pemb. (font = isi tabel). */
   const drawSummaryLine = (label, amountFormatted, amountRightX) => {
-    doc.setFontSize(FS_BODY);
+    doc.setFontSize(FS_TABLE);
     pdfInvSetFont(doc, "normal");
     doc.setTextColor(55, 65, 60);
     const maxLab = Math.max(28, amountRightX - C_DESC - 8);
     const labLines = doc.splitTextToSize(label, maxLab);
     const y0 = y;
     labLines.forEach((ln, i) => {
-      doc.text(ln, C_DESC, y0 + i * LH_ROW);
+      doc.text(ln, C_DESC, y0 + i * LH_TABLE);
     });
+    doc.setTextColor(35, 40, 38);
     doc.text(amountFormatted, amountRightX, y0, { align: "right" });
-    y = y0 + Math.max(labLines.length, 1) * LH_ROW + 0.8;
+    doc.setTextColor(0, 0, 0);
+    y = y0 + Math.max(labLines.length, 1) * LH_TABLE + 0.8;
     drawRowSep(y);
     y += 2.2;
   };
@@ -734,7 +766,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setLineWidth(0.28);
   doc.line(LX, y, tblRx, y);
   y += 4.5;
-  doc.setFontSize(9.5);
+  doc.setFontSize(FS_TABLE + 0.5);
   pdfInvSetFont(doc, "bold");
   doc.setTextColor(25, 90, 40);
   const sisaLabel = "SISA TAGIHAN (Rp)";
@@ -742,17 +774,19 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const sisaLabLines = doc.splitTextToSize(sisaLabel, maxSisaLab);
   const yS0 = y;
   sisaLabLines.forEach((ln, i) => {
-    doc.text(ln, C_DESC, yS0 + i * LH_ROW);
+    doc.text(ln, C_DESC, yS0 + i * LH_TABLE);
   });
   doc.text(pdfFmtIdNumber(sisaInv), C_PAY_R, yS0, { align: "right" });
   doc.setTextColor(0, 0, 0);
   pdfInvSetFont(doc, "normal");
   doc.setFontSize(FS_BODY);
-  y = yS0 + Math.max(sisaLabLines.length, 1) * LH_ROW + 3;
+  y = yS0 + Math.max(sisaLabLines.length, 1) * LH_TABLE + 3;
   doc.setDrawColor(46, 125, 50);
   doc.setLineWidth(0.22);
   doc.line(LX, y, tblRx, y);
+  const yTableGridBottom = y;
   y += 6;
+  drawInvoiceTableVerticalGrid(yTableGridTop, yTableGridBottom);
 
   const catatan = (p.catatanPemesanan && String(p.catatanPemesanan).trim()) || "";
   const RX = 190;
