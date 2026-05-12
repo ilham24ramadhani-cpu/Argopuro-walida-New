@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -157,12 +157,19 @@
           class="container-fluid d-flex align-items-center justify-content-between"
         >
           <!-- Hamburger (mobile only) -->
-          <button class="navbar-hamburger d-none" aria-label="Toggle sidebar" type="button">
+          <button
+            class="navbar-hamburger d-none"
+            aria-label="Toggle sidebar"
+            type="button"
+          >
             <i class="bi bi-list"></i>
           </button>
 
           <!-- Brand -->
-          <span class="fw-bold fs-5">Argopuro Walida System <span class="badge bg-primary ms-2">Admin</span></span>
+          <span class="fw-bold fs-5"
+            >Argopuro Walida System
+            <span class="badge bg-primary ms-2">Admin</span></span
+          >
 
           <!-- Search Bar -->
           <form class="d-flex ms-auto me-3" role="search">
@@ -182,7 +189,7 @@
             class="navbar-icons d-flex align-items-center list-unstyled mb-0"
             style="gap: 1rem"
           >
-                        <!-- Notification Dropdown -->
+            <!-- Notification Dropdown -->
             <li class="nav-item dropdown">
               <a
                 class="text-dark fs-4 position-relative dropdown-toggle"
@@ -196,40 +203,48 @@
                 <span
                   id="notificationBadge"
                   class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-                  style="font-size: 0.65rem; display: none;"
+                  style="font-size: 0.65rem; display: none"
                 ></span>
               </a>
               <ul
                 class="dropdown-menu dropdown-menu-end shadow"
-                style="width: 350px; max-height: 500px; overflow-y: auto;"
+                style="width: 350px; max-height: 500px; overflow-y: auto"
                 aria-labelledby="notificationDropdown"
               >
                 <li>
-                  <h6 class="dropdown-header d-flex justify-content-between align-items-center">
+                  <h6
+                    class="dropdown-header d-flex justify-content-between align-items-center"
+                  >
                     <span>Notifikasi</span>
                     <button
                       class="btn btn-sm btn-link text-decoration-none p-0"
                       onclick="window.NotificationSystem.markAllAsRead()"
-                      style="font-size: 0.75rem;"
+                      style="font-size: 0.75rem"
                     >
                       Tandai semua dibaca
                     </button>
                   </h6>
                 </li>
                 <li><hr class="dropdown-divider" /></li>
-                <li id="notificationEmptyState" style="display: none;">
+                <li id="notificationEmptyState" style="display: none">
                   <div class="text-center text-muted p-3">
                     <i class="bi bi-bell-slash fs-3 d-block mb-2"></i>
                     <small>Tidak ada notifikasi</small>
                   </div>
                 </li>
-                <ul id="notificationDropdownBody" class="list-unstyled mb-0"></ul>
+                <ul
+                  id="notificationDropdownBody"
+                  class="list-unstyled mb-0"
+                ></ul>
                 <li><hr class="dropdown-divider" /></li>
                 <li>
                   <a
                     class="dropdown-item text-center text-danger small"
                     href="#"
-                    onclick="window.NotificationSystem.clearAll(); return false;"
+                    onclick="
+                      window.NotificationSystem.clearAll();
+                      return false;
+                    "
                   >
                     Hapus Semua Notifikasi
                   </a>
@@ -698,7 +713,9 @@
                         <option value="all">Semua</option>
                         <option value="daily">Harian</option>
                         <option value="monthly">Bulanan</option>
-                        <option value="month_only">Bulan saja (semua tahun)</option>
+                        <option value="month_only">
+                          Bulan saja (semua tahun)
+                        </option>
                         <option value="yearly">Tahunan</option>
                       </select>
                     </div>
@@ -1040,9 +1057,7 @@
                           class="dropdown-item"
                           onclick="exportRekapPdf('pemasok')"
                         >
-                          <i
-                            class="bi bi-file-earmark-pdf text-danger me-2"
-                          ></i
+                          <i class="bi bi-file-earmark-pdf text-danger me-2"></i
                           >PDF (cetak / simpan)
                         </button>
                       </li>
@@ -1214,25 +1229,46 @@
                 <div class="col-md-4">
                   <div class="card stat-card h-100">
                     <div class="card-body">
-                      <p class="text-muted text-uppercase small mb-1">Total Pemasukan (Rp)</p>
-                      <h3 class="fw-bold mb-0 text-success" id="keuanganTotalPemasukan">-</h3>
-                      <small class="text-muted">Dari pemesanan Lunas + cicilan bertahap (per kloter)</small>
+                      <p class="text-muted text-uppercase small mb-1">
+                        Total Pemasukan (Rp)
+                      </p>
+                      <h3
+                        class="fw-bold mb-0 text-success"
+                        id="keuanganTotalPemasukan"
+                      >
+                        -
+                      </h3>
+                      <small class="text-muted"
+                        >Dari pemesanan Lunas + cicilan bertahap (per
+                        kloter)</small
+                      >
                     </div>
                   </div>
                 </div>
                 <div class="col-md-4">
                   <div class="card stat-card h-100">
                     <div class="card-body">
-                      <p class="text-muted text-uppercase small mb-1">Total Pengeluaran (Rp)</p>
-                      <h3 class="fw-bold mb-0 text-danger" id="keuanganTotalPengeluaran">-</h3>
-                      <small class="text-muted">Dari data pengeluaran (keuangan)</small>
+                      <p class="text-muted text-uppercase small mb-1">
+                        Total Pengeluaran (Rp)
+                      </p>
+                      <h3
+                        class="fw-bold mb-0 text-danger"
+                        id="keuanganTotalPengeluaran"
+                      >
+                        -
+                      </h3>
+                      <small class="text-muted"
+                        >Dari data pengeluaran (keuangan)</small
+                      >
                     </div>
                   </div>
                 </div>
                 <div class="col-md-4">
                   <div class="card stat-card h-100">
                     <div class="card-body">
-                      <p class="text-muted text-uppercase small mb-1">Saldo (Rp)</p>
+                      <p class="text-muted text-uppercase small mb-1">
+                        Saldo (Rp)
+                      </p>
                       <h3 class="fw-bold mb-0" id="keuanganSaldo">-</h3>
                       <small class="text-muted">Pemasukan − Pengeluaran</small>
                     </div>
@@ -1242,12 +1278,17 @@
 
               <div class="card shadow-sm">
                 <div class="card-body">
-                  <div class="alert alert-info d-flex align-items-start mb-3" role="alert">
+                  <div
+                    class="alert alert-info d-flex align-items-start mb-3"
+                    role="alert"
+                  >
                     <i class="bi bi-info-circle me-2 mt-1"></i>
                     <div class="small">
-                      <strong>Pemasukan</strong> dihitung dari <strong>pemesanan</strong>:
-                      <strong>Lunas</strong> (nilai penuh) dan <strong>Pembayaran Bertahap</strong> dengan nominal per kloter
-                      (termasuk pemesanan masih Ordering). Nilai bertahap = Σ pembayaran per kloter.
+                      <strong>Pemasukan</strong> dihitung dari
+                      <strong>pemesanan</strong>: <strong>Lunas</strong> (nilai
+                      penuh) dan <strong>Pembayaran Bertahap</strong> dengan
+                      nominal per kloter (termasuk pemesanan masih Ordering).
+                      Nilai bertahap = Σ pembayaran per kloter.
                     </div>
                   </div>
 
@@ -1310,11 +1351,10 @@
               >
                 <i class="bi bi-info-circle me-3 fs-4 mt-1"></i>
                 <div class="flex-grow-1">
-                  <strong class="d-block mb-1"
-                    >Informasi Laporan Stok</strong
-                  >
+                  <strong class="d-block mb-1">Informasi Laporan Stok</strong>
                   <p class="mb-0 small">
-                    Laporan stok dari produksi tahap Pengemasan (berat akhir saja). Stok
+                    Laporan stok dari produksi tahap Pengemasan (berat akhir
+                    saja). Stok
                     <strong>otomatis berkurang</strong> saat pemesanan diproses.
                   </p>
                 </div>
@@ -1357,7 +1397,8 @@
                     <div>
                       <h5 class="fw-bold mb-1">Detail Stok Produk</h5>
                       <p class="text-muted mb-0 small">
-                        Data stok berdasarkan tipe produk, jenis kopi, dan proses pengolahan
+                        Data stok berdasarkan tipe produk, jenis kopi, dan
+                        proses pengolahan
                       </p>
                     </div>
                     <div class="btn-group">
@@ -1535,9 +1576,7 @@
                           class="dropdown-item"
                           onclick="exportRekapPdf('pemesanan')"
                         >
-                          <i
-                            class="bi bi-file-earmark-pdf text-danger me-2"
-                          ></i
+                          <i class="bi bi-file-earmark-pdf text-danger me-2"></i
                           >PDF (cetak / simpan)
                         </button>
                       </li>

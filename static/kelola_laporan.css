@@ -168,12 +168,35 @@
 }
 
 /* Badge proses kopi — sinkron api-service getProsesPengolahanBadgeClass (.process-*) */
-.process-1 { background-color: #16A34A; color: #FFFFFF; } /* Anaerob */
-.process-2 { background-color: #F97316; color: #FFFFFF; } /* HSN */
-.process-3 { background-color: #92400E; color: #FFFFFF; } /* Natural Process */
-.process-4 { background-color: #2563EB; color: #FFFFFF; } /* Washed Process */
-.process-5 { background-color: #7C3AED; color: #FFFFFF; } /* Carbonic Wethull */
-.process-6 { background-color: #0F766E; color: #FFFFFF; } /* Damarkandang Carbonic Kismis */
-.process-7 { background-color: #475569; color: #FFFFFF; } /* Wethull Komersil */
-.process-8 { background-color: #FACC15; color: #111827; } /* Damarkandang Carbonic Cherry */
-
+.process-1 {
+  background-color: #16a34a;
+  color: #ffffff;
+} /* Anaerob */
+.process-2 {
+  background-color: #f97316;
+  color: #ffffff;
+} /* HSN */
+.process-3 {
+  background-color: #92400e;
+  color: #ffffff;
+} /* Natural Process */
+.process-4 {
+  background-color: #2563eb;
+  color: #ffffff;
+} /* Washed Process */
+.process-5 {
+  background-color: #7c3aed;
+  color: #ffffff;
+} /* Carbonic Wethull */
+.process-6 {
+  background-color: #0f766e;
+  color: #ffffff;
+} /* Damarkandang Carbonic Kismis */
+.process-7 {
+  background-color: #475569;
+  color: #ffffff;
+} /* Wethull Komersil */
+.process-8 {
+  background-color: #facc15;
+  color: #111827;
+} /* Damarkandang Carbonic Cherry */
