@@ -3574,9 +3574,21 @@ async function generateInvoicePDF(idPembelian) {
     console.log("✅ Invoice PDF uploaded:", pdfUrl);
 
     if (pdfUrl) {
+      let openedInTab = false;
       if (pdfViewTab && !pdfViewTab.closed) {
-        pdfViewTab.location.replace(pdfUrl);
-      } else {
+        if (typeof window.openPdfInTabFromUrl === "function") {
+          openedInTab = await window.openPdfInTabFromUrl(pdfViewTab, pdfUrl);
+        }
+        if (!openedInTab) {
+          try {
+            pdfViewTab.location.replace(pdfUrl);
+            openedInTab = true;
+          } catch (e) {
+            console.warn("location.replace PDF failed:", e);
+          }
+        }
+      }
+      if (!openedInTab) {
         const w = window.open(pdfUrl, "_blank", "noopener,noreferrer");
         if (!w) {
           alert(

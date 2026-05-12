@@ -213,17 +213,59 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
    */
   window.resolveUploadedLaporanPdfUrl = function (result) {
     if (!result || typeof result !== "object") return "";
-    const rel = result.url != null ? String(result.url).trim() : "";
-    if (rel.startsWith("/")) {
-      try {
-        return `${window.location.origin}${rel}`;
-      } catch (e) {
-        return rel;
-      }
+    const origin =
+      typeof window.location.origin === "string" && window.location.origin
+        ? window.location.origin
+        : "";
+    const relRaw = result.url != null ? String(result.url).trim() : "";
+    if (relRaw.startsWith("/") && origin) {
+      return `${origin}${relRaw}`;
+    }
+    if (relRaw && !/^https?:\/\//i.test(relRaw) && origin) {
+      const path = relRaw.startsWith("/") ? relRaw : `/${relRaw}`;
+      return `${origin}${path}`;
+    }
+    const fn = result.filename != null ? String(result.filename).trim() : "";
+    if (fn && !/[\\/]/.test(fn) && fn.toLowerCase().endsWith(".pdf") && origin) {
+      return `${origin}/static/laporan/${encodeURIComponent(fn)}`;
     }
     const full = result.fullUrl != null ? String(result.fullUrl).trim() : "";
     if (/^https?:\/\//i.test(full)) return full;
     return "";
+  };
+
+  /**
+   * Isi tab yang sudah dibuka (mis. about:blank dari klik) dengan PDF.
+   * Fetch + blob lebih andal daripada location.replace ke PDF di beberapa browser.
+   */
+  window.openPdfInTabFromUrl = async function (tab, absoluteUrl) {
+    if (!tab || tab.closed || !absoluteUrl) return false;
+    try {
+      const res = await fetch(absoluteUrl, {
+        credentials: "include",
+        redirect: "follow",
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      tab.location.href = blobUrl;
+      setTimeout(function () {
+        try {
+          URL.revokeObjectURL(blobUrl);
+        } catch (e) {
+          /* ignore */
+        }
+      }, 300000);
+      return true;
+    } catch (e) {
+      console.warn("openPdfInTabFromUrl:", e);
+      try {
+        tab.location.href = absoluteUrl;
+        return true;
+      } catch (e2) {
+        return false;
+      }
+    }
   };
 
   let backendAvailable = false;

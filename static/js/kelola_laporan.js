@@ -7229,21 +7229,41 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
         loadingToast.remove();
 
         const openUrl = resolvePdf(finalUploadResult);
-        if (pdfViewTab && !pdfViewTab.closed && openUrl) {
-          pdfViewTab.location.replace(openUrl);
-        } else if (openUrl) {
+        let openedInTab = false;
+        if (openUrl && pdfViewTab && !pdfViewTab.closed) {
+          if (typeof window.openPdfInTabFromUrl === "function") {
+            openedInTab = await window.openPdfInTabFromUrl(
+              pdfViewTab,
+              openUrl,
+            );
+          }
+          if (!openedInTab) {
+            try {
+              pdfViewTab.location.replace(openUrl);
+              openedInTab = true;
+            } catch (e) {
+              console.warn("location.replace PDF failed:", e);
+            }
+          }
+        }
+        if (!openedInTab && openUrl) {
           const w = window.open(openUrl, "_blank", "noopener,noreferrer");
           if (!w) {
             alert(
               `Popup diblokir browser. Salin URL ini lalu buka di tab baru:\n\n${openUrl}`,
             );
           }
+        } else if (!openUrl && pdfViewTab && !pdfViewTab.closed) {
+          pdfViewTab.close();
         }
 
         const showUrl =
           openUrl ||
           finalUploadResult.fullUrl ||
           finalUploadResult.url ||
+          (finalUploadResult.filename
+            ? `${window.location.origin}/static/laporan/${finalUploadResult.filename}`
+            : "") ||
           "";
         alert(
           `Invoice PDF berhasil di-generate!${showUrl ? `\n\nURL: ${showUrl}` : ""}\n\nQR Code dapat di-scan untuk membuka invoice.`,
