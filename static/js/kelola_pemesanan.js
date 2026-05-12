@@ -257,6 +257,14 @@ function pembayaranBarisLunasTrue(raw) {
   return true;
 }
 
+/** Subtotal Rp satu baris kloter (berat × harga/kg), selaras kolom subtotal di DATA PEMESANAN. */
+function pemesananKloterSubtotalRpFromRow(row) {
+  if (!row) return 0;
+  const j = parseFloat(row.beratKg) || 0;
+  const hp = parseFloat(row.hargaPerKg) || 0;
+  return Math.round(j * hp * 100) / 100;
+}
+
 /** Σ pembayaran yang sudah lunas (per kloter + pembayaranBertahapBaris). Selaras totalPembayaranKloter di API. */
 function sumJumlahPembayaranKloterFromDoc(p) {
   if (!p) return 0;
@@ -3122,6 +3130,55 @@ function pdfDrawInvoiceBody(doc, p, y) {
         doc.setTextColor(0, 0, 0);
         pdfInvSetFont(doc, "normal");
         y = Math.max(y, y0 + 5.5);
+        drawRowSep(y);
+        y += 2.2;
+      });
+    }
+
+    const kloterBayarBelumLunas = invLines.filter(
+      (row) => !pembayaranBarisLunasTrue(row.pembayaranKloterLunas),
+    );
+    if (kloterBayarBelumLunas.length > 0) {
+      y = pageBreakIfNeeded(y + 1);
+      doc.setFontSize(FS_SEC_SUB);
+      pdfInvSetFont(doc, "bold");
+      doc.setTextColor(25, 90, 40);
+      doc.text("Total tagihan per kloter (belum lunas)", LX, y);
+      pdfInvSetFont(doc, "normal");
+      doc.setTextColor(88, 98, 92);
+      y += 4.2;
+      doc.setFontSize(7.4);
+      const footK = doc.splitTextToSize(
+        "Subtotal barang = kg × harga/kg per baris (pajak & pengiriman tetap pada total tagihan di atas).",
+        tblRx - LX,
+      );
+      footK.forEach((ln) => {
+        doc.text(ln, LX, y);
+        y += 3.6;
+      });
+      doc.setTextColor(0, 0, 0);
+      y += 2;
+      doc.setFontSize(FS_BODY);
+      const startNo = pdfPayRows.length;
+      kloterBayarBelumLunas.forEach((row, kix) => {
+        y = pageBreakIfNeeded(y);
+        const desk = `${row.tipeProduk || "-"} · ${row.jenisKopi || "-"} · ${row.prosesPengolahan || "-"}`;
+        const catShow = `${desk} — belum lunas (pembayaran kloter)`;
+        const subK = pemesananKloterSubtotalRpFromRow(row);
+        const wKetK = Math.max(72, C_AMT - C_DESC - 4);
+        const catLinesK = doc.splitTextToSize(catShow, wKetK);
+        const y0k = y;
+        doc.setTextColor(200, 42, 42);
+        pdfInvSetFont(doc, "bold");
+        doc.text(String(startNo + kix + 1), C_NO_R, y0k, { align: "right" });
+        catLinesK.forEach((ln) => {
+          doc.text(ln, C_DESC, y);
+          y += LH_ROW;
+        });
+        doc.text(pdfFmtIdNumber(subK), C_AMT, y0k, { align: "right" });
+        doc.setTextColor(0, 0, 0);
+        pdfInvSetFont(doc, "normal");
+        y = Math.max(y, y0k + 5.5);
         drawRowSep(y);
         y += 2.2;
       });
