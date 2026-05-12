@@ -6881,6 +6881,14 @@ function displayPemesananLaporan() {
 // Generate invoice PDF from laporan page
 // Implementasi lengkap generateInvoicePDF untuk halaman laporan
 async function generateInvoicePDFFromLaporan(idPembelian) {
+  /** Dibuka sinkron dari klik agar tidak diblokir popup blocker setelah await. */
+  let pdfViewTab = null;
+  try {
+    pdfViewTab = window.open("about:blank", "_blank");
+  } catch (e) {
+    pdfViewTab = null;
+  }
+
   try {
     // Tampilkan loading indicator
     const loadingToast = document.createElement("div");
@@ -6908,6 +6916,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
 
     if (!p) {
       loadingToast.remove();
+      if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
       alert("Data pemesanan tidak ditemukan!");
       return;
     }
@@ -6917,6 +6926,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     // Wait for jsPDF library
     if (!window.jspdf) {
       loadingToast.remove();
+      if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
       alert("Library jsPDF belum dimuat. Silakan refresh halaman.");
       return;
     }
@@ -7017,6 +7027,7 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
       setTimeout(() => {
         successToast.remove();
       }, 3000);
+      if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
       return;
     }
 
@@ -7034,10 +7045,13 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     console.log("✅ Final PDF URL:", uploadResult.fullUrl);
 
     // Now generate PDF with QR Code using the correct URL
-    const finalPdfUrl = uploadResult.fullUrl || uploadResult.url;
+    const resolvePdf =
+      typeof window.resolveUploadedLaporanPdfUrl === "function"
+        ? window.resolveUploadedLaporanPdfUrl
+        : (r) => (r && (r.fullUrl || r.url)) || "";
+    const finalPdfUrl = resolvePdf(uploadResult);
 
-    // Validate URL
-    if (!finalPdfUrl || !finalPdfUrl.startsWith("http")) {
+    if (!finalPdfUrl) {
       throw new Error("Invalid PDF URL from backend");
     }
 
@@ -7214,12 +7228,25 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
         // Hapus loading indicator
         loadingToast.remove();
 
-        // Open PDF in new window
-        window.open(finalUploadResult.fullUrl, "_blank");
+        const openUrl = resolvePdf(finalUploadResult);
+        if (pdfViewTab && !pdfViewTab.closed && openUrl) {
+          pdfViewTab.location.replace(openUrl);
+        } else if (openUrl) {
+          const w = window.open(openUrl, "_blank", "noopener,noreferrer");
+          if (!w) {
+            alert(
+              `Popup diblokir browser. Salin URL ini lalu buka di tab baru:\n\n${openUrl}`,
+            );
+          }
+        }
 
-        // Tampilkan alert seperti di kelola_pemesanan.js
+        const showUrl =
+          openUrl ||
+          finalUploadResult.fullUrl ||
+          finalUploadResult.url ||
+          "";
         alert(
-          `Invoice PDF berhasil di-generate!\n\nURL: ${finalUploadResult.fullUrl}\n\nQR Code dapat di-scan untuk membuka invoice.`
+          `Invoice PDF berhasil di-generate!${showUrl ? `\n\nURL: ${showUrl}` : ""}\n\nQR Code dapat di-scan untuk membuka invoice.`,
         );
       } else {
         throw new Error("Failed to upload final PDF");
@@ -7235,9 +7262,12 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
 
       // Hapus loading indicator
       loadingToast.remove();
+      if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
     }
   } catch (error) {
     console.error("❌ Error generating Invoice PDF:", error);
+
+    if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
 
     // Remove loading indicator if still exists
     const loadingToast = document.querySelector(".alert-info");

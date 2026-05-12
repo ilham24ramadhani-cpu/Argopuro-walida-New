@@ -3501,6 +3501,13 @@ function pdfDrawInvoiceBody(doc, p, y) {
 
 // Generate Invoice PDF
 async function generateInvoicePDF(idPembelian) {
+  let pdfViewTab = null;
+  try {
+    pdfViewTab = window.open("about:blank", "_blank");
+  } catch (e) {
+    pdfViewTab = null;
+  }
+
   try {
     await loadPemesanan();
     const p =
@@ -3518,6 +3525,7 @@ async function generateInvoicePDF(idPembelian) {
       );
 
     if (!p) {
+      if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
       alert("Data pemesanan tidak ditemukan!");
       return;
     }
@@ -3526,6 +3534,7 @@ async function generateInvoicePDF(idPembelian) {
 
     // Wait for jsPDF library
     if (!window.jspdf) {
+      if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
       alert("Library jsPDF belum dimuat. Silakan refresh halaman.");
       return;
     }
@@ -3557,11 +3566,26 @@ async function generateInvoicePDF(idPembelian) {
       throw new Error("Failed to upload PDF");
     }
 
-    const pdfUrl = uploadResult.fullUrl || uploadResult.url;
+    const resolvePdf =
+      typeof window.resolveUploadedLaporanPdfUrl === "function"
+        ? window.resolveUploadedLaporanPdfUrl
+        : (r) => (r && (r.fullUrl || r.url)) || "";
+    const pdfUrl = resolvePdf(uploadResult);
     console.log("✅ Invoice PDF uploaded:", pdfUrl);
 
-    if (pdfUrl && pdfUrl.startsWith("http")) {
-      window.open(pdfUrl, "_blank");
+    if (pdfUrl) {
+      if (pdfViewTab && !pdfViewTab.closed) {
+        pdfViewTab.location.replace(pdfUrl);
+      } else {
+        const w = window.open(pdfUrl, "_blank", "noopener,noreferrer");
+        if (!w) {
+          alert(
+            `Popup diblokir browser. Salin URL ini lalu buka di tab baru:\n\n${pdfUrl}`,
+          );
+        }
+      }
+    } else if (pdfViewTab && !pdfViewTab.closed) {
+      pdfViewTab.close();
     }
 
     alert(
@@ -3569,6 +3593,7 @@ async function generateInvoicePDF(idPembelian) {
     );
   } catch (error) {
     console.error("❌ Error generating invoice PDF:", error);
+    if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
     alert(`Error generating invoice PDF: ${error.message || "Unknown error"}`);
   }
 }

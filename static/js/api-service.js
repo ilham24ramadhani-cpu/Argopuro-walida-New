@@ -205,6 +205,27 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
       : "http://localhost:5002/api";
   })();
 
+  /**
+   * URL untuk membuka PDF hasil POST /api/laporan/upload di tab browser.
+   * Mengutamakan field `url` (path absolut dari root) + origin halaman saat ini,
+   * supaya host/port sama dengan yang dipakai pengguna (menghindari fullUrl server
+   * yang salah, misalnya 127.0.0.1 saat akses lewat IP LAN).
+   */
+  window.resolveUploadedLaporanPdfUrl = function (result) {
+    if (!result || typeof result !== "object") return "";
+    const rel = result.url != null ? String(result.url).trim() : "";
+    if (rel.startsWith("/")) {
+      try {
+        return `${window.location.origin}${rel}`;
+      } catch (e) {
+        return rel;
+      }
+    }
+    const full = result.fullUrl != null ? String(result.fullUrl).trim() : "";
+    if (/^https?:\/\//i.test(full)) return full;
+    return "";
+  };
+
   let backendAvailable = false;
 
   // Check backend availability on load
