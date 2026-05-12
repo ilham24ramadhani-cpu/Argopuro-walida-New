@@ -6801,7 +6801,144 @@ async function loadPemesananLaporan() {
   }
 }
 
-// Display pemesanan table di laporan
+/** Rincian HTML selaras struktur invoice (pembeli, kloter, pajak/kirim, bertahap). */
+function renderLaporanPemesananInvoiceDetailHtml(p) {
+  const safe = (s) => escapeHtmlLaporan(s != null ? String(s) : "");
+  if (typeof getPemesananKloterLinesFromDoc !== "function") {
+    return `<div class="alert alert-warning mb-0 small">Modul invoice belum dimuat. Muat ulang halaman.</div>`;
+  }
+  const lines = getPemesananKloterLinesFromDoc(p);
+  const payRows =
+    typeof pdfPembayaranBertahapRowsForInvoice === "function"
+      ? pdfPembayaranBertahapRowsForInvoice(p)
+      : [];
+  const sumBayar =
+    typeof sumJumlahPembayaranKloterFromDoc === "function"
+      ? sumJumlahPembayaranKloterFromDoc(p)
+      : 0;
+  const sisa =
+    typeof totalPembayaranSaatIniFromDoc === "function"
+      ? totalPembayaranSaatIniFromDoc(p)
+      : 0;
+  const totalInv = Number(p.totalHarga) || 0;
+  const pajak = Math.max(0, Number(p.biayaPajak) || 0);
+  const kirim = Math.max(0, Number(p.biayaPengiriman) || 0);
+  const statusBayarKey = (p.statusPembayaran || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  const modeBertahap = statusBayarKey === "pembayaran bertahap";
+
+  const kloterRows = lines
+    .map((row, idx) => {
+      const sub =
+        typeof pemesananKloterSubtotalRpFromRow === "function"
+          ? pemesananKloterSubtotalRpFromRow(row)
+          : 0;
+      const item = [
+        safe(row.tipeProduk),
+        safe(row.jenisKopi),
+        safe(row.prosesPengolahan),
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      const berat = parseFloat(row.beratKg) || 0;
+      const hp = parseFloat(row.hargaPerKg) || 0;
+      return `
+      <tr>
+        <td class="text-muted text-nowrap">${idx + 1}</td>
+        <td>${item || "—"}</td>
+        <td class="text-end text-nowrap">${berat.toLocaleString("id-ID")}</td>
+        <td class="text-end text-nowrap">${formatCurrencyNumeric(hp)}</td>
+        <td class="text-end text-nowrap">${formatCurrencyNumeric(sub)}</td>
+      </tr>`;
+    })
+    .join("");
+
+  let paySection = "";
+  if (modeBertahap && payRows.length > 0) {
+    paySection = `
+    <h6 class="text-success fw-bold small mt-3 mb-2">Data tahap pembayaran</h6>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle mb-0">
+        <thead class="table-light"><tr><th>No</th><th>Keterangan</th><th class="text-end">Nominal (Rp)</th></tr></thead>
+        <tbody>
+        ${payRows
+          .map((ex, ix) => {
+            const lunas =
+              typeof pembayaranBarisLunasTrue === "function"
+                ? pembayaranBarisLunasTrue(ex.terminLunas)
+                : true;
+            const cat = safe(
+              (ex.catatan || "").trim() || `Baris ${ix + 1}`,
+            );
+            const jj = parseFloat(ex.jumlahRp) || 0;
+            const rowCls = lunas ? "" : "table-danger";
+            const tag = lunas
+              ? '<span class="badge bg-success">Lunas</span>'
+              : '<span class="badge bg-danger">Belum lunas</span>';
+            return `<tr class="${rowCls}"><td>${ix + 1}</td><td>${cat} ${tag}</td><td class="text-end">${jj > 0 ? formatCurrencyNumeric(jj) : "—"}</td></tr>`;
+          })
+          .join("")}
+        </tbody>
+      </table>
+    </div>`;
+  }
+
+  const catatanRaw =
+    p.catatanPemesanan && String(p.catatanPemesanan).trim()
+      ? safe(String(p.catatanPemesanan).trim())
+      : "";
+
+  return `
+  <div class="p-3 bg-light rounded-3 border laporan-pemesanan-invoice-detail">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <h6 class="fw-bold text-success mb-2"><i class="bi bi-person me-1"></i>Pembeli</h6>
+        <table class="table table-sm table-borderless mb-0">
+          <tr><td class="text-muted py-1" style="width:38%">Nama</td><td class="py-1">${safe(p.namaPembeli)}</td></tr>
+          <tr><td class="text-muted py-1">Kontak</td><td class="py-1">${safe(p.kontakPembeli || "—")}</td></tr>
+          <tr><td class="text-muted py-1">Alamat</td><td class="py-1">${safe(p.alamatPembeli || "—")}</td></tr>
+          ${p.idMasterPembeli ? `<tr><td class="text-muted py-1">ID master</td><td class="py-1">${safe(p.idMasterPembeli)}</td></tr>` : ""}
+          <tr><td class="text-muted py-1">Tipe pemesanan</td><td class="py-1">${safe(p.tipePemesanan)}</td></tr>
+          ${p.tipePemesanan === "International" ? `<tr><td class="text-muted py-1">Negara</td><td class="py-1">${safe(p.negara)}</td></tr>` : ""}
+        </table>
+      </div>
+      <div class="col-md-6">
+        <h6 class="fw-bold text-success mb-2"><i class="bi bi-receipt me-1"></i>Ringkasan dokumen</h6>
+        <table class="table table-sm table-borderless mb-0">
+          <tr><td class="text-muted py-1">ID pembelian</td><td class="py-1"><strong>${safe(p.idPembelian)}</strong></td></tr>
+          <tr><td class="text-muted py-1">Tanggal</td><td class="py-1">${safe(formatDate(p.tanggalPemesanan))}</td></tr>
+          <tr><td class="text-muted py-1">Status pemesanan</td><td class="py-1"><span class="badge ${p.statusPemesanan === "Complete" ? "bg-success" : "bg-warning text-dark"}">${safe(p.statusPemesanan)}</span></td></tr>
+          <tr><td class="text-muted py-1">Status pembayaran</td><td class="py-1"><span class="badge bg-secondary">${safe(p.statusPembayaran || "—")}</span></td></tr>
+        </table>
+      </div>
+    </div>
+    <h6 class="text-success fw-bold small mt-3 mb-2">Data pemesanan (barang)</h6>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle mb-0">
+        <thead class="table-light">
+          <tr><th>No</th><th>Item (tipe · jenis · proses)</th><th class="text-end">Kg</th><th class="text-end">Harga/kg</th><th class="text-end">Subtotal</th></tr>
+        </thead>
+        <tbody>${kloterRows || `<tr><td colspan="5" class="text-center text-muted">—</td></tr>`}</tbody>
+      </table>
+    </div>
+    <div class="row justify-content-end mt-2">
+      <div class="col-md-6">
+        <table class="table table-sm mb-0">
+          <tr><td>Pajak</td><td class="text-end">${formatCurrencyNumeric(pajak)}</td></tr>
+          <tr><td>Pengiriman</td><td class="text-end">${formatCurrencyNumeric(kirim)}</td></tr>
+          <tr class="fw-bold text-success"><td>Total tagihan</td><td class="text-end">${formatCurrencyNumeric(totalInv)}</td></tr>
+          ${modeBertahap ? `<tr><td>Total terbayar</td><td class="text-end">${formatCurrencyNumeric(sumBayar)}</td></tr><tr class="fw-bold ${sisa > 0 ? "text-danger" : "text-success"}"><td>Sisa tagihan</td><td class="text-end">${formatCurrencyNumeric(sisa)}</td></tr>` : ""}
+        </table>
+      </div>
+    </div>
+    ${paySection}
+    ${catatanRaw ? `<div class="mt-3"><h6 class="small fw-bold text-muted">Catatan</h6><div class="border rounded p-2 small bg-white">${catatanRaw}</div></div>` : ""}
+  </div>`;
+}
+
+// Display pemesanan table di laporan (ringkasan + rincian seperti invoice)
 function displayPemesananLaporan() {
   const tableBody = document.getElementById("tablePemesananLaporan");
   if (!tableBody) return;
@@ -6812,7 +6949,7 @@ function displayPemesananLaporan() {
     if (filteredPemesanan.length === 0) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="15" class="text-center py-4 text-muted">
+          <td colspan="9" class="text-center py-4 text-muted">
             <i class="bi bi-inbox fs-1 d-block mb-2"></i>
             Tidak ada data pemesanan
           </td>
@@ -6822,66 +6959,62 @@ function displayPemesananLaporan() {
     }
 
     tableBody.innerHTML = filteredPemesanan
-      .map(
-        (p, index) => `
-      <tr>
+      .map((p, index) => {
+        const idArg = JSON.stringify(String(p.idPembelian || p.id || p._id));
+        return `
+      <tr class="align-middle">
         <td>${index + 1}</td>
-        <td><strong>${p.idPembelian || "-"}</strong></td>
-        <td>${p.namaPembeli || "-"}</td>
+        <td><strong>${escapeHtmlLaporan(p.idPembelian || "—")}</strong></td>
+        <td>${escapeHtmlLaporan(p.namaPembeli || "—")}</td>
         <td>
           <span class="badge ${
-            p.tipePemesanan === "International" ? "bg-warning" : "bg-primary"
+            p.tipePemesanan === "International" ? "bg-warning text-dark" : "bg-primary"
           }">
-            ${p.tipePemesanan || "-"}
+            ${escapeHtmlLaporan(p.tipePemesanan || "—")}
           </span>
         </td>
-        <td>${p.negara || "-"}</td>
-        <td>${p.tipeProduk || "-"}</td>
-        <td>${(p.prosesPengolahan && String(p.prosesPengolahan).trim()) || "-"}</td>
-        <td>${p.jenisKopi || "-"}</td>
-        <td>${(p.hargaPerKg != null ? Number(p.hargaPerKg) : 0).toLocaleString("id-ID")}</td>
-        <td>${(p.jumlahPesananKg || 0).toLocaleString("id-ID")}</td>
-        <td>${(p.totalHarga || 0).toLocaleString("id-ID")}</td>
+        <td>${escapeHtmlLaporan(formatDate(p.tanggalPemesanan))}</td>
+        <td class="text-end">${formatCurrencyNumeric(Number(p.totalHarga) || 0)}</td>
         <td>
           <span class="badge ${
-            p.statusPemesanan === "Complete" ? "bg-success" : "bg-warning"
+            p.statusPemesanan === "Complete" ? "bg-success" : "bg-warning text-dark"
           }">
-            ${p.statusPemesanan || "-"}
+            ${escapeHtmlLaporan(p.statusPemesanan || "—")}
           </span>
         </td>
-        <td>${p.statusPembayaran || "-"}</td>
-        <td>${formatDate(p.tanggalPemesanan)}</td>
+        <td>${escapeHtmlLaporan(p.statusPembayaran || "—")}</td>
         <td class="text-center">
-          <button 
-            class="btn btn-sm btn-info btn-action" 
-            onclick="generateInvoicePDFFromLaporan('${
-              p.idPembelian || p.id || p._id
-            }')"
+          <button
+            type="button"
+            class="btn btn-sm btn-info btn-action"
+            onclick="generateInvoicePDFFromLaporan(${idArg})"
             title="Invoice PDF">
             <i class="bi bi-file-pdf"></i>
           </button>
         </td>
       </tr>
-    `
-      )
+      <tr class="laporan-pemesanan-detail-row">
+        <td colspan="9" class="p-0 border-0">
+          ${renderLaporanPemesananInvoiceDetailHtml(p)}
+        </td>
+      </tr>`;
+      })
       .join("");
   } catch (error) {
     console.error("❌ Error displaying pemesanan laporan:", error);
     tableBody.innerHTML = `
       <tr>
-        <td colspan="15" class="text-center py-4 text-danger">
+        <td colspan="9" class="text-center py-4 text-danger">
           <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
-          Error menampilkan data: ${error.message}
+          Error menampilkan data: ${escapeHtmlLaporan(error.message)}
         </td>
       </tr>
     `;
   }
 }
 
-// Generate invoice PDF from laporan page
-// Implementasi lengkap generateInvoicePDF untuk halaman laporan
+// PDF invoice di laporan = layout sama dengan Kelola Pemesanan (pemesanan-invoice-pdf.js)
 async function generateInvoicePDFFromLaporan(idPembelian) {
-  /** Dibuka sinkron dari klik agar tidak diblokir popup blocker setelah await. */
   let pdfViewTab = null;
   try {
     pdfViewTab = window.open("about:blank", "_blank");
@@ -6890,111 +7023,54 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
   }
 
   try {
-    // Tampilkan loading indicator
-    const loadingToast = document.createElement("div");
-    loadingToast.className =
-      "position-fixed top-0 start-50 translate-middle-x mt-3";
-    loadingToast.style.zIndex = "9999";
-    loadingToast.innerHTML = `
-      <div class="alert alert-info alert-dismissible fade show" role="alert">
-        <i class="bi bi-hourglass-split me-2"></i>Sedang generate Invoice PDF...
-        <div class="spinner-border spinner-border-sm ms-2" role="status">
-          <span class="visually-hidden">Loading...</span>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(loadingToast);
-
-    // Cari data pemesanan dari array yang sudah di-load
     const p = pemesanan.find(
       (item) =>
         item.idPembelian === idPembelian ||
-        item.id === parseInt(idPembelian) ||
+        item.id === parseInt(idPembelian, 10) ||
         item._id === idPembelian ||
-        String(item.id) === String(idPembelian)
+        String(item.id) === String(idPembelian),
     );
 
     if (!p) {
-      loadingToast.remove();
       if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
       alert("Data pemesanan tidak ditemukan!");
       return;
     }
 
-    console.log("📄 Generating Invoice PDF for:", p.idPembelian);
-
-    // Wait for jsPDF library
     if (!window.jspdf) {
-      loadingToast.remove();
       if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
       alert("Library jsPDF belum dimuat. Silakan refresh halaman.");
       return;
     }
 
-    const { jsPDF: jsPDFLib } = window.jspdf;
-    const doc = new jsPDFLib();
-
-    // Header
-    doc.setFontSize(20);
-    doc.setFont(undefined, "bold");
-    doc.text("INVOICE PEMESANAN", 105, 20, { align: "center" });
-    doc.setFontSize(14);
-    doc.setFont(undefined, "normal");
-    doc.text("Argopuro Walida", 105, 30, { align: "center" });
-    doc.text("Sistem Manajemen Produksi Kopi", 105, 37, { align: "center" });
-    doc.line(20, 42, 190, 42);
-
-    let y = 50;
-    const invPairs1 = [
-      ["ID Pembelian", p.idPembelian || "—"],
-      [
-        "Tanggal",
-        formatDate(p.tanggalPemesanan || new Date().toISOString()),
-      ],
-      ["Status", p.statusPemesanan || "—"],
-    ];
-    y = pdfRenderKeyValueTable(doc, y, invPairs1, { title: "Invoice" });
-
-    const pembeliPairs = [
-      ["Nama Pembeli", p.namaPembeli || "—"],
-      ["Tipe Pemesanan", p.tipePemesanan || "—"],
-    ];
-    if (p.tipePemesanan === "International" && p.negara) {
-      pembeliPairs.push(["Negara", p.negara || "—"]);
+    if (
+      typeof fetchArgopuroLogoForPdf !== "function" ||
+      typeof pdfDrawArgopuroInvoiceHeader !== "function" ||
+      typeof pdfDrawInvoiceBody !== "function"
+    ) {
+      if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
+      alert(
+        "Modul invoice PDF belum dimuat. Muat ulang halaman (pastikan pemesanan-invoice-pdf.js ter-load).",
+      );
+      return;
     }
-    y = pdfRenderKeyValueTable(doc, y, pembeliPairs, { title: "Data pembeli" });
 
-    const prodPairs = [
-      ["Tipe Produk", p.tipeProduk || "—"],
-      ["Jenis Kopi", p.jenisKopi || "—"],
-      ["Proses Pengolahan", p.prosesPengolahan || "—"],
-      ["Kemasan", p.kemasan || "—"],
-    ];
-    y = pdfRenderKeyValueTable(doc, y, prodPairs, { title: "Data produk" });
+    const { jsPDF: jsPDFLib } = window.jspdf;
+    const logoDataUrl = await fetchArgopuroLogoForPdf();
+    const doc = new jsPDFLib();
+    let yCur = pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl);
+    yCur = pdfDrawInvoiceBody(doc, p, yCur);
 
-    const hargaPairs = [
-      [
-        "Jumlah Pesanan (kg)",
-        (p.jumlahPesananKg || 0).toLocaleString("id-ID"),
-      ],
-      [
-        "Harga per Kg (Rp)",
-        (p.hargaPerKg || 0).toLocaleString("id-ID"),
-      ],
-      [
-        "Total Harga (Rp)",
-        (p.totalHarga || 0).toLocaleString("id-ID"),
-      ],
-    ];
-    y = pdfRenderKeyValueTable(doc, y, hargaPairs, { title: "Rincian harga" });
-
-    // Generate PDF as base64 first (without QR Code)
     let pdfBase64 = doc.output("datauristring");
 
-    // Upload PDF to backend FIRST to get the correct URL
-    console.log("📤 Uploading Invoice PDF to backend...");
+    if (!window.API || !window.API.Laporan || !window.API.Laporan.uploadPdf) {
+      const fileName = `Invoice_${p.idPembelian}_${Date.now()}.pdf`;
+      doc.save(fileName);
+      if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
+      alert("PDF disimpan ke perangkat Anda (upload laporan tidak tersedia).");
+      return;
+    }
 
-    // Extract base64 data (remove data: prefix if exists)
     let pdfBase64Data = pdfBase64;
     if (pdfBase64Data.includes(",")) {
       pdfBase64Data = pdfBase64Data.split(",")[1];
@@ -7003,298 +7079,51 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
       pdfBase64Data = pdfBase64Data.split(",")[1];
     }
 
-    // Check if API.Laporan exists
-    if (!window.API || !window.API.Laporan || !window.API.Laporan.uploadPdf) {
-      // Fallback: Save PDF directly without upload
-      console.warn(
-        "⚠️ API.Laporan.uploadPdf not available, saving PDF directly"
-      );
-      const fileName = `Invoice_${p.idPembelian}_${new Date().getTime()}.pdf`;
-      doc.save(fileName);
-      loadingToast.remove();
-
-      const successToast = document.createElement("div");
-      successToast.className =
-        "position-fixed top-0 start-50 translate-middle-x mt-3";
-      successToast.style.zIndex = "9999";
-      successToast.innerHTML = `
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-          <i class="bi bi-check-circle me-2"></i>Invoice PDF berhasil di-generate!
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      `;
-      document.body.appendChild(successToast);
-      setTimeout(() => {
-        successToast.remove();
-      }, 3000);
-      if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
-      return;
-    }
-
     const uploadResult = await window.API.Laporan.uploadPdf(
       `data:application/pdf;base64,${pdfBase64Data}`,
       "invoice-pemesanan",
-      p.idPembelian
+      p.idPembelian,
     );
 
     if (!uploadResult || !uploadResult.success) {
       throw new Error("Failed to upload PDF");
     }
 
-    console.log("✅ Invoice PDF uploaded successfully!");
-    console.log("✅ Final PDF URL:", uploadResult.fullUrl);
-
-    // Now generate PDF with QR Code using the correct URL
     const resolvePdf =
       typeof window.resolveUploadedLaporanPdfUrl === "function"
         ? window.resolveUploadedLaporanPdfUrl
         : (r) => (r && (r.fullUrl || r.url)) || "";
-    const finalPdfUrl = resolvePdf(uploadResult);
+    const pdfUrl = resolvePdf(uploadResult);
 
-    if (!finalPdfUrl) {
-      throw new Error("Invalid PDF URL from backend");
-    }
-
-    // Create new PDF document with QR Code
-    const docWithQR = new jsPDFLib();
-
-    // Copy all content from first PDF (re-generate)
-    docWithQR.setFontSize(20);
-    docWithQR.setFont(undefined, "bold");
-    docWithQR.text("INVOICE PEMESANAN", 105, 20, { align: "center" });
-    docWithQR.setFontSize(14);
-    docWithQR.setFont(undefined, "normal");
-    docWithQR.text("Argopuro Walida", 105, 30, { align: "center" });
-    docWithQR.text("Sistem Manajemen Produksi Kopi", 105, 37, {
-      align: "center",
-    });
-    docWithQR.line(20, 42, 190, 42);
-
-    let yQR = 50;
-    const invPairsQr1 = [
-      ["ID Pembelian", p.idPembelian || "—"],
-      [
-        "Tanggal",
-        formatDate(p.tanggalPemesanan || new Date().toISOString()),
-      ],
-      ["Status", p.statusPemesanan || "—"],
-    ];
-    yQR = pdfRenderKeyValueTable(docWithQR, yQR, invPairsQr1, {
-      title: "Invoice",
-    });
-
-    const pembeliPairsQr = [
-      ["Nama Pembeli", p.namaPembeli || "—"],
-      ["Tipe Pemesanan", p.tipePemesanan || "—"],
-    ];
-    if (p.tipePemesanan === "International" && p.negara) {
-      pembeliPairsQr.push(["Negara", p.negara || "—"]);
-    }
-    yQR = pdfRenderKeyValueTable(docWithQR, yQR, pembeliPairsQr, {
-      title: "Data pembeli",
-    });
-
-    const prodPairsQr = [
-      ["Tipe Produk", p.tipeProduk || "—"],
-      ["Jenis Kopi", p.jenisKopi || "—"],
-      ["Proses Pengolahan", p.prosesPengolahan || "—"],
-      ["Kemasan", p.kemasan || "—"],
-    ];
-    yQR = pdfRenderKeyValueTable(docWithQR, yQR, prodPairsQr, {
-      title: "Data produk",
-    });
-
-    const hargaPairsQr = [
-      [
-        "Jumlah Pesanan (kg)",
-        (p.jumlahPesananKg || 0).toLocaleString("id-ID"),
-      ],
-      [
-        "Harga per Kg (Rp)",
-        (p.hargaPerKg || 0).toLocaleString("id-ID"),
-      ],
-      [
-        "Total Harga (Rp)",
-        (p.totalHarga || 0).toLocaleString("id-ID"),
-      ],
-    ];
-    yQR = pdfRenderKeyValueTable(docWithQR, yQR, hargaPairsQr, {
-      title: "Rincian harga",
-    });
-
-    // QR Code dengan URL yang benar
-    yQR += 25;
-    try {
-      // Wait for QRCode library
-      let QRCodeLib = null;
-      let retries = 0;
-      while (!QRCodeLib && retries < 50) {
-        if (window.QRCode) {
-          QRCodeLib = window.QRCode;
-        } else if (typeof QRCode !== "undefined") {
-          QRCodeLib = QRCode;
-        } else if (window.qrcode) {
-          QRCodeLib = window.qrcode;
-        }
-        if (!QRCodeLib) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          retries++;
+    let openedInTab = false;
+    if (pdfUrl && pdfViewTab && !pdfViewTab.closed) {
+      if (typeof window.openPdfInTabFromUrl === "function") {
+        openedInTab = await window.openPdfInTabFromUrl(pdfViewTab, pdfUrl);
+      }
+      if (!openedInTab) {
+        try {
+          pdfViewTab.location.replace(pdfUrl);
+          openedInTab = true;
+        } catch (e) {
+          console.warn("location.replace PDF failed:", e);
         }
       }
-
-      if (QRCodeLib) {
-        console.log("🔲 Generating QR Code with URL:", finalPdfUrl);
-        const canvas = document.createElement("canvas");
-        await new Promise((resolve, reject) => {
-          QRCodeLib.toCanvas(
-            canvas,
-            finalPdfUrl,
-            {
-              width: 150,
-              margin: 2,
-              errorCorrectionLevel: "H",
-              color: {
-                dark: "#000000",
-                light: "#FFFFFF",
-              },
-            },
-            (error) => {
-              if (error) {
-                console.error("QR Code generation error:", error);
-                reject(error);
-              } else {
-                console.log("✅ QR Code generated successfully");
-                resolve();
-              }
-            }
-          );
-        });
-
-        const qrImg = canvas.toDataURL("image/png", 1.0);
-        docWithQR.addImage(qrImg, "PNG", 20, yQR, 40, 40);
-        docWithQR.setFontSize(9);
-        docWithQR.setFont(undefined, "normal");
-        docWithQR.text("Scan untuk melihat invoice", 70, yQR + 20);
-      } else {
-        console.warn("⚠️ QRCode library not available");
-        docWithQR.setFontSize(10);
-        docWithQR.text("QR Code tidak dapat dibuat", 20, yQR);
-      }
-    } catch (error) {
-      console.error("❌ Error generating QR Code:", error);
-      docWithQR.setFontSize(10);
-      docWithQR.text("QR Code tidak dapat dibuat", 20, yQR);
     }
-
-    // Footer
-    const pageCount = docWithQR.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      docWithQR.setPage(i);
-      docWithQR.setFontSize(10);
-      docWithQR.text(
-        `Halaman ${i} dari ${pageCount}`,
-        105,
-        docWithQR.internal.pageSize.height - 10,
-        { align: "center" }
-      );
-      docWithQR.text(
-        `Dicetak pada: ${new Date().toLocaleString("id-ID")}`,
-        105,
-        docWithQR.internal.pageSize.height - 5,
-        { align: "center" }
-      );
-    }
-
-    // Generate final PDF with QR Code
-    const finalPdfBase64 = docWithQR.output("datauristring");
-
-    // Upload final PDF with QR Code
-    let finalPdfBase64Data = finalPdfBase64;
-    if (finalPdfBase64Data.includes(",")) {
-      finalPdfBase64Data = finalPdfBase64Data.split(",")[1];
-    }
-
-    try {
-      const finalUploadResult = await window.API.Laporan.uploadPdf(
-        `data:application/pdf;base64,${finalPdfBase64Data}`,
-        "invoice-pemesanan",
-        p.idPembelian
-      );
-
-      if (finalUploadResult && finalUploadResult.success) {
-        console.log("✅ Final Invoice PDF with QR Code uploaded!");
-        console.log("✅ Final PDF URL:", finalUploadResult.fullUrl);
-
-        // Hapus loading indicator
-        loadingToast.remove();
-
-        const openUrl = resolvePdf(finalUploadResult);
-        let openedInTab = false;
-        if (openUrl && pdfViewTab && !pdfViewTab.closed) {
-          if (typeof window.openPdfInTabFromUrl === "function") {
-            openedInTab = await window.openPdfInTabFromUrl(
-              pdfViewTab,
-              openUrl,
-            );
-          }
-          if (!openedInTab) {
-            try {
-              pdfViewTab.location.replace(openUrl);
-              openedInTab = true;
-            } catch (e) {
-              console.warn("location.replace PDF failed:", e);
-            }
-          }
-        }
-        if (!openedInTab && openUrl) {
-          const w = window.open(openUrl, "_blank", "noopener,noreferrer");
-          if (!w) {
-            alert(
-              `Popup diblokir browser. Salin URL ini lalu buka di tab baru:\n\n${openUrl}`,
-            );
-          }
-        } else if (!openUrl && pdfViewTab && !pdfViewTab.closed) {
-          pdfViewTab.close();
-        }
-
-        const showUrl =
-          openUrl ||
-          finalUploadResult.fullUrl ||
-          finalUploadResult.url ||
-          (finalUploadResult.filename
-            ? `${window.location.origin}/static/laporan/${finalUploadResult.filename}`
-            : "") ||
-          "";
+    if (!openedInTab && pdfUrl) {
+      const w = window.open(pdfUrl, "_blank", "noopener,noreferrer");
+      if (!w) {
         alert(
-          `Invoice PDF berhasil di-generate!${showUrl ? `\n\nURL: ${showUrl}` : ""}\n\nQR Code dapat di-scan untuk membuka invoice.`,
+          `Popup diblokir browser. Salin URL ini lalu buka di tab baru:\n\n${pdfUrl}`,
         );
-      } else {
-        throw new Error("Failed to upload final PDF");
       }
-    } catch (uploadError) {
-      console.warn(
-        "⚠️ Failed to upload PDF, saving locally instead:",
-        uploadError
-      );
-      // Fallback: Save PDF directly
-      const fileName = `Invoice_${p.idPembelian}_${new Date().getTime()}.pdf`;
-      docWithQR.save(fileName);
-
-      // Hapus loading indicator
-      loadingToast.remove();
-      if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
+    } else if (!pdfUrl && pdfViewTab && !pdfViewTab.closed) {
+      pdfViewTab.close();
     }
+
+    alert(`Invoice PDF berhasil dibuat.${pdfUrl ? `\n\n${pdfUrl}` : ""}`);
   } catch (error) {
     console.error("❌ Error generating Invoice PDF:", error);
-
     if (pdfViewTab && !pdfViewTab.closed) pdfViewTab.close();
-
-    // Remove loading indicator if still exists
-    const loadingToast = document.querySelector(".alert-info");
-    if (loadingToast && loadingToast.parentElement) {
-      loadingToast.parentElement.remove();
-    }
-
     alert(`Error generating invoice PDF: ${error.message || "Unknown error"}`);
   }
 }

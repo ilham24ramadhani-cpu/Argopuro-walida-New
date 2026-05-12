@@ -40,6 +40,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="{{ url_for('static', filename='js/pemesanan-invoice-pdf.js') }}"></script>
     <script
       src="{{ url_for('static', filename='js/kelola_laporan.js') }}"
       defer
@@ -1602,21 +1603,15 @@
                     <table class="table table-hover align-middle">
                       <thead class="table-light">
                         <tr>
-                          <th scope="col">No</th>
+                          <th scope="col" style="width: 2.5rem">No</th>
                           <th scope="col">ID Pembelian</th>
-                          <th scope="col">Nama Pembeli</th>
+                          <th scope="col">Nama pembeli</th>
                           <th scope="col">Tipe</th>
-                          <th scope="col">Negara</th>
-                          <th scope="col">Produk</th>
-                          <th scope="col">Proses pengolahan</th>
-                          <th scope="col">Jenis kopi</th>
-                          <th scope="col" class="text-end">Harga/kg (Rp)</th>
-                          <th scope="col" class="text-end">Jumlah (kg)</th>
-                          <th scope="col" class="text-end">Total Harga (Rp)</th>
+                          <th scope="col">Tanggal</th>
+                          <th scope="col" class="text-end">Total tagihan</th>
                           <th scope="col">Status</th>
                           <th scope="col">Status bayar</th>
-                          <th scope="col">Tanggal</th>
-                          <th scope="col" class="text-center">Aksi</th>
+                          <th scope="col" class="text-center">PDF</th>
                         </tr>
                       </thead>
                       <tbody id="tablePemesananLaporan">
