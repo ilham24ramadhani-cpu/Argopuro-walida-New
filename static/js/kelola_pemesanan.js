@@ -3095,7 +3095,6 @@ function pdfDrawInvoiceBody(doc, p, y) {
       drawRowSep(y);
       y += 2.5;
     } else {
-      pdfInvSetFont(doc, "bold");
       pdfPayRows.forEach((ex, ix) => {
         y = pageBreakIfNeeded(y);
         const lunas = pembayaranBarisLunasTrue(ex.terminLunas);
@@ -3105,6 +3104,13 @@ function pdfDrawInvoiceBody(doc, p, y) {
         const wKet = Math.max(72, C_AMT - C_DESC - 4);
         const catLines = doc.splitTextToSize(catShow, wKet);
         const y0 = y;
+        if (lunas) {
+          doc.setTextColor(0, 0, 0);
+          pdfInvSetFont(doc, "normal");
+        } else {
+          doc.setTextColor(200, 42, 42);
+          pdfInvSetFont(doc, "bold");
+        }
         doc.text(String(ix + 1), C_NO_R, y0, { align: "right" });
         catLines.forEach((ln) => {
           doc.text(ln, C_DESC, y);
@@ -3113,11 +3119,12 @@ function pdfDrawInvoiceBody(doc, p, y) {
         doc.text(jj > 0 ? pdfFmtIdNumber(jj) : "—", C_AMT, y0, {
           align: "right",
         });
+        doc.setTextColor(0, 0, 0);
+        pdfInvSetFont(doc, "normal");
         y = Math.max(y, y0 + 5.5);
         drawRowSep(y);
         y += 2.2;
       });
-      pdfInvSetFont(doc, "normal");
     }
 
     y = pageBreakIfNeeded(y);
