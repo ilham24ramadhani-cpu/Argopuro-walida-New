@@ -453,15 +453,16 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const LH_ROW = 4;
   const LH_PEMBELI = 4.5;
   /** Tepi kanan kolom nomor urut (jsPDF: align "right"). */
-  /** Kolom tabel DATA PEMESANAN: No, Item, Kg, Harga/Kg, Subtotal, Pembayaran, Status */
+  /** Grid kolom DATA PEMESANAN (mm): angka rata kanan di tepi kolom, Status setelah Pemb. */
   const C_NO_R = 20;
   const C_DESC = 23;
-  const C_QTY_R = 68;
-  const C_HP_R = 86;
+  const C_QTY_R = 78;
+  const C_HP_R = 92;
   const C_SUB_R = 108;
-  const C_PAY_R = 134;
-  const C_STAT_X = 137;
-  const W_DESC = Math.max(38, C_QTY_R - C_DESC - 2);
+  const C_PAY_R = 128;
+  const C_STAT_X = 131;
+  const W_DESC = Math.max(46, C_QTY_R - C_DESC - 3);
+  const W_STATUS = Math.max(18, tblRx - C_STAT_X - 2);
 
   const bayarLabel = (p.statusPembayaran || "Belum Lunas").trim();
   const orderLabel = (p.statusPemesanan || "—").trim();
@@ -645,10 +646,18 @@ function pdfDrawInvoiceBody(doc, p, y) {
     doc.text(hpStr, C_HP_R, yStartBlock, { align: "right" });
     doc.text(subStr, C_SUB_R, yStartBlock, { align: "right" });
     doc.text(payStr, C_PAY_R, yStartBlock, { align: "right" });
-    doc.text(statusStr, C_STAT_X, yStartBlock);
+    doc.setFontSize(7);
+    const stLines = doc.splitTextToSize(String(statusStr || "—"), W_STATUS);
+    let ys = yStartBlock;
+    stLines.forEach((ln) => {
+      doc.text(ln, C_STAT_X, ys);
+      ys += 3.5;
+    });
+    doc.setFontSize(FS_BODY);
     doc.setTextColor(0, 0, 0);
     pdfInvSetFont(doc, "normal");
-    y = Math.max(y, yStartBlock + 5.5);
+    const hStatus = stLines.length > 0 ? stLines.length * 3.5 + 1.2 : 5.5;
+    y = Math.max(y, yStartBlock + hStatus);
     drawRowSep(y);
     y += 2.2;
   };
@@ -681,7 +690,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     const catBase = String(ex.catatan || "").trim() || "Pembayaran tahap";
     const catShow = lunas ? catBase : `${catBase} — belum lunas`;
     const jj = parseFloat(ex.jumlahRp) || 0;
-    const wItem = Math.max(38, C_PAY_R - C_DESC - 4);
+    const wItem = Math.max(46, C_QTY_R - C_DESC - 3);
     const itemLines = doc.splitTextToSize(catShow, wItem);
     drawInvoiceTableRow({
       itemLines,
@@ -698,36 +707,48 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setLineWidth(0.2);
   doc.line(LX, y, tblRx, y);
   y += 4;
-  doc.setFontSize(FS_BODY);
-  pdfInvSetFont(doc, "normal");
-  doc.setTextColor(55, 65, 60);
-  const C_SUM_LABEL = C_DESC;
-  const C_SUM_AMT = tblRx - 3;
-  doc.text("Pajak (Rp)", C_SUM_LABEL, y);
-  doc.text(pdfFmtIdNumber(pajakInv), C_SUM_AMT, y, { align: "right" });
-  y += 5;
-  doc.text("Pengiriman (Rp)", C_SUM_LABEL, y);
-  doc.text(pdfFmtIdNumber(kirimInv), C_SUM_AMT, y, { align: "right" });
-  y += 5;
-  doc.text("Total nilai pemesanan (Rp)", C_SUM_LABEL, y);
-  doc.text(pdfFmtIdNumber(totalInv), C_SUM_AMT, y, { align: "right" });
-  y += 5;
-  doc.text("Sudah terbayar (Rp)", C_SUM_LABEL, y);
-  doc.text(pdfFmtIdNumber(sumBayarInv), C_SUM_AMT, y, { align: "right" });
-  y += 5.5;
+
+  /** Baris ringkasan: label di kolom Item, nominal di kolom Subtotal atau Pemb. */
+  const drawSummaryLine = (label, amountFormatted, amountRightX) => {
+    doc.setFontSize(FS_BODY);
+    pdfInvSetFont(doc, "normal");
+    doc.setTextColor(55, 65, 60);
+    const maxLab = Math.max(28, amountRightX - C_DESC - 8);
+    const labLines = doc.splitTextToSize(label, maxLab);
+    const y0 = y;
+    labLines.forEach((ln, i) => {
+      doc.text(ln, C_DESC, y0 + i * LH_ROW);
+    });
+    doc.text(amountFormatted, amountRightX, y0, { align: "right" });
+    y = y0 + Math.max(labLines.length, 1) * LH_ROW + 0.8;
+    drawRowSep(y);
+    y += 2.2;
+  };
+
+  drawSummaryLine("Pajak (Rp)", pdfFmtIdNumber(pajakInv), C_SUB_R);
+  drawSummaryLine("Pengiriman (Rp)", pdfFmtIdNumber(kirimInv), C_SUB_R);
+  drawSummaryLine("Total nilai pemesanan (Rp)", pdfFmtIdNumber(totalInv), C_SUB_R);
+  drawSummaryLine("Sudah terbayar (Rp)", pdfFmtIdNumber(sumBayarInv), C_PAY_R);
+
   doc.setDrawColor(46, 125, 50);
   doc.setLineWidth(0.28);
   doc.line(LX, y, tblRx, y);
-  y += 5;
+  y += 4.5;
   doc.setFontSize(9.5);
   pdfInvSetFont(doc, "bold");
   doc.setTextColor(25, 90, 40);
-  doc.text("SISA TAGIHAN (Rp)", C_SUM_LABEL, y);
-  doc.text(pdfFmtIdNumber(sisaInv), C_SUM_AMT, y, { align: "right" });
+  const sisaLabel = "SISA TAGIHAN (Rp)";
+  const maxSisaLab = Math.max(28, C_PAY_R - C_DESC - 8);
+  const sisaLabLines = doc.splitTextToSize(sisaLabel, maxSisaLab);
+  const yS0 = y;
+  sisaLabLines.forEach((ln, i) => {
+    doc.text(ln, C_DESC, yS0 + i * LH_ROW);
+  });
+  doc.text(pdfFmtIdNumber(sisaInv), C_PAY_R, yS0, { align: "right" });
   doc.setTextColor(0, 0, 0);
   pdfInvSetFont(doc, "normal");
   doc.setFontSize(FS_BODY);
-  y += 7;
+  y = yS0 + Math.max(sisaLabLines.length, 1) * LH_ROW + 3;
   doc.setDrawColor(46, 125, 50);
   doc.setLineWidth(0.22);
   doc.line(LX, y, tblRx, y);
