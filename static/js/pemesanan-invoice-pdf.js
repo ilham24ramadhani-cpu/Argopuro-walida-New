@@ -479,6 +479,11 @@ function pdfDrawInvoiceBody(doc, p, y) {
   ];
 
   const bayarLabel = (p.statusPembayaran || "Belum Lunas").trim();
+  const statusBayarKey = (p.statusPembayaran || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  const modePembayaranBertahap = statusBayarKey === "pembayaran bertahap";
   const orderLabel = (p.statusPemesanan || "—").trim();
   const sumBayarInv = sumJumlahPembayaranKloterFromDoc(p);
   const sisaInv = totalPembayaranSaatIniFromDoc(p);
@@ -508,8 +513,18 @@ function pdfDrawInvoiceBody(doc, p, y) {
   };
 
   // --- Ringkasan dokumen: identitas & status (tanpa duplikat angka keuangan) ---
+  doc.setFontSize(FS_SEC_SUB);
+  doc.setTextColor(95, 110, 100);
+  const hintRingkasan = modePembayaranBertahap
+    ? "Rincian nominal ada pada tabel di bawah."
+    : "Total tagihan (pajak & pengiriman) tercantum pada bagian DATA PEMESANAN.";
+  const hintLines = doc.splitTextToSize(hintRingkasan, 168);
+  const hintLineH = 3.9;
+  const ringBoxExtra = Math.max(0, (hintLines.length - 1) * hintLineH);
+  const ringBoxH = 36 + ringBoxExtra;
+
   doc.setFillColor(240, 248, 242);
-  doc.roundedRect(LX, y - 2, 182, 36, 1, 1, "F");
+  doc.roundedRect(LX, y - 2, 182, ringBoxH, 1, 1, "F");
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(FS_RING_TTL);
   pdfInvSetFont(doc, "bold");
@@ -538,13 +553,13 @@ function pdfDrawInvoiceBody(doc, p, y) {
   pdfDrawPaymentBadge(doc, LX + 3 + spw + 2, y + 27.5, bayarLabel);
   doc.setFontSize(FS_SEC_SUB);
   doc.setTextColor(95, 110, 100);
-  doc.text(
-    "Rincian barang dan pembayaran tercantum pada tabel DATA PEMESANAN.",
-    LX + 3,
-    y + 32.8,
-  );
+  let yHint = y + 31.2;
+  hintLines.forEach((ln) => {
+    doc.text(ln, LX + 3, yHint);
+    yHint += hintLineH;
+  });
   doc.setTextColor(0, 0, 0);
-  y += 38;
+  y += ringBoxH + 2;
 
   doc.setFontSize(FS_SEC);
   pdfInvSetFont(doc, "bold");
@@ -621,11 +636,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setFontSize(FS_SEC_SUB);
   pdfInvSetFont(doc, "normal");
   doc.setTextColor(88, 98, 92);
-  doc.text(
-    "Barang, subtotal per kloter, pembayaran tercatat (kloter & tahap), pajak & pengiriman.",
-    LX,
-    y + 4.4,
-  );
+  doc.text("Barang dipesan, harga, pajak & pengiriman.", LX, y + 4.4);
   doc.setTextColor(0, 0, 0);
   y += 9;
   const yHdr = y;
@@ -633,8 +644,8 @@ function pdfDrawInvoiceBody(doc, p, y) {
     { label: "No", x: C_NO_R, opt: { align: "right" } },
     { label: "Item (tipe · jenis · proses)", x: C_DESC },
     { label: "Kg", x: C_QTY_R, opt: { align: "right" } },
-    { label: "Harga/kg", x: C_HP_R, opt: { align: "right" } },
-    { label: "Subtotal", x: C_SUB_R, opt: { align: "right" } },
+    { label: "Harga/Kg", x: C_HP_R, opt: { align: "right" } },
+    { label: "Subtotal (Rp)", x: C_SUB_R, opt: { align: "right" } },
     { label: "Pemb. (Rp)", x: C_PAY_R, opt: { align: "right" } },
     { label: "Status", x: C_STAT_X },
   ], FS_TABLE_HEAD);
