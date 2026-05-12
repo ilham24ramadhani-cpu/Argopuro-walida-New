@@ -387,15 +387,22 @@ function pdfDrawOrderStatusBadge(doc, x, yBaseline, label) {
   pdfDrawColoredBadge(doc, x, yBaseline, label, pdfOrderStatusBadgeColors);
 }
 
-/** Baris pembayaran bertahap di PDF: dari pembayaranBertahapBaris, atau migrasi jumlahPembayaranKloter (dokumen lama). */
+/** Hanya baris tambahan dari API (DP/termin); pembayaran per kloter tampil di baris kloter, tanpa migrasi ganda. */
+function pdfPembayaranBertahapBarisOnlyForInvoice(p) {
+  if (!Array.isArray(p?.pembayaranBertahapBaris)) return [];
+  return p.pembayaranBertahapBaris.filter((ex) => {
+    const jj = parseFloat(ex?.jumlahRp) || 0;
+    const ct = String(ex?.catatan || "").trim();
+    return jj > 0 || ct.length > 0;
+  });
+}
+
+/**
+ * Untuk laporan HTML & kompatibilitas: baris bertahap dari API, atau migrasi dari jumlahPembayaranKloter (dokumen lama).
+ * PDF invoice memakai pdfPembayaranBertahapBarisOnlyForInvoice + kolom di tabel kloter agar tidak dobel.
+ */
 function pdfPembayaranBertahapRowsForInvoice(p) {
-  const fromApi = Array.isArray(p?.pembayaranBertahapBaris)
-    ? p.pembayaranBertahapBaris.filter((ex) => {
-        const jj = parseFloat(ex?.jumlahRp) || 0;
-        const ct = String(ex?.catatan || "").trim();
-        return jj > 0 || ct.length > 0;
-      })
-    : [];
+  const fromApi = pdfPembayaranBertahapBarisOnlyForInvoice(p);
   if (fromApi.length > 0) return fromApi;
   const lines = getPemesananKloterLinesFromDoc(p);
   const out = [];
@@ -410,7 +417,7 @@ function pdfPembayaranBertahapRowsForInvoice(p) {
 }
 
 /** Header baris tabel hijau seragam (invoice Argopuro). */
-function pdfInvoiceGreenTableHeader(doc, lx, rx, yTop, hdrH, cols) {
+function pdfInvoiceGreenTableHeader(doc, lx, rx, yTop, hdrH, cols, hdrFontSize) {
   const w = rx - lx;
   doc.setFillColor(228, 241, 232);
   doc.roundedRect(lx, yTop, w, hdrH, 0.5, 0.5, "F");
@@ -418,7 +425,9 @@ function pdfInvoiceGreenTableHeader(doc, lx, rx, yTop, hdrH, cols) {
   doc.setLineWidth(0.2);
   doc.roundedRect(lx, yTop, w, hdrH, 0.5, 0.5, "S");
   const ty = yTop + hdrH * 0.55 + 1.05;
-  doc.setFontSize(8);
+  doc.setFontSize(
+    Number.isFinite(hdrFontSize) && hdrFontSize > 0 ? hdrFontSize : 8,
+  );
   pdfInvSetFont(doc, "bold");
   doc.setTextColor(32, 88, 48);
   cols.forEach((c) => {
@@ -444,12 +453,15 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const LH_ROW = 4;
   const LH_PEMBELI = 4.5;
   /** Tepi kanan kolom nomor urut (jsPDF: align "right"). */
-  const C_NO_R = 23;
-  const C_DESC = 26;
-  const C_AMT = tblRx - 3;
-  const C_HP = C_AMT - 34;
-  const C_QTY = C_HP - 28;
-  const W_DESC = Math.max(72, C_QTY - C_DESC - 3);
+  /** Kolom tabel DATA PEMESANAN: No, Item, Kg, Harga/Kg, Subtotal, Pembayaran, Status */
+  const C_NO_R = 20;
+  const C_DESC = 23;
+  const C_QTY_R = 68;
+  const C_HP_R = 86;
+  const C_SUB_R = 108;
+  const C_PAY_R = 134;
+  const C_STAT_X = 137;
+  const W_DESC = Math.max(38, C_QTY_R - C_DESC - 2);
 
   const bayarLabel = (p.statusPembayaran || "Belum Lunas").trim();
   const orderLabel = (p.statusPemesanan || "—").trim();
@@ -458,21 +470,10 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const totalInv = parseFloat(p.totalHarga) || 0;
   const pajakInv = Math.max(0, parseFloat(p.biayaPajak) || 0);
   const kirimInv = Math.max(0, parseFloat(p.biayaPengiriman) || 0);
-  const pdfPayRows = pdfPembayaranBertahapRowsForInvoice(p);
-  const statusBayarKey = (p.statusPembayaran || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-  const pdfInvoiceModeBertahap = statusBayarKey === "pembayaran bertahap";
+  const barisPembayaranTambahan = pdfPembayaranBertahapBarisOnlyForInvoice(p);
 
-  const pageBreakIfNeeded = (yy) => {
-    if (!pdfInvoiceModeBertahap) return yy;
-    if (yy > 258) {
-      doc.addPage();
-      return 20;
-    }
-    return yy;
-  };
+  /** Invoice disederhanakan satu halaman: tanpa page break otomatis di isi. */
+  const pageBreakIfNeeded = (yy) => yy;
 
   const drawRowSep = (yy) => {
     doc.setDrawColor(220, 228, 222);
@@ -512,9 +513,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setFontSize(FS_SEC_SUB);
   doc.setTextColor(95, 110, 100);
   doc.text(
-    pdfInvoiceModeBertahap
-      ? "Rincian nominal ada pada tabel di bawah."
-      : "Total tagihan (pajak & pengiriman) tercantum pada bagian DATA PEMESANAN.",
+    "Rincian barang dan pembayaran tercantum pada tabel DATA PEMESANAN.",
     LX + 3,
     y + 32.8,
   );
@@ -596,42 +595,103 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setFontSize(FS_SEC_SUB);
   pdfInvSetFont(doc, "normal");
   doc.setTextColor(88, 98, 92);
-  doc.text("Barang dipesan, harga, pajak & pengiriman.", LX, y + 4.4);
+  doc.text(
+    "Barang, subtotal per kloter, pembayaran tercatat (kloter & tahap), pajak & pengiriman.",
+    LX,
+    y + 4.4,
+  );
   doc.setTextColor(0, 0, 0);
   y += 9;
   let yHdr = y;
   y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, HDR_H, [
     { label: "No", x: C_NO_R, opt: { align: "right" } },
     { label: "Item (tipe · jenis · proses)", x: C_DESC },
-    { label: "Kg", x: C_QTY, opt: { align: "right" } },
-    { label: "Harga/Kg", x: C_HP, opt: { align: "right" } },
-    { label: "Subtotal (Rp)", x: C_AMT, opt: { align: "right" } },
-  ]);
+    { label: "Kg", x: C_QTY_R, opt: { align: "right" } },
+    { label: "Harga/kg", x: C_HP_R, opt: { align: "right" } },
+    { label: "Subtotal", x: C_SUB_R, opt: { align: "right" } },
+    { label: "Pemb. (Rp)", x: C_PAY_R, opt: { align: "right" } },
+    { label: "Status", x: C_STAT_X },
+  ], 7);
 
   doc.setFontSize(FS_BODY);
   pdfInvSetFont(doc, "normal");
   const invLines = getPemesananKloterLinesFromDoc(p);
-  invLines.forEach((row, idx) => {
-    y = pageBreakIfNeeded(y);
-    const desk = `${row.tipeProduk || "-"} · ${row.jenisKopi || "-"} · ${row.prosesPengolahan || "-"}`;
-    const dLines = doc.splitTextToSize(desk, W_DESC);
+  let rowIdx = 0;
+
+  const drawInvoiceTableRow = ({
+    itemLines,
+    kgStr,
+    hpStr,
+    subStr,
+    payStr,
+    statusStr,
+    emphasizeUnpaid,
+  }) => {
     const yStartBlock = y;
-    doc.text(String(idx + 1), C_NO_R, yStartBlock, { align: "right" });
-    dLines.forEach((ln) => {
+    if (emphasizeUnpaid) {
+      doc.setTextColor(200, 42, 42);
+      pdfInvSetFont(doc, "bold");
+    } else {
+      doc.setTextColor(0, 0, 0);
+      pdfInvSetFont(doc, "normal");
+    }
+    rowIdx += 1;
+    doc.text(String(rowIdx), C_NO_R, yStartBlock, { align: "right" });
+    itemLines.forEach((ln) => {
       doc.text(ln, C_DESC, y);
       y += LH_ROW;
     });
-    const jumlahKg = parseFloat(row.beratKg) || 0;
-    const hargaKg = parseFloat(row.hargaPerKg) || 0;
-    const subtotalBaris = jumlahKg * hargaKg;
-    doc.text(pdfFmtIdNumber(jumlahKg), C_QTY, yStartBlock, { align: "right" });
-    doc.text(pdfFmtIdNumber(hargaKg), C_HP, yStartBlock, { align: "right" });
-    doc.text(pdfFmtIdNumber(subtotalBaris), C_AMT, yStartBlock, {
-      align: "right",
-    });
+    doc.text(kgStr, C_QTY_R, yStartBlock, { align: "right" });
+    doc.text(hpStr, C_HP_R, yStartBlock, { align: "right" });
+    doc.text(subStr, C_SUB_R, yStartBlock, { align: "right" });
+    doc.text(payStr, C_PAY_R, yStartBlock, { align: "right" });
+    doc.text(statusStr, C_STAT_X, yStartBlock);
+    doc.setTextColor(0, 0, 0);
+    pdfInvSetFont(doc, "normal");
     y = Math.max(y, yStartBlock + 5.5);
     drawRowSep(y);
     y += 2.2;
+  };
+
+  invLines.forEach((row) => {
+    y = pageBreakIfNeeded(y);
+    const desk = `${row.tipeProduk || "-"} · ${row.jenisKopi || "-"} · ${row.prosesPengolahan || "-"}`;
+    const dLines = doc.splitTextToSize(desk, W_DESC);
+    const jumlahKg = parseFloat(row.beratKg) || 0;
+    const hargaKg = parseFloat(row.hargaPerKg) || 0;
+    const subtotalBaris = jumlahKg * hargaKg;
+    const payK = parseFloat(row.jumlahPembayaranKloter) || 0;
+    const adaPayK = Number.isFinite(payK) && payK > 0;
+    const lunasK = pembayaranBarisLunasTrue(row.pembayaranKloterLunas);
+    const emphasizeK = adaPayK && !lunasK;
+    drawInvoiceTableRow({
+      itemLines: dLines,
+      kgStr: pdfFmtIdNumber(jumlahKg),
+      hpStr: pdfFmtIdNumber(hargaKg),
+      subStr: pdfFmtIdNumber(subtotalBaris),
+      payStr: adaPayK ? pdfFmtIdNumber(payK) : "—",
+      statusStr: adaPayK ? (lunasK ? "Lunas" : "Belum lunas") : "—",
+      emphasizeUnpaid: emphasizeK,
+    });
+  });
+
+  barisPembayaranTambahan.forEach((ex) => {
+    y = pageBreakIfNeeded(y);
+    const lunas = pembayaranBarisLunasTrue(ex.terminLunas);
+    const catBase = String(ex.catatan || "").trim() || "Pembayaran tahap";
+    const catShow = lunas ? catBase : `${catBase} — belum lunas`;
+    const jj = parseFloat(ex.jumlahRp) || 0;
+    const wItem = Math.max(38, C_PAY_R - C_DESC - 4);
+    const itemLines = doc.splitTextToSize(catShow, wItem);
+    drawInvoiceTableRow({
+      itemLines,
+      kgStr: "—",
+      hpStr: "—",
+      subStr: "—",
+      payStr: jj > 0 ? pdfFmtIdNumber(jj) : "—",
+      statusStr: lunas ? "Lunas" : "Belum lunas",
+      emphasizeUnpaid: !lunas,
+    });
   });
 
   doc.setDrawColor(46, 125, 50);
@@ -641,11 +701,19 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setFontSize(FS_BODY);
   pdfInvSetFont(doc, "normal");
   doc.setTextColor(55, 65, 60);
-  doc.text("Pajak (Rp)", C_DESC, y);
-  doc.text(pdfFmtIdNumber(pajakInv), C_AMT, y, { align: "right" });
+  const C_SUM_LABEL = C_DESC;
+  const C_SUM_AMT = tblRx - 3;
+  doc.text("Pajak (Rp)", C_SUM_LABEL, y);
+  doc.text(pdfFmtIdNumber(pajakInv), C_SUM_AMT, y, { align: "right" });
   y += 5;
-  doc.text("Pengiriman (Rp)", C_DESC, y);
-  doc.text(pdfFmtIdNumber(kirimInv), C_AMT, y, { align: "right" });
+  doc.text("Pengiriman (Rp)", C_SUM_LABEL, y);
+  doc.text(pdfFmtIdNumber(kirimInv), C_SUM_AMT, y, { align: "right" });
+  y += 5;
+  doc.text("Total nilai pemesanan (Rp)", C_SUM_LABEL, y);
+  doc.text(pdfFmtIdNumber(totalInv), C_SUM_AMT, y, { align: "right" });
+  y += 5;
+  doc.text("Sudah terbayar (Rp)", C_SUM_LABEL, y);
+  doc.text(pdfFmtIdNumber(sumBayarInv), C_SUM_AMT, y, { align: "right" });
   y += 5.5;
   doc.setDrawColor(46, 125, 50);
   doc.setLineWidth(0.28);
@@ -654,8 +722,8 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setFontSize(9.5);
   pdfInvSetFont(doc, "bold");
   doc.setTextColor(25, 90, 40);
-  doc.text("TOTAL TAGIHAN (Rp)", C_DESC, y);
-  doc.text(pdfFmtIdNumber(p.totalHarga || 0), C_AMT, y, { align: "right" });
+  doc.text("SISA TAGIHAN (Rp)", C_SUM_LABEL, y);
+  doc.text(pdfFmtIdNumber(sisaInv), C_SUM_AMT, y, { align: "right" });
   doc.setTextColor(0, 0, 0);
   pdfInvSetFont(doc, "normal");
   doc.setFontSize(FS_BODY);
@@ -664,259 +732,6 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setLineWidth(0.22);
   doc.line(LX, y, tblRx, y);
   y += 6;
-
-  if (pdfInvoiceModeBertahap) {
-    // ========== TABEL 2: DATA TAHAP PEMBAYARAN ==========
-    y = pageBreakIfNeeded(y);
-    doc.setFontSize(FS_SEC);
-    pdfInvSetFont(doc, "bold");
-    doc.setTextColor(25, 90, 40);
-    doc.text("DATA TAHAP PEMBAYARAN", LX, y);
-    doc.setFontSize(FS_SEC_SUB);
-    pdfInvSetFont(doc, "normal");
-    doc.setTextColor(88, 98, 92);
-    doc.text("Pencatatan DP / termin / cicilan (bertahap).", LX, y + 4.4);
-    doc.setTextColor(0, 0, 0);
-    y += 9;
-    yHdr = y;
-    y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, HDR_H, [
-      { label: "No", x: C_NO_R, opt: { align: "right" } },
-      { label: "Keterangan", x: C_DESC },
-      { label: "Nominal (Rp)", x: C_AMT, opt: { align: "right" } },
-    ]);
-    doc.setFontSize(FS_BODY);
-    if (pdfPayRows.length === 0) {
-      y = pageBreakIfNeeded(y);
-      pdfInvSetFont(doc, "italic");
-      doc.setTextColor(120, 125, 130);
-      doc.text("Belum ada baris pembayaran tercatat.", C_DESC, y);
-      pdfInvSetFont(doc, "normal");
-      doc.setTextColor(0, 0, 0);
-      y += 6;
-      drawRowSep(y);
-      y += 2.5;
-    } else {
-      pdfPayRows.forEach((ex, ix) => {
-        y = pageBreakIfNeeded(y);
-        const lunas = pembayaranBarisLunasTrue(ex.terminLunas);
-        const catBase = String(ex.catatan || "").trim() || `Baris ${ix + 1}`;
-        const catShow = lunas ? catBase : `${catBase} — belum lunas`;
-        const jj = parseFloat(ex.jumlahRp) || 0;
-        const wKet = Math.max(72, C_AMT - C_DESC - 4);
-        const catLines = doc.splitTextToSize(catShow, wKet);
-        const y0 = y;
-        if (lunas) {
-          doc.setTextColor(0, 0, 0);
-          pdfInvSetFont(doc, "normal");
-        } else {
-          doc.setTextColor(200, 42, 42);
-          pdfInvSetFont(doc, "bold");
-        }
-        doc.text(String(ix + 1), C_NO_R, y0, { align: "right" });
-        catLines.forEach((ln) => {
-          doc.text(ln, C_DESC, y);
-          y += LH_ROW;
-        });
-        doc.text(jj > 0 ? pdfFmtIdNumber(jj) : "—", C_AMT, y0, {
-          align: "right",
-        });
-        doc.setTextColor(0, 0, 0);
-        pdfInvSetFont(doc, "normal");
-        y = Math.max(y, y0 + 5.5);
-        drawRowSep(y);
-        y += 2.2;
-      });
-    }
-
-    const adaTerminBelumLunas = pdfPayRows.some(
-      (ex) => !pembayaranBarisLunasTrue(ex.terminLunas),
-    );
-    const sumNominalBertahapBelumLunas = pdfPayRows.reduce((acc, ex) => {
-      if (pembayaranBarisLunasTrue(ex.terminLunas)) return acc;
-      const jj = parseFloat(ex.jumlahRp) || 0;
-      return acc + (Number.isFinite(jj) && jj > 0 ? jj : 0);
-    }, 0);
-    const sumBelumLunasRounded =
-      Math.round(sumNominalBertahapBelumLunas * 100) / 100;
-    if (pdfPayRows.length > 0 && adaTerminBelumLunas) {
-      y = pageBreakIfNeeded(y + 1);
-      doc.setDrawColor(46, 125, 50);
-      doc.setLineWidth(0.18);
-      doc.line(LX, y, tblRx, y);
-      y += 4.8;
-      doc.setFontSize(9);
-      doc.setTextColor(200, 42, 42);
-      pdfInvSetFont(doc, "bold");
-      const lblBelum = doc.splitTextToSize(
-        "Total nominal tahap pembayaran belum lunas (Rp)",
-        C_AMT - C_DESC - 6,
-      );
-      const ySub0 = y;
-      lblBelum.forEach((ln, li) => {
-        doc.text(ln, C_DESC, ySub0 + li * LH_ROW);
-      });
-      doc.text(pdfFmtIdNumber(sumBelumLunasRounded), C_AMT, ySub0, {
-        align: "right",
-      });
-      doc.setTextColor(0, 0, 0);
-      pdfInvSetFont(doc, "normal");
-      y = ySub0 + Math.max(lblBelum.length, 1) * LH_ROW + 2;
-      drawRowSep(y);
-      y += 2.2;
-    }
-
-    const kloterBayarBelumLunas = invLines.filter(
-      (row) => !pembayaranBarisLunasTrue(row.pembayaranKloterLunas),
-    );
-    if (kloterBayarBelumLunas.length > 0) {
-      y = pageBreakIfNeeded(y + 1);
-      doc.setFontSize(FS_SEC_SUB);
-      pdfInvSetFont(doc, "bold");
-      doc.setTextColor(25, 90, 40);
-      doc.text("Total tagihan per kloter (belum lunas)", LX, y);
-      pdfInvSetFont(doc, "normal");
-      doc.setTextColor(88, 98, 92);
-      y += 4.2;
-      doc.setFontSize(7.4);
-      const footK = doc.splitTextToSize(
-        "Subtotal barang = kg × harga/kg per baris (pajak & pengiriman tetap pada total tagihan di atas).",
-        tblRx - LX,
-      );
-      footK.forEach((ln) => {
-        doc.text(ln, LX, y);
-        y += 3.6;
-      });
-      doc.setTextColor(0, 0, 0);
-      y += 2;
-      doc.setFontSize(FS_BODY);
-      const startNo = pdfPayRows.length;
-      kloterBayarBelumLunas.forEach((row, kix) => {
-        y = pageBreakIfNeeded(y);
-        const desk = `${row.tipeProduk || "-"} · ${row.jenisKopi || "-"} · ${row.prosesPengolahan || "-"}`;
-        const catShow = `${desk} — belum lunas (pembayaran kloter)`;
-        const subK = pemesananKloterSubtotalRpFromRow(row);
-        const wKetK = Math.max(72, C_AMT - C_DESC - 4);
-        const catLinesK = doc.splitTextToSize(catShow, wKetK);
-        const y0k = y;
-        doc.setTextColor(200, 42, 42);
-        pdfInvSetFont(doc, "bold");
-        doc.text(String(startNo + kix + 1), C_NO_R, y0k, { align: "right" });
-        catLinesK.forEach((ln) => {
-          doc.text(ln, C_DESC, y);
-          y += LH_ROW;
-        });
-        doc.text(pdfFmtIdNumber(subK), C_AMT, y0k, { align: "right" });
-        doc.setTextColor(0, 0, 0);
-        pdfInvSetFont(doc, "normal");
-        y = Math.max(y, y0k + 5.5);
-        drawRowSep(y);
-        y += 2.2;
-      });
-    }
-
-    y = pageBreakIfNeeded(y);
-    doc.setDrawColor(46, 125, 50);
-    doc.setLineWidth(0.28);
-    doc.line(LX, y, tblRx, y);
-    y += 5;
-    doc.setFontSize(9.5);
-    pdfInvSetFont(doc, "bold");
-    doc.setTextColor(25, 90, 40);
-    doc.text("TOTAL TERBAYAR (Rp)", C_DESC, y);
-    doc.text(pdfFmtIdNumber(sumBayarInv), C_AMT, y, { align: "right" });
-    doc.setTextColor(0, 0, 0);
-    pdfInvSetFont(doc, "normal");
-    doc.setFontSize(FS_BODY);
-    y += 7;
-    doc.setDrawColor(46, 125, 50);
-    doc.setLineWidth(0.22);
-    doc.line(LX, y, tblRx, y);
-    y += 6;
-
-    // Ringkasan tagihan di halaman baru setelah rincian pembayaran bertahap
-    doc.addPage();
-    const ringPageNo = doc.internal.getNumberOfPages();
-    y = 24;
-    doc.setFontSize(10.5);
-    pdfInvSetFont(doc, "bold");
-    doc.setTextColor(28, 105, 52);
-    doc.text(`Halaman ${ringPageNo} — Ringkasan tagihan`, LX, y);
-    pdfInvSetFont(doc, "normal");
-    doc.setFontSize(8.2);
-    doc.setTextColor(88, 98, 92);
-    const subRingPage = doc.splitTextToSize(
-      "Rekapitulasi total, terbayar, dan sisa tagihan. Catatan serta tanda tangan pembeli (jika ada) ditampilkan di halaman ini.",
-      tblRx - LX,
-    );
-    let yRingBanner = y + 5.5;
-    subRingPage.forEach((ln) => {
-      doc.text(ln, LX, yRingBanner);
-      yRingBanner += 4.1;
-    });
-    doc.setTextColor(0, 0, 0);
-    doc.setDrawColor(186, 202, 190);
-    doc.setLineWidth(0.22);
-    doc.line(LX, yRingBanner + 2, tblRx, yRingBanner + 2);
-    y = yRingBanner + 8;
-
-    // ========== TABEL 3: RINGKASAN TAGIHAN ==========
-    doc.setFontSize(FS_SEC);
-    pdfInvSetFont(doc, "bold");
-    doc.setTextColor(25, 90, 40);
-    doc.text("RINGKASAN TAGIHAN", LX, y);
-    doc.setFontSize(FS_SEC_SUB);
-    pdfInvSetFont(doc, "normal");
-    doc.setTextColor(88, 98, 92);
-    doc.text("Rekapitulasi keuangan pemesanan.", LX, y + 4.4);
-    doc.setTextColor(0, 0, 0);
-    y += 9;
-    yHdr = y;
-    y = pdfInvoiceGreenTableHeader(doc, LX, tblRx, yHdr, HDR_H, [
-      { label: "No", x: C_NO_R, opt: { align: "right" } },
-      { label: "Uraian", x: C_DESC },
-      { label: "Nilai (Rp)", x: C_AMT, opt: { align: "right" } },
-    ]);
-    doc.setFontSize(9.5);
-    pdfInvSetFont(doc, "bold");
-    doc.setTextColor(25, 90, 40);
-    doc.text("1", C_NO_R, y, { align: "right" });
-    doc.text("Total tagihan", C_DESC, y);
-    doc.text(pdfFmtIdNumber(totalInv), C_AMT, y, { align: "right" });
-    y += 6;
-    drawRowSep(y);
-    y += 2.5;
-    doc.text("2", C_NO_R, y, { align: "right" });
-    doc.text("Terbayar (total tercatat)", C_DESC, y);
-    doc.text(pdfFmtIdNumber(sumBayarInv), C_AMT, y, { align: "right" });
-    y += 6;
-    drawRowSep(y);
-    y += 2.5;
-    let ringkasanNo = 3;
-    if (adaTerminBelumLunas) {
-      doc.setTextColor(200, 42, 42);
-      doc.text(String(ringkasanNo), C_NO_R, y, { align: "right" });
-      doc.text("Nominal tahap belum lunas (belum masuk terbayar)", C_DESC, y);
-      doc.text(pdfFmtIdNumber(sumBelumLunasRounded), C_AMT, y, {
-        align: "right",
-      });
-      doc.setTextColor(25, 90, 40);
-      y += 6;
-      drawRowSep(y);
-      y += 2.5;
-      ringkasanNo += 1;
-    }
-    doc.text(String(ringkasanNo), C_NO_R, y, { align: "right" });
-    doc.text("Sisa tagihan", C_DESC, y);
-    doc.text(pdfFmtIdNumber(sisaInv), C_AMT, y, { align: "right" });
-    doc.setTextColor(0, 0, 0);
-    pdfInvSetFont(doc, "normal");
-    doc.setFontSize(FS_BODY);
-    y += 6;
-    doc.setDrawColor(46, 125, 50);
-    doc.setLineWidth(0.22);
-    doc.line(LX, y, tblRx, y);
-    y += 7;
-  }
 
   const catatan = (p.catatanPemesanan && String(p.catatanPemesanan).trim()) || "";
   const RX = 190;
@@ -994,69 +809,8 @@ function pdfDrawInvoiceBody(doc, p, y) {
   };
 
   const WCAT = 100;
-  const PAGE_SAFE_BOTTOM = 281;
-
-  const estimateFooterClusterHeight = (yProbe) => {
-    if (catatan) {
-      const outerLTtd = LX + WCAT + 4;
-      const sigL = outerLTtd + boxPad;
-      const sigR = RX - boxPad;
-      doc.setFontSize(9);
-      pdfInvSetFont(doc, "bold");
-      const namaLinesSig = doc.splitTextToSize(namaPembeliTtd, sigR - sigL);
-      pdfInvSetFont(doc, "normal");
-      const geo = computeTtdLayout(yProbe, sigL, sigR, namaLinesSig);
-      const hCat = pdfEstimateCatatanTableHeight(doc, catatan, WCAT, 4);
-      return Math.max(hCat + 4, geo.boxH + 14) + 8;
-    }
-    const sigR = RX - boxPad;
-    const sigL = sigR - 68;
-    doc.setFontSize(9);
-    pdfInvSetFont(doc, "bold");
-    const namaLinesSig = doc.splitTextToSize(namaPembeliTtd, sigR - sigL);
-    pdfInvSetFont(doc, "normal");
-    const geo = computeTtdLayout(yProbe + 2, sigL, sigR, namaLinesSig);
-    return geo.boxH + 22;
-  };
 
   let yFooter = y + 8;
-  if (
-    pdfInvoiceModeBertahap &&
-    yFooter + estimateFooterClusterHeight(yFooter) > PAGE_SAFE_BOTTOM
-  ) {
-    doc.addPage();
-    y = 24;
-    const pageNo = doc.internal.getNumberOfPages();
-    doc.setFontSize(10.5);
-    doc.setTextColor(28, 105, 52);
-    pdfInvSetFont(doc, "bold");
-    doc.text(
-      catatan
-        ? `Halaman ${pageNo} — Catatan & penandatanganan`
-        : `Halaman ${pageNo} — Penandatanganan pembeli`,
-      LX,
-      y,
-    );
-    pdfInvSetFont(doc, "normal");
-    doc.setFontSize(8.2);
-    doc.setTextColor(88, 98, 92);
-    const sub2 = doc.splitTextToSize(
-      catatan
-        ? "Catatan dan tanda tangan pembeli ditampilkan di halaman ini agar tidak terpotong oleh tabel rincian di halaman sebelumnya."
-        : "Tanda tangan pembeli ditampilkan di halaman ini agar tidak terpotong oleh rincian di halaman sebelumnya.",
-      tblRx - LX,
-    );
-    let ys = y + 5.5;
-    sub2.forEach((ln) => {
-      doc.text(ln, LX, ys);
-      ys += 4.1;
-    });
-    doc.setTextColor(0, 0, 0);
-    doc.setDrawColor(186, 202, 190);
-    doc.setLineWidth(0.22);
-    doc.line(LX, ys + 2, tblRx, ys + 2);
-    yFooter = ys + 8;
-  }
 
   let yBottom = yFooter;
 
@@ -1072,7 +826,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     const yCatEnd = pdfDrawCatatanPemesananTable(doc, LX, yFooter, catatan, {
       width: WCAT,
       marginBottom: 4,
-      forceSinglePage: !pdfInvoiceModeBertahap,
+      forceSinglePage: true,
       pageBottom: 286,
     });
     drawTtdBlock(yFooter, { ...geo, sigL, sigR }, namaLinesSig);
