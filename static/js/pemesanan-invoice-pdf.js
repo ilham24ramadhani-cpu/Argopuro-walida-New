@@ -125,10 +125,20 @@ const INV_GREEN_DARK_RGB = [22, 101, 52];
 const INV_TABLE_HEADER_RGB = [232, 242, 234];
 /** Zebra baris genap (#fafafa). */
 const INV_ZEBRA_RGB = [250, 250, 250];
-/** Label sekunder (#444). */
-const INV_LABEL_MUTED_RGB = [68, 68, 68];
-/** Teks utama (#111). */
-const INV_TEXT_BODY_RGB = [17, 17, 17];
+/** Label (#262626) — kontras cetak, selaras teks tebal di UI. */
+const INV_LABEL_MUTED_RGB = [38, 38, 38];
+/** Teks isi (#0f0f0f). */
+const INV_TEXT_BODY_RGB = [15, 15, 15];
+/**
+ * Warna badge selaras Bootstrap 5 + tabel kelola_pemesanan.js
+ * (success / warning+text-dark / info+text-dark).
+ */
+const BS_SUCCESS_RGB = [25, 135, 84];
+const BS_WARNING_RGB = [255, 193, 7];
+const BS_INFO_RGB = [13, 202, 240];
+const BS_SECONDARY_RGB = [108, 117, 125];
+const BS_BADGE_TEXT_DARK_RGB = [33, 37, 41];
+const BS_WHITE_RGB = [255, 255, 255];
 
 /** Logo + kop surat Argopuro Walida untuk PDF invoice */
 async function fetchArgopuroLogoForPdf() {
@@ -192,11 +202,13 @@ function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p) {
   doc.setFontSize(FT_CO);
   pdfInvSetFont(doc, "bold");
   doc.text(nama, RX, y + 6.2, { align: "right" });
-  doc.setTextColor(66, 66, 66);
+  doc.setTextColor(42, 42, 42);
   doc.setFontSize(FT_BODY);
-  pdfInvSetFont(doc, "normal");
+  pdfInvSetFont(doc, "bold");
   doc.text(`Kontak: ${kontak}`, RX, y + 10.8, { align: "right" });
   doc.setFontSize(FT_BODY - 0.5);
+  pdfInvSetFont(doc, "normal");
+  doc.setTextColor(42, 42, 42);
   const addrLines = doc.splitTextToSize(alamat, addrW);
   let ay = y + 15.2;
   addrLines.forEach((ln) => {
@@ -220,7 +232,7 @@ function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p) {
   doc.text("INVOICE PEMESANAN", CX, yTitle, { align: "center" });
   pdfInvSetFont(doc, "normal");
   doc.setFontSize(FT_BODY - 0.5);
-  doc.setTextColor(92, 92, 92);
+  doc.setTextColor(48, 48, 48);
   const sub = "Dokumen pembelian resmi — mohon periksa rincian berikut.";
   const subLines = doc.splitTextToSize(sub, RX - MARGIN_L - MARGIN_R - 20);
   let ys = yTitle + 5.5;
@@ -283,7 +295,7 @@ function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p) {
 
   doc.setFontSize(FT_TITLE);
   pdfInvSetFont(doc, "bold");
-  doc.setTextColor(38, 38, 38);
+  doc.setTextColor(24, 24, 24);
   doc.text("Ringkasan dokumen", LX + pad, yTop + titleBarH * 0.62);
   pdfInvSetFont(doc, "normal");
 
@@ -297,7 +309,7 @@ function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p) {
 
   const v1 = c1 + lblW;
   const v2 = c2 + lblW;
-  pdfInvSetFont(doc, "normal");
+  pdfInvSetFont(doc, "bold");
   doc.setTextColor(...INV_TEXT_BODY_RGB);
   doc.text(String(idDoc), v1, y1);
   doc.text(tgl, v1, y2);
@@ -497,46 +509,55 @@ function pdfEstimateCatatanTableHeight(doc, catatanRaw, W, marginBottom) {
   return headerH + bodyH + mb;
 }
 
-/** Warna badge status pembayaran: teks putih tebal di atas bg */
+/**
+ * Warna badge pembayaran — sama logika kelas di kelola_pemesanan.js:
+ * Lunas → bg-success putih; Pembayaran Bertahap → bg-info text-dark;
+ * lainnya (Belum Lunas) → bg-warning text-dark.
+ */
 function pdfPaymentBadgeColors(status) {
   const s = (status || "Belum Lunas").trim();
-  if (s === "Lunas") return { rgb: [25, 135, 84] };
-  const low = s.toLowerCase();
-  if (
-    s === "Pembayaran Bertahap" ||
-    low === "pembayaran bertahap"
-  ) {
-    /* Kuning tua agar teks putih tetap terbaca */
-    return { rgb: [212, 160, 23] };
+  if (s === "Lunas") {
+    return { bg: [...BS_SUCCESS_RGB], fg: [...BS_WHITE_RGB] };
   }
-  return { rgb: [220, 53, 69] };
+  const low = s.toLowerCase();
+  if (s === "Pembayaran Bertahap" || low === "pembayaran bertahap") {
+    return { bg: [...BS_INFO_RGB], fg: [...BS_BADGE_TEXT_DARK_RGB] };
+  }
+  return { bg: [...BS_WARNING_RGB], fg: [...BS_BADGE_TEXT_DARK_RGB] };
 }
 
-/** Warna badge status pemesanan (invoice) */
+/**
+ * Warna badge status pemesanan — sama tabel kelola_pemesanan.js:
+ * Complete → bg-success putih; Ordering → bg-warning text-dark; lainnya → secondary putih.
+ */
 function pdfOrderStatusBadgeColors(status) {
   const s = (status || "").trim();
-  if (s === "Complete") return { rgb: [25, 135, 84] };
-  if (s === "Ordering") return { rgb: [212, 160, 23] };
-  return { rgb: [108, 117, 125] };
+  if (s === "Complete") {
+    return { bg: [...BS_SUCCESS_RGB], fg: [...BS_WHITE_RGB] };
+  }
+  if (s === "Ordering") {
+    return { bg: [...BS_WARNING_RGB], fg: [...BS_BADGE_TEXT_DARK_RGB] };
+  }
+  return { bg: [...BS_SECONDARY_RGB], fg: [...BS_WHITE_RGB] };
 }
 
-/** Badge status: tinggi 22px, padding 2×10px, font 11px, radius 4px (setara cetak). */
+/** Badge status: tinggi 22px, padding 2×10px, font 11px, radius ~BS badge (0.375rem). */
 function pdfDrawColoredBadge(doc, x, yCenter, label, colorFn) {
   const text = String(label || "—");
   const fs = invoiceFontPtFromPx(11);
   const h = invoicePxToMm(22);
   const padX = invoicePxToMm(10);
-  const rad = invoicePxToMm(4) * 0.35;
+  const rad = Math.min(invoicePxToMm(6), h * 0.32);
   doc.setFontSize(fs);
   pdfInvSetFont(doc, "bold");
   const w = doc.getTextWidth(text);
   const x0 = x;
   const y0 = yCenter - h / 2;
-  const { rgb } = colorFn(text);
-  doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+  const { bg, fg } = colorFn(text);
+  doc.setFillColor(bg[0], bg[1], bg[2]);
   doc.roundedRect(x0, y0, w + padX * 2, h, rad, rad, "F");
   const yBaseline = yCenter + fs * 0.28;
-  doc.setTextColor(255, 255, 255);
+  doc.setTextColor(fg[0], fg[1], fg[2]);
   doc.text(text, x0 + padX, yBaseline);
   doc.setTextColor(0, 0, 0);
   pdfInvSetFont(doc, "normal");
@@ -601,7 +622,7 @@ function pdfInvoiceGreenTableHeader(doc, lx, rx, yTop, hdrH, cols, hdrFontSize) 
   doc.setFontSize(fs);
   const ty = yTop + hdrH * 0.5 + fs * 0.35;
   pdfInvSetFont(doc, "bold");
-  doc.setTextColor(38, 80, 52);
+  doc.setTextColor(12, 72, 40);
   cols.forEach((c) => {
     doc.text(c.label, c.x, ty, c.opt || {});
   });
@@ -622,7 +643,7 @@ function pdfInvoiceNeutralTableHeader(doc, lx, rx, yTop, hdrH, cols, fontPt) {
     Number.isFinite(fontPt) && fontPt > 0 ? fontPt : invoiceFontPtFromPx(12),
   );
   pdfInvSetFont(doc, "bold");
-  doc.setTextColor(38, 38, 38);
+  doc.setTextColor(22, 22, 22);
   cols.forEach((c) => {
     doc.text(c.label, c.x, ty, c.opt || {});
   });
@@ -729,7 +750,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     pdfInvSetFont(doc, "bold");
     doc.setTextColor(...INV_LABEL_MUTED_RGB);
     doc.text(label, LX_LABEL, y);
-    pdfInvSetFont(doc, "normal");
+    pdfInvSetFont(doc, "bold");
     doc.setTextColor(...INV_TEXT_BODY_RGB);
     const val = pdfDecodeHtmlEntities(String(valueRaw ?? "—").trim()) || "—";
     const lines = doc.splitTextToSize(val, RX - VX_VALUE - CELL_PAD_H);
@@ -810,7 +831,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
       pdfInvSetFont(doc, "bold");
     } else {
       doc.setTextColor(...INV_TEXT_BODY_RGB);
-      pdfInvSetFont(doc, "normal");
+      pdfInvSetFont(doc, "bold");
     }
     itemLines.forEach((ln, i) => {
       doc.text(ln, xItemL, yStart + i * LH);
@@ -824,8 +845,9 @@ function pdfDrawInvoiceBody(doc, p, y) {
     doc.text(subStr, xSubR, yMid, { align: "right" });
     doc.text(payStr, xPayR, yMid, { align: "right" });
 
-    doc.setFont(PDF_FONT, emphasizeUnpaid ? "bold" : "normal");
+    doc.setFont(PDF_FONT, "bold");
     doc.setFontSize(FT_BODY - 0.5);
+    doc.setTextColor(...INV_TEXT_BODY_RGB);
     doc.text(String(statusStr || "—"), xStatC, yMid, { align: "center" });
     doc.setFontSize(FT_BODY);
 
@@ -885,19 +907,20 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const innerW = SUMMARY_BOX_W - 2 * boxPad;
 
   doc.setFontSize(FT_BODY);
-  pdfInvSetFont(doc, "normal");
+  pdfInvSetFont(doc, "bold");
   doc.setTextColor(...INV_LABEL_MUTED_RGB);
   doc.text("Pajak (Rp)", boxL + boxPad, yy);
-  doc.setFont("courier", "normal");
+  doc.setFont("courier", "bold");
   doc.setTextColor(...INV_TEXT_BODY_RGB);
   doc.text(pdfFmtIdNumber(pajakInv), boxL + boxPad + innerW, yy, {
     align: "right",
   });
   doc.setFont(PDF_FONT, "normal");
   yy += LH * 0.65;
+  pdfInvSetFont(doc, "bold");
   doc.setTextColor(...INV_LABEL_MUTED_RGB);
   doc.text("Pengiriman (Rp)", boxL + boxPad, yy);
-  doc.setFont("courier", "normal");
+  doc.setFont("courier", "bold");
   doc.setTextColor(...INV_TEXT_BODY_RGB);
   doc.text(pdfFmtIdNumber(kirimInv), boxL + boxPad + innerW, yy, {
     align: "right",

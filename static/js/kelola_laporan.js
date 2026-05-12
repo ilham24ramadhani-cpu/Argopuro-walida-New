@@ -6909,8 +6909,17 @@ function renderLaporanPemesananInvoiceDetailHtml(p) {
         <table class="table table-sm table-borderless mb-0">
           <tr><td class="text-muted py-1">ID pembelian</td><td class="py-1"><strong>${safe(p.idPembelian)}</strong></td></tr>
           <tr><td class="text-muted py-1">Tanggal</td><td class="py-1">${safe(formatDate(p.tanggalPemesanan))}</td></tr>
-          <tr><td class="text-muted py-1">Status pemesanan</td><td class="py-1"><span class="badge ${p.statusPemesanan === "Complete" ? "bg-success" : "bg-warning text-dark"}">${safe(p.statusPemesanan)}</span></td></tr>
-          <tr><td class="text-muted py-1">Status pembayaran</td><td class="py-1"><span class="badge bg-secondary">${safe(p.statusPembayaran || "—")}</span></td></tr>
+          <tr><td class="text-muted py-1">Status pemesanan</td><td class="py-1"><span class="badge ${p.statusPemesanan === "Complete" ? "bg-success" : "bg-warning"}">${safe(p.statusPemesanan)}</span></td></tr>
+          <tr><td class="text-muted py-1">Status pembayaran</td><td class="py-1">${(() => {
+            const sb = String(p.statusPembayaran || "Belum Lunas").trim();
+            const payCls =
+              sb === "Lunas"
+                ? "bg-success"
+                : sb === "Pembayaran Bertahap"
+                  ? "bg-info text-dark"
+                  : "bg-warning text-dark";
+            return `<span class="badge ${payCls}">${safe(sb)}</span>`;
+          })()}</td></tr>
         </table>
       </div>
     </div>
