@@ -3135,6 +3135,43 @@ function pdfDrawInvoiceBody(doc, p, y) {
       });
     }
 
+    const adaTerminBelumLunas = pdfPayRows.some(
+      (ex) => !pembayaranBarisLunasTrue(ex.terminLunas),
+    );
+    const sumNominalBertahapBelumLunas = pdfPayRows.reduce((acc, ex) => {
+      if (pembayaranBarisLunasTrue(ex.terminLunas)) return acc;
+      const jj = parseFloat(ex.jumlahRp) || 0;
+      return acc + (Number.isFinite(jj) && jj > 0 ? jj : 0);
+    }, 0);
+    const sumBelumLunasRounded =
+      Math.round(sumNominalBertahapBelumLunas * 100) / 100;
+    if (pdfPayRows.length > 0 && adaTerminBelumLunas) {
+      y = pageBreakIfNeeded(y + 1);
+      doc.setDrawColor(46, 125, 50);
+      doc.setLineWidth(0.18);
+      doc.line(LX, y, tblRx, y);
+      y += 4.8;
+      doc.setFontSize(9);
+      doc.setTextColor(200, 42, 42);
+      pdfInvSetFont(doc, "bold");
+      const lblBelum = doc.splitTextToSize(
+        "Total nominal tahap pembayaran belum lunas (Rp)",
+        C_AMT - C_DESC - 6,
+      );
+      const ySub0 = y;
+      lblBelum.forEach((ln, li) => {
+        doc.text(ln, C_DESC, ySub0 + li * LH_ROW);
+      });
+      doc.text(pdfFmtIdNumber(sumBelumLunasRounded), C_AMT, ySub0, {
+        align: "right",
+      });
+      doc.setTextColor(0, 0, 0);
+      pdfInvSetFont(doc, "normal");
+      y = ySub0 + Math.max(lblBelum.length, 1) * LH_ROW + 2;
+      drawRowSep(y);
+      y += 2.2;
+    }
+
     const kloterBayarBelumLunas = invLines.filter(
       (row) => !pembayaranBarisLunasTrue(row.pembayaranKloterLunas),
     );
@@ -3261,7 +3298,21 @@ function pdfDrawInvoiceBody(doc, p, y) {
     y += 6;
     drawRowSep(y);
     y += 2.5;
-    doc.text("3", C_NO_R, y, { align: "right" });
+    let ringkasanNo = 3;
+    if (adaTerminBelumLunas) {
+      doc.setTextColor(200, 42, 42);
+      doc.text(String(ringkasanNo), C_NO_R, y, { align: "right" });
+      doc.text("Nominal tahap belum lunas (belum masuk terbayar)", C_DESC, y);
+      doc.text(pdfFmtIdNumber(sumBelumLunasRounded), C_AMT, y, {
+        align: "right",
+      });
+      doc.setTextColor(25, 90, 40);
+      y += 6;
+      drawRowSep(y);
+      y += 2.5;
+      ringkasanNo += 1;
+    }
+    doc.text(String(ringkasanNo), C_NO_R, y, { align: "right" });
     doc.text("Sisa tagihan", C_DESC, y);
     doc.text(pdfFmtIdNumber(sisaInv), C_AMT, y, { align: "right" });
     doc.setTextColor(0, 0, 0);
