@@ -2467,7 +2467,7 @@ async function generateInvoicePDF(idPembelian) {
     const { jsPDF: jsPDFLib } = window.jspdf;
     const logoDataUrl = await fetchArgopuroLogoForPdf();
     const doc = new jsPDFLib();
-    let yCur = pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl);
+    let yCur = pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p);
     yCur = pdfDrawInvoiceBody(doc, p, yCur);
 
     let pdfBase64 = doc.output("datauristring");
