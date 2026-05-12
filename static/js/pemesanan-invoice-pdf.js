@@ -226,19 +226,14 @@ function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p) {
 }
 
 /**
- * Kotak ringkasan lebar penuh: grid 2 kolom (kiri: ID & tanggal, kanan: status + badge).
- * @returns {number} y di bawah kotak
+ * Kotak ringkasan lebar penuh: grid 2 kolom; lebar kolom label diukur agar tidak overlap nilai.
  */
 function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p) {
-  const pad = 4;
-  const rowH = 5.6;
-  const titleBarH = 6.5;
+  const pad = 5;
+  const rowH = 6.2;
+  const titleBarH = 6.8;
   const W = RX - LX;
-  const split = LX + W * 0.5;
-  const labelColW = invoicePxToMm(108);
-  const valL = LX + pad + labelColW;
-  const labR = split + pad * 0.5;
-  const valR = labR + labelColW * 0.92;
+  const FT = invoiceFontPtFromPx(12);
 
   const idDoc = p?.idPembelian || "-";
   const tgl = invoiceFormatDateForPdf(
@@ -246,7 +241,39 @@ function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p) {
   );
   const orderLabel = (p?.statusPemesanan || "—").trim();
   const bayarLabel = (p?.statusPembayaran || "Belum Lunas").trim();
-  const bodyH = rowH * 2 + pad * 0.5;
+
+  doc.setFontSize(FT);
+  pdfInvSetFont(doc, "bold");
+  const wL1 = doc.getTextWidth("ID Pembelian");
+  const wL2 = doc.getTextWidth("Tanggal pemesanan");
+  const maxLeftLab = Math.max(wL1, wL2);
+  const wR1 = doc.getTextWidth("Status pemesanan");
+  const wR2 = doc.getTextWidth("Status pembayaran");
+  const maxRightLab = Math.max(wR1, wR2);
+
+  pdfInvSetFont(doc, "normal");
+  const wV1 = doc.getTextWidth(String(idDoc));
+  const wV2 = doc.getTextWidth(tgl);
+  const maxLeftVal = Math.max(wV1, wV2);
+
+  const gapLabVal = 4;
+  const gapMid = 5;
+  const badgeW1 = pdfEstimateBadgeWidthMm(doc, orderLabel);
+  const badgeW2 = pdfEstimateBadgeWidthMm(doc, bayarLabel);
+  const rightBlockW =
+    pad + maxRightLab + gapLabVal + Math.max(badgeW1, badgeW2) + pad;
+
+  const leftNeed =
+    pad + maxLeftLab + gapLabVal + maxLeftVal + pad + gapMid;
+  let split = LX + Math.max(W * 0.48, leftNeed);
+  split = Math.min(split, RX - pad - rightBlockW);
+  split = Math.max(split, LX + leftNeed);
+
+  const valL = LX + pad + maxLeftLab + gapLabVal;
+  const labR = split + gapMid * 0.35;
+  const badgeX = labR + maxRightLab + gapLabVal;
+
+  const bodyH = rowH * 2 + pad * 0.6;
   const boxH = titleBarH + bodyH + pad;
 
   doc.setFillColor(...INV_GRAY_BOX_RGB);
@@ -260,15 +287,15 @@ function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p) {
   doc.setLineWidth(0.1);
   doc.line(LX, yTop + titleBarH, LX + W, yTop + titleBarH);
 
-  doc.setFontSize(invoiceFontPtFromPx(12));
+  doc.setFontSize(FT);
   pdfInvSetFont(doc, "bold");
   doc.setTextColor(38, 38, 38);
   doc.text("Ringkasan dokumen", LX + pad, yTop + titleBarH * 0.62);
 
-  const y1 = yTop + titleBarH + pad + rowH * 0.55;
+  const y1 = yTop + titleBarH + pad + rowH * 0.58;
   const y2 = y1 + rowH;
-  const FT = invoiceFontPtFromPx(12);
-  doc.setFontSize(FT);
+  const yBadge = y1 + 0.42;
+  const yBadge2 = y2 + 0.42;
 
   pdfInvSetFont(doc, "bold");
   doc.setTextColor(88, 88, 88);
@@ -286,8 +313,8 @@ function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p) {
   doc.setLineWidth(0.12);
   doc.line(split, yTop + titleBarH + 0.5, split, yTop + boxH - pad * 0.5);
 
-  pdfDrawOrderStatusBadge(doc, valR, y1 + 0.32, orderLabel);
-  pdfDrawPaymentBadge(doc, valR, y2 + 0.32, bayarLabel);
+  pdfDrawOrderStatusBadge(doc, badgeX, yBadge, orderLabel);
+  pdfDrawPaymentBadge(doc, badgeX, yBadge2, bayarLabel);
 
   doc.setTextColor(0, 0, 0);
   pdfInvSetFont(doc, "normal");
@@ -498,7 +525,15 @@ function pdfDrawColoredBadge(doc, x, yBaseline, label, colorFn) {
   doc.text(text, x0 + padX, yBaseline);
   doc.setTextColor(0, 0, 0);
   pdfInvSetFont(doc, "normal");
-  doc.setFontSize(9);
+}
+
+/** Lebar badge (mm) agar kolom ringkasan tidak overlap. */
+function pdfEstimateBadgeWidthMm(doc, label) {
+  doc.setFontSize(8);
+  pdfInvSetFont(doc, "bold");
+  const w = doc.getTextWidth(String(label || "—"));
+  pdfInvSetFont(doc, "normal");
+  return w + 4.6;
 }
 
 function pdfDrawPaymentBadge(doc, x, yBaseline, label) {
@@ -546,10 +581,11 @@ function pdfInvoiceGreenTableHeader(doc, lx, rx, yTop, hdrH, cols, hdrFontSize) 
   doc.setDrawColor(38, 120, 55);
   doc.setLineWidth(0.2);
   doc.roundedRect(lx, yTop, w, hdrH, 0.5, 0.5, "S");
-  const ty = yTop + hdrH * 0.55 + 1.05;
-  doc.setFontSize(
-    Number.isFinite(hdrFontSize) && hdrFontSize > 0 ? hdrFontSize : 8,
-  );
+  const fs =
+    Number.isFinite(hdrFontSize) && hdrFontSize > 0 ? hdrFontSize : 8;
+  doc.setFontSize(fs);
+  /* Vertikal tengah area header (baseline jsPDF ~0.35× fontSize di atas geometris tengah) */
+  const ty = yTop + hdrH * 0.5 + fs * 0.35;
   pdfInvSetFont(doc, "bold");
   doc.setTextColor(32, 88, 48);
   cols.forEach((c) => {
@@ -604,14 +640,24 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const MARGIN_R = invoicePxToMm(40);
   const LX = MARGIN_L;
   const RX = 210 - MARGIN_R;
-  const LABEL_COL = invoicePxToMm(160);
-  const LX_LABEL = LX + 3.5;
-  const VX_VALUE = LX + LABEL_COL;
-  const ROW_PAD = invoicePxToMm(8) / 2;
+  const LX_LABEL = LX + 4;
+  doc.setFontSize(FT_BODY);
+  pdfInvSetFont(doc, "bold");
+  const buyerLabW = Math.max(
+    doc.getTextWidth("Nama"),
+    doc.getTextWidth("Kontak"),
+    doc.getTextWidth("Alamat"),
+    doc.getTextWidth("ID master"),
+    doc.getTextWidth("Tipe"),
+    doc.getTextWidth("Negara"),
+  );
+  pdfInvSetFont(doc, "normal");
+  const VX_VALUE = LX_LABEL + buyerLabW + 5.5;
+  const ROW_PAD = 3.2;
   const SIG_BEFORE = invoicePxToMm(36);
   const FT_SEC = invoiceFontPtFromPx(14);
   const FT_BODY = invoiceFontPtFromPx(12);
-  const HDR_H = 7.5;
+  const HDR_H = 8.2;
   const LH = 4.15;
   const SECTION_GAP = invoicePxToMm(20);
   const BAR_H = 6.4;
@@ -732,7 +778,8 @@ function pdfDrawInvoiceBody(doc, p, y) {
     statusStr,
     emphasizeUnpaid,
   }) => {
-    const yStart = y + ROW_PAD;
+    const padTop = 1.5;
+    const yStart = y + ROW_PAD + padTop;
     rowIdx += 1;
     if (emphasizeUnpaid) {
       doc.setTextColor(195, 40, 40);
@@ -741,24 +788,26 @@ function pdfDrawInvoiceBody(doc, p, y) {
       doc.setTextColor(22, 22, 22);
       pdfInvSetFont(doc, "normal");
     }
-    doc.text(String(rowIdx), xNoL, yStart);
+    doc.text(String(rowIdx), xNoL, yNum);
     let yi = yStart;
     itemLines.forEach((ln) => {
       doc.text(ln, xItem1 + 0.5, yi);
       yi += LH;
     });
-    doc.text(kgStr, xKgR - 0.5, yStart, { align: "right" });
-    doc.text(hpStr, xHpR - 0.5, yStart, { align: "right" });
-    doc.text(subStr, xSubR - 0.5, yStart, { align: "right" });
-    doc.text(payStr, xPayR - 0.5, yStart, { align: "right" });
+    const hText = Math.max(itemLines.length, 1) * LH;
+    const yNum = yStart + (hText - LH) * 0.5;
+    doc.text(kgStr, xKgR - 0.5, yNum, { align: "right" });
+    doc.text(hpStr, xHpR - 0.5, yNum, { align: "right" });
+    doc.text(subStr, xSubR - 0.5, yNum, { align: "right" });
+    doc.text(payStr, xPayR - 0.5, yNum, { align: "right" });
     const st = String(statusStr || "—");
     doc.setFontSize(FT_BODY - 1);
-    doc.text(st, xStatC, yStart, { align: "center" });
+    doc.text(st, xStatC, yNum, { align: "center" });
     doc.setFontSize(FT_BODY - 0.5);
     const hInner = Math.max(yi - yStart, LH);
-    y = yStart + hInner + ROW_PAD;
+    y = yStart + hInner + ROW_PAD + 0.6;
     drawH(y);
-    y += 1;
+    y += 1.1;
     doc.setTextColor(0, 0, 0);
     pdfInvSetFont(doc, "normal");
   };
