@@ -669,6 +669,62 @@ function pdfInvoiceTableTotalBand(doc, lx, rx, y, label, valueStr) {
   return y + h;
 }
 
+/**
+ * Label ringkasan untuk satu baris pembayaran bertahap (teks dari input catatan, mis. "DP").
+ */
+function pdfBertahapRingkasanLabel(ex, lunas) {
+  let raw = pdfDecodeHtmlEntities(String(ex?.catatan ?? "").trim()).replace(
+    /\s+/g,
+    " ",
+  );
+  if (raw.length > 72) raw = `${raw.slice(0, 69)}…`;
+  const judul = raw.length > 0 ? raw : "Pembayaran tahap";
+  if (lunas) return `${judul} (sudah lunas)`;
+  return `${judul} yang perlu dibayarkan`;
+}
+
+/**
+ * Blok label (boleh beberapa baris) + nominal rata kanan di kotak ringkasan invoice.
+ * @returns {number} y di bawah blok
+ */
+function pdfDrawInvoiceSummaryKVRow(doc, xBox, yTop, innerW, padX, spec) {
+  const {
+    label,
+    valueStr,
+    fontPt = invoiceFontPtFromPx(12),
+    labelRgb = INV_LABEL_MUTED_RGB,
+    valueRgb = INV_TEXT_BODY_RGB,
+    dangerValue = false,
+    labelBold = true,
+    reserveNumMm = 28,
+  } = spec;
+  const xL = xBox + padX;
+  const labelMax = Math.max(18, innerW - reserveNumMm);
+  const lineStep = ((fontPt * 25.4) / 72) * 1.2;
+  doc.setFont(PDF_FONT, labelBold ? "bold" : "normal");
+  doc.setFontSize(fontPt);
+  doc.setTextColor(labelRgb[0], labelRgb[1], labelRgb[2]);
+  const lines = doc.splitTextToSize(String(label), labelMax);
+  const n = Math.max(lines.length, 1);
+  const blockH = n * lineStep;
+  const yVal = yTop + blockH * 0.55;
+
+  lines.forEach((ln, i) => {
+    doc.text(ln, xL, yTop + lineStep * (i + 0.78));
+  });
+
+  const vRgb = dangerValue ? [175, 35, 42] : valueRgb;
+  doc.setFont("courier", "bold");
+  doc.setFontSize(fontPt);
+  doc.setTextColor(vRgb[0], vRgb[1], vRgb[2]);
+  doc.text(String(valueStr), xL + innerW, yVal, { align: "right" });
+
+  doc.setFont(PDF_FONT, "normal");
+  doc.setTextColor(0, 0, 0);
+  pdfInvSetFont(doc, "normal");
+  return yTop + blockH + lineStep * 0.15;
+}
+
 function pdfDrawInvoiceBody(doc, p, y) {
   pdfInvSetFont(doc, "normal");
   const MARGIN_L = invoicePxToMm(40);
@@ -906,27 +962,82 @@ function pdfDrawInvoiceBody(doc, p, y) {
   let yy = boxTop + boxPad + 4;
   const innerW = SUMMARY_BOX_W - 2 * boxPad;
 
-  doc.setFontSize(FT_BODY);
-  pdfInvSetFont(doc, "bold");
-  doc.setTextColor(...INV_LABEL_MUTED_RGB);
-  doc.text("Pajak (Rp)", boxL + boxPad, yy);
-  doc.setFont("courier", "bold");
-  doc.setTextColor(...INV_TEXT_BODY_RGB);
-  doc.text(pdfFmtIdNumber(pajakInv), boxL + boxPad + innerW, yy, {
-    align: "right",
+  yy = pdfDrawInvoiceSummaryKVRow(doc, boxL, yy, innerW, boxPad, {
+    label: "Pajak (Rp)",
+    valueStr: pdfFmtIdNumber(pajakInv),
+    fontPt: FT_BODY,
+    labelRgb: INV_LABEL_MUTED_RGB,
+    valueRgb: INV_TEXT_BODY_RGB,
+    dangerValue: false,
+    labelBold: true,
   });
-  doc.setFont(PDF_FONT, "normal");
-  yy += LH * 0.65;
-  pdfInvSetFont(doc, "bold");
-  doc.setTextColor(...INV_LABEL_MUTED_RGB);
-  doc.text("Pengiriman (Rp)", boxL + boxPad, yy);
-  doc.setFont("courier", "bold");
-  doc.setTextColor(...INV_TEXT_BODY_RGB);
-  doc.text(pdfFmtIdNumber(kirimInv), boxL + boxPad + innerW, yy, {
-    align: "right",
+  yy = pdfDrawInvoiceSummaryKVRow(doc, boxL, yy, innerW, boxPad, {
+    label: "Pengiriman (Rp)",
+    valueStr: pdfFmtIdNumber(kirimInv),
+    fontPt: FT_BODY,
+    labelRgb: INV_LABEL_MUTED_RGB,
+    valueRgb: INV_TEXT_BODY_RGB,
+    dangerValue: false,
+    labelBold: true,
   });
-  doc.setFont(PDF_FONT, "normal");
-  yy += LH * 0.75;
+
+  const statusBayar = String(p?.statusPembayaran || "").trim();
+  const showBertahapRingkasan =
+    statusBayar === "Pembayaran Bertahap" ||
+    barisPembayaranTambahan.length > 0;
+
+  if (showBertahapRingkasan) {
+    yy += LH * 0.08;
+    doc.setDrawColor(...INVOICE_BORDER_RGB);
+    doc.setLineWidth(0.1);
+    doc.line(boxL + boxPad, yy, boxL + boxPad + innerW, yy);
+    yy += LH * 0.38;
+
+    const subHdrPt = FT_BODY - 0.35;
+    doc.setFontSize(subHdrPt);
+    pdfInvSetFont(doc, "bold");
+    doc.setTextColor(...INV_GREEN_RGB);
+    doc.text("Rincian pembayaran bertahap", boxL + boxPad, yy + (subHdrPt * 25.4) / 72 * 0.72);
+    yy += LH * 0.58;
+    pdfInvSetFont(doc, "normal");
+    doc.setTextColor(0, 0, 0);
+
+    if (barisPembayaranTambahan.length > 0) {
+      const rowsSorted = barisPembayaranTambahan.slice().sort((a, b) => {
+        const la = pembayaranBarisLunasTrue(a?.terminLunas) ? 1 : 0;
+        const lb = pembayaranBarisLunasTrue(b?.terminLunas) ? 1 : 0;
+        return la - lb;
+      });
+      rowsSorted.forEach((ex) => {
+        const lunas = pembayaranBarisLunasTrue(ex.terminLunas);
+        const jj = parseFloat(ex?.jumlahRp) || 0;
+        const label = pdfBertahapRingkasanLabel(ex, lunas);
+        const valStr = jj > 0 ? pdfFmtIdNumber(jj) : "—";
+        const unpaidNeedPay = !lunas && jj > 0;
+        yy = pdfDrawInvoiceSummaryKVRow(doc, boxL, yy, innerW, boxPad, {
+          label,
+          valueStr: valStr,
+          fontPt: FT_BODY - 0.15,
+          labelRgb: lunas ? [105, 105, 105] : INV_LABEL_MUTED_RGB,
+          valueRgb: lunas ? [105, 105, 105] : INV_TEXT_BODY_RGB,
+          dangerValue: unpaidNeedPay,
+          labelBold: true,
+        });
+      });
+    } else {
+      yy = pdfDrawInvoiceSummaryKVRow(doc, boxL, yy, innerW, boxPad, {
+        label:
+          "Belum ada baris termin / nominal pada dokumen (periksa di Kelola Pemesanan)",
+        valueStr: "—",
+        fontPt: FT_BODY - 0.35,
+        labelRgb: [115, 115, 115],
+        valueRgb: [115, 115, 115],
+        dangerValue: false,
+        labelBold: false,
+      });
+    }
+    yy += LH * 0.2;
+  }
 
   const totalBandH = 8.5;
   doc.setFillColor(14, 78, 44);
