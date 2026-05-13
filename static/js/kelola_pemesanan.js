@@ -1016,13 +1016,61 @@ async function loadPemesanan() {
     // Also update global pemesanan array for backward compatibility
     pemesanan = pemesananData;
 
+    refreshFilterProsesPemesananOptions();
     applyFilterPemesanan();
   } catch (error) {
     console.error("❌ Error loading pemesanan:", error);
     pemesananData = [];
     pemesanan = [];
+    refreshFilterProsesPemesananOptions();
     applyFilterPemesanan();
   }
+}
+
+/** True jika pemesanan punya minimal satu kloter dengan proses pengolahan = nilai filter. */
+function pemesananMatchesProsesPengolahanFilter(p, filterProses) {
+  const want = String(filterProses || "").trim();
+  if (!want) return true;
+  const lines =
+    typeof getPemesananKloterLinesFromDoc === "function"
+      ? getPemesananKloterLinesFromDoc(p)
+      : [];
+  if (lines.some((L) => (L.prosesPengolahan || "").trim() === want)) {
+    return true;
+  }
+  const root = String(p?.prosesPengolahan || "").trim();
+  return root === want;
+}
+
+/** Isi ulang opsi dropdown proses pengolahan dari agregat data pemesanan. */
+function refreshFilterProsesPemesananOptions() {
+  const sel = document.getElementById("filterProsesPemesanan");
+  if (!sel) return;
+  const prev = sel.value;
+  const set = new Set();
+  (pemesananData || []).forEach((p) => {
+    const lines =
+      typeof getPemesananKloterLinesFromDoc === "function"
+        ? getPemesananKloterLinesFromDoc(p)
+        : [];
+    lines.forEach((L) => {
+      const pr = String(L?.prosesPengolahan || "").trim();
+      if (pr) set.add(pr);
+    });
+    const r = String(p?.prosesPengolahan || "").trim();
+    if (r) set.add(r);
+  });
+  const sorted = Array.from(set).sort((a, b) =>
+    a.localeCompare(b, "id", { sensitivity: "base" }),
+  );
+  sel.innerHTML = '<option value="">Semua proses</option>';
+  sorted.forEach((label) => {
+    const op = document.createElement("option");
+    op.value = label;
+    op.textContent = label;
+    sel.appendChild(op);
+  });
+  if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
 }
 
 // Apply filter to pemesanan table
@@ -1034,11 +1082,13 @@ function applyFilterPemesanan() {
     const searchTerm = document.getElementById("searchPemesanan")
       ? document.getElementById("searchPemesanan").value.toLowerCase()
       : "";
-    const filterTipe = document.getElementById("filterTipePemesanan")
-      ? document.getElementById("filterTipePemesanan").value
+    const filterProses = document.getElementById("filterProsesPemesanan")
+      ? document.getElementById("filterProsesPemesanan").value
       : "";
-    const filterStatus = document.getElementById("filterStatusPemesanan")
-      ? document.getElementById("filterStatusPemesanan").value
+    const filterPembayaran = document.getElementById(
+      "filterStatusPembayaranPemesanan",
+    )
+      ? document.getElementById("filterStatusPembayaranPemesanan").value
       : "";
 
     // Filter data
@@ -1047,10 +1097,15 @@ function applyFilterPemesanan() {
         !searchTerm ||
         (p.idPembelian && p.idPembelian.toLowerCase().includes(searchTerm)) ||
         (p.namaPembeli && p.namaPembeli.toLowerCase().includes(searchTerm));
-      const matchTipe = !filterTipe || p.tipePemesanan === filterTipe;
-      const matchStatus = !filterStatus || p.statusPemesanan === filterStatus;
+      const matchProses = pemesananMatchesProsesPengolahanFilter(
+        p,
+        filterProses,
+      );
+      const statusBayar = String(p.statusPembayaran || "Belum Lunas").trim();
+      const matchPembayaran =
+        !filterPembayaran || statusBayar === filterPembayaran;
 
-      return matchSearch && matchTipe && matchStatus;
+      return matchSearch && matchProses && matchPembayaran;
     });
 
     if (filteredPemesanan.length === 0) {

@@ -414,32 +414,30 @@
                 <div class="card-body">
                   <div class="row g-3">
                     <div class="col-md-3">
-                      <label for="filterTipePemesanan" class="form-label"
-                        >Filter Tipe</label
+                      <label for="filterProsesPemesanan" class="form-label"
+                        >Filter proses pengolahan</label
                       >
                       <select
                         class="form-select"
-                        id="filterTipePemesanan"
+                        id="filterProsesPemesanan"
                         onchange="applyFilterPemesanan()"
                       >
-                        <option value="">Semua Tipe</option>
-                        <option value="Lokal">Lokal</option>
-                        <option value="International">International</option>
-                        <option value="E-commerce">E-commerce</option>
+                        <option value="">Semua proses</option>
                       </select>
                     </div>
                     <div class="col-md-3">
-                      <label for="filterStatusPemesanan" class="form-label"
-                        >Filter Status</label
+                      <label for="filterStatusPembayaranPemesanan" class="form-label"
+                        >Filter status pembayaran</label
                       >
                       <select
                         class="form-select"
-                        id="filterStatusPemesanan"
+                        id="filterStatusPembayaranPemesanan"
                         onchange="applyFilterPemesanan()"
                       >
-                        <option value="">Semua Status</option>
-                        <option value="Ordering">Ordering</option>
-                        <option value="Complete">Complete</option>
+                        <option value="">Semua pembayaran</option>
+                        <option value="Belum Lunas">Belum Lunas</option>
+                        <option value="Lunas">Lunas</option>
+                        <option value="Pembayaran Bertahap">Pembayaran Bertahap</option>
                       </select>
                     </div>
                     <div class="col-md-6">
