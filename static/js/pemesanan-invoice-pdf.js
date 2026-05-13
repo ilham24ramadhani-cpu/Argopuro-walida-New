@@ -111,6 +111,42 @@ function totalPembayaranSaatIniFromDoc(p) {
   const sum = sumJumlahPembayaranKloterFromDoc(p);
   return Math.max(0, Math.round((th - sum) * 100) / 100);
 }
+
+/** Σ nominal baris pembayaranBertahapBaris (hanya baris yang dipakai invoice) + Σ yang belum lunas. */
+function pdfSumPembayaranBertahapFromDoc(p) {
+  const rows = pdfPembayaranBertahapBarisOnlyForInvoice(p);
+  let sumAll = 0;
+  let sumBelum = 0;
+  rows.forEach((ex) => {
+    const jj = Math.round((parseFloat(ex?.jumlahRp) || 0) * 100) / 100;
+    if (jj <= 0) return;
+    sumAll += jj;
+    if (!pembayaranBarisLunasTrue(ex?.terminLunas)) sumBelum += jj;
+  });
+  return {
+    sumAll: Math.round(sumAll * 100) / 100,
+    sumBelum: Math.round(sumBelum * 100) / 100,
+  };
+}
+
+/**
+ * Angka TOTAL TAGIHAN di kotak ringkasan PDF (aturan khusus pembayaran bertahap):
+ * - Status "Pembayaran Bertahap" dan masih ada nominal termin belum lunas → total = Σ nominal termin belum lunas.
+ * - Status "Pembayaran Bertahap" dan tidak ada nominal termin belum lunas (sudah lunas / tidak ada tunggakan bertahap) → total = total pemesanan (totalHarga) dikurangi Σ nominal semua baris bertahap tercatat.
+ * - Selain itu → sisa tagihan (selaras totalPembayaranSaatIniFromDoc / API).
+ */
+function invoiceTotalTagihanKotakFromDoc(p) {
+  const sisa = totalPembayaranSaatIniFromDoc(p);
+  const statusBayar = String(p?.statusPembayaran || "").trim();
+  if (statusBayar !== "Pembayaran Bertahap") return sisa;
+
+  const th = Math.max(0, Math.round((parseFloat(p?.totalHarga) || 0) * 100) / 100);
+  const { sumAll, sumBelum } = pdfSumPembayaranBertahapFromDoc(p);
+
+  if (sumBelum > 0) return sumBelum;
+  if (sumAll > 0) return Math.max(0, Math.round((th - sumAll) * 100) / 100);
+  return sisa;
+}
 /** Warna border netral #e5e5e5 (dipakai header & tabel). */
 const INVOICE_BORDER_RGB = [229, 229, 229];
 /** Aksen hijau merek (judul bagian, total, nama perusahaan di kop). */
@@ -760,7 +796,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const xPayR = edges[6] - CELL_PAD_H;
   const xStatC = (edges[6] + edges[7]) / 2;
 
-  const sisaInv = totalPembayaranSaatIniFromDoc(p);
+  const totalTagihanKotakInv = invoiceTotalTagihanKotakFromDoc(p);
   const pajakInv = Math.max(0, parseFloat(p.biayaPajak) || 0);
   const kirimInv = Math.max(0, parseFloat(p.biayaPengiriman) || 0);
   const invLines = getPemesananKloterLinesFromDoc(p);
@@ -1050,7 +1086,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.text("TOTAL TAGIHAN (Rp)", boxL + boxPad + 2, yy + totalBandH * 0.68);
   doc.setFont("courier", "bold");
   doc.text(
-    pdfFmtIdNumber(sisaInv),
+    pdfFmtIdNumber(totalTagihanKotakInv),
     boxL + boxPad + innerW - 2,
     yy + totalBandH * 0.68,
     { align: "right" },
