@@ -440,7 +440,21 @@
                         <option value="Pembayaran Bertahap">Pembayaran Bertahap</option>
                       </select>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-3">
+                      <label for="filterStatusPemesanan" class="form-label"
+                        >Filter status pemesanan</label
+                      >
+                      <select
+                        class="form-select"
+                        id="filterStatusPemesanan"
+                        onchange="applyFilterPemesanan()"
+                      >
+                        <option value="">Semua status pemesanan</option>
+                        <option value="Ordering">Ordering</option>
+                        <option value="Complete">Complete</option>
+                      </select>
+                    </div>
+                    <div class="col-md-3">
                       <label for="searchPemesanan" class="form-label"
                         >Cari ID Pembelian / Nama Pembeli</label
                       >

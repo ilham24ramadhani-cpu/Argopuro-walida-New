@@ -1090,6 +1090,11 @@ function applyFilterPemesanan() {
     )
       ? document.getElementById("filterStatusPembayaranPemesanan").value
       : "";
+    const filterStatusPemesanan = document.getElementById(
+      "filterStatusPemesanan",
+    )
+      ? document.getElementById("filterStatusPemesanan").value
+      : "";
 
     // Filter data
     let filteredPemesanan = pemesananData.filter((p) => {
@@ -1104,8 +1109,16 @@ function applyFilterPemesanan() {
       const statusBayar = String(p.statusPembayaran || "Belum Lunas").trim();
       const matchPembayaran =
         !filterPembayaran || statusBayar === filterPembayaran;
+      const matchStatusPemesanan =
+        !filterStatusPemesanan ||
+        String(p.statusPemesanan || "").trim() === filterStatusPemesanan;
 
-      return matchSearch && matchProses && matchPembayaran;
+      return (
+        matchSearch &&
+        matchProses &&
+        matchPembayaran &&
+        matchStatusPemesanan
+      );
     });
 
     if (filteredPemesanan.length === 0) {
