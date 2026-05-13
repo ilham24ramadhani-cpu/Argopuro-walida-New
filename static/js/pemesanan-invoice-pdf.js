@@ -971,25 +971,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
     });
   });
 
-  barisPembayaranTambahan.forEach((ex) => {
-    const lunas = pembayaranBarisLunasTrue(ex.terminLunas);
-    const catBase = String(ex.catatan || "").trim() || "Pembayaran tahap";
-    const catShow = lunas ? catBase : `${catBase} (belum lunas)`;
-    const jj = parseFloat(ex.jumlahRp) || 0;
-    const itemLines = doc.splitTextToSize(
-      pdfDecodeHtmlEntities(catShow),
-      W_ITEM,
-    );
-    drawPemesananRow({
-      itemLines,
-      kgStr: "—",
-      hpStr: "—",
-      subStr: "—",
-      payStr: jj > 0 ? pdfFmtIdNumber(jj) : "—",
-      statusStr: lunas ? "Lunas" : "Belum",
-      emphasizeUnpaid: !lunas,
-    });
-  });
+  /** Baris DP/termin `pembayaranBertahapBaris` tidak ditampil di tabel order — hanya di kotak «Rincian pembayaran bertahap» di bawah. */
 
   y += 2;
   const boxL = RX - SUMMARY_BOX_W;
