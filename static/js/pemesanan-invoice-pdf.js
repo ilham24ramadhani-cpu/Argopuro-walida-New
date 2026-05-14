@@ -408,10 +408,11 @@ const PDF_PAGE_HEIGHT_MM = 297;
 /** Margin bawah aman (mm). */
 const PDF_SAFE_BOTTOM_MM = 10;
 /**
- * Ruang cadangan di bawah baris tabel order (ringkasan kanan + catatan + tanda tangan).
- * Harus cukup besar agar baris tidak “mendorong” footer keluar halaman.
+ * Margin bawah aman saat memutus baris tabel DATA PEMESANAN (bukan cadangan ringkasan).
+ * Cadangan besar (108mm) salah dipakai di sini → halaman baru terlalu awal dengan banyak ruang kosong.
+ * Ringkasan + footer punya pengecekan addPage terpisah.
  */
-const PDF_INVOICE_ORDER_TABLE_RESERVE_BELOW_MM = 108;
+const PDF_INVOICE_TABLE_ROW_SAFE_BOTTOM_MM = 8;
 
 function pdfInvoiceContinuePageTopMm() {
   return invoicePxToMm(24);
@@ -989,7 +990,7 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
     ? 1e9
     : PDF_PAGE_HEIGHT_MM -
       PDF_SAFE_BOTTOM_MM -
-      PDF_INVOICE_ORDER_TABLE_RESERVE_BELOW_MM;
+      PDF_INVOICE_TABLE_ROW_SAFE_BOTTOM_MM;
 
   const continueDataPemesananTableOnNewPage = () => {
     if (singlePage) return;
