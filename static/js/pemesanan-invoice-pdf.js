@@ -398,6 +398,25 @@ function invoiceFontPtFromPx(px) {
   return (Number(px) * 72) / 96;
 }
 
+/** Tinggi halaman A4 jsPDF (mm). */
+const PDF_PAGE_HEIGHT_MM = 297;
+/** Margin bawah aman (mm). */
+const PDF_SAFE_BOTTOM_MM = 10;
+/**
+ * Ruang cadangan di bawah baris tabel order (ringkasan kanan + catatan + tanda tangan).
+ * Harus cukup besar agar baris tidak “mendorong” footer keluar halaman.
+ */
+const PDF_INVOICE_ORDER_TABLE_RESERVE_BELOW_MM = 108;
+
+function pdfInvoiceContinuePageTopMm() {
+  return invoicePxToMm(24);
+}
+
+/** Batas Y aman untuk isi (mm). */
+function pdfInvoicePageContentBottomMm() {
+  return PDF_PAGE_HEIGHT_MM - PDF_SAFE_BOTTOM_MM;
+}
+
 /** Font tunggal untuk invoice PDF (built-in jsPDF). */
 const PDF_FONT = "helvetica";
 
@@ -436,13 +455,16 @@ function pdfDecodeHtmlEntities(raw) {
 
 /**
  * Tabel catatan pemesanan (bingkai + header + isi).
- * @returns {number} y di bawah tabel + jarak kecil
+ * Tanpa forceSinglePage: isi dipecah ke beberapa halaman jika perlu (tidak dipotong "…").
+ * @returns {number} y di bawah blok terakhir + marginBottom
  */
 function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
   const optsObj = opts || {};
   const forceSinglePage = !!optsObj.forceSinglePage;
   const pageBottom =
-    optsObj && Number.isFinite(optsObj.pageBottom) ? optsObj.pageBottom : 288;
+    optsObj && Number.isFinite(optsObj.pageBottom)
+      ? optsObj.pageBottom
+      : pdfInvoicePageContentBottomMm();
   const W =
     optsObj && Number.isFinite(optsObj.width) ? optsObj.width : 190 - LX;
   const padX = 3.5;
@@ -467,55 +489,86 @@ function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
     doc.splitTextToSize(blk, innerW).forEach((ln) => displayLines.push(ln));
     if (idx < blocks.length - 1) displayLines.push("");
   });
-  let bodyH = bodyPadTop + displayLines.length * lineH + bodyPadBottom;
-  let tableH = headerH + bodyH;
-
-  if (!forceSinglePage && y + tableH > 285) {
-    doc.addPage();
-    y = 22;
-  } else if (forceSinglePage && y + tableH > pageBottom) {
-    const avail = pageBottom - y - headerH - bodyPadTop - bodyPadBottom;
-    const maxLines = Math.max(1, Math.floor(avail / lineH));
-    if (displayLines.length > maxLines) {
-      const head = displayLines.slice(0, Math.max(0, maxLines - 1));
-      head.push("…");
-      displayLines.length = 0;
-      head.forEach((ln) => displayLines.push(ln));
-      bodyH = bodyPadTop + displayLines.length * lineH + bodyPadBottom;
-      tableH = headerH + bodyH;
-    }
+  if (displayLines.length === 0) {
+    displayLines.push("");
   }
 
-  doc.setDrawColor(38, 120, 55);
-  doc.setLineWidth(0.15);
-  doc.roundedRect(LX, y, W, tableH, 1, 1, "S");
+  const drawChunk = (yTop, titleText, chunkLines) => {
+    const bodyH = bodyPadTop + chunkLines.length * lineH + bodyPadBottom;
+    const tableH = headerH + bodyH;
+    doc.setDrawColor(38, 120, 55);
+    doc.setLineWidth(0.15);
+    doc.roundedRect(LX, yTop, W, tableH, 1, 1, "S");
 
-  doc.setFillColor(...INV_GREEN_LIGHT_RGB);
-  doc.rect(LX + 0.2, y + 0.2, W - 0.4, headerH - 0.05, "F");
-  doc.setDrawColor(38, 120, 55);
-  doc.setLineWidth(0.12);
-  doc.line(LX, y + headerH, LX + W, y + headerH);
+    doc.setFillColor(...INV_GREEN_LIGHT_RGB);
+    doc.rect(LX + 0.2, yTop + 0.2, W - 0.4, headerH - 0.05, "F");
+    doc.setDrawColor(38, 120, 55);
+    doc.setLineWidth(0.12);
+    doc.line(LX, yTop + headerH, LX + W, yTop + headerH);
 
-  doc.setTextColor(...INV_GREEN_RGB);
-  pdfInvSetFont(doc, "bold");
-  doc.setFontSize(8.5);
-  doc.text("CATATAN PEMESANAN", LX + padX, y + 5.7);
-  doc.setTextColor(35, 35, 35);
-  pdfInvSetFont(doc, "normal");
-  doc.setFontSize(8);
+    doc.setTextColor(...INV_GREEN_RGB);
+    pdfInvSetFont(doc, "bold");
+    doc.setFontSize(8.5);
+    doc.text(titleText, LX + padX, yTop + 5.7);
+    doc.setTextColor(35, 35, 35);
+    pdfInvSetFont(doc, "normal");
+    doc.setFontSize(8);
 
-  let ty = y + headerH + bodyPadTop;
-  displayLines.forEach((ln) => {
-    if (ln !== "") doc.text(ln, LX + padX, ty);
-    ty += lineH;
-  });
+    let ty = yTop + headerH + bodyPadTop;
+    chunkLines.forEach((ln) => {
+      if (ln !== "") doc.text(ln, LX + padX, ty);
+      ty += lineH;
+    });
 
-  doc.setTextColor(0, 0, 0);
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.1);
-  doc.setFontSize(9);
-  pdfInvSetFont(doc, "normal");
-  return y + tableH + marginBottom;
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.1);
+    doc.setFontSize(9);
+    pdfInvSetFont(doc, "normal");
+    return yTop + tableH;
+  };
+
+  if (forceSinglePage) {
+    let bodyH = bodyPadTop + displayLines.length * lineH + bodyPadBottom;
+    let tableH = headerH + bodyH;
+    const linesWork = displayLines.slice();
+    if (y + tableH > pageBottom) {
+      const avail = pageBottom - y - headerH - bodyPadTop - bodyPadBottom;
+      const maxLines = Math.max(1, Math.floor(avail / lineH));
+      if (linesWork.length > maxLines) {
+        const head = linesWork.slice(0, Math.max(0, maxLines - 1));
+        head.push("…");
+        linesWork.length = 0;
+        head.forEach((ln) => linesWork.push(ln));
+        bodyH = bodyPadTop + linesWork.length * lineH + bodyPadBottom;
+        tableH = headerH + bodyH;
+      }
+    }
+    const yEnd = drawChunk(y, "CATATAN PEMESANAN", linesWork);
+    return yEnd + marginBottom;
+  }
+
+  let positionY = y;
+  let remaining = displayLines.slice();
+  let firstChunk = true;
+  while (remaining.length > 0) {
+    let maxBody =
+      pageBottom - positionY - headerH - bodyPadTop - bodyPadBottom;
+    if (maxBody < lineH) {
+      doc.addPage();
+      positionY = pdfInvoiceContinuePageTopMm();
+      maxBody =
+        pageBottom - positionY - headerH - bodyPadTop - bodyPadBottom;
+    }
+    const maxLines = Math.max(1, Math.floor(maxBody / lineH));
+    const take = Math.min(remaining.length, maxLines);
+    const chunk = remaining.splice(0, take);
+    const title = firstChunk ? "CATATAN PEMESANAN" : "CATATAN PEMESANAN (lanjutan)";
+    firstChunk = false;
+    positionY = drawChunk(positionY, title, chunk);
+    positionY += marginBottom;
+  }
+  return positionY;
 }
 
 /**
@@ -894,6 +947,36 @@ function pdfDrawInvoiceBody(doc, p, y) {
   doc.setFontSize(FT_BODY);
   let rowIdx = 0;
 
+  const orderTableBreakLimitY =
+    PDF_PAGE_HEIGHT_MM -
+    PDF_SAFE_BOTTOM_MM -
+    PDF_INVOICE_ORDER_TABLE_RESERVE_BELOW_MM;
+
+  const continueDataPemesananTableOnNewPage = () => {
+    doc.addPage();
+    let yy = pdfInvoiceContinuePageTopMm();
+    doc.setFillColor(...INV_GREEN_LIGHT_RGB);
+    doc.setDrawColor(...INVOICE_BORDER_RGB);
+    doc.setLineWidth(0.1);
+    const yBar = yy;
+    doc.rect(LX, yBar, RX - LX, BAR_H, "FD");
+    doc.setFontSize(FT_SEC);
+    pdfInvSetFont(doc, "bold");
+    doc.setTextColor(...INV_GREEN_RGB);
+    doc.text(
+      "DATA PEMESANAN (lanjutan)",
+      LX + CELL_PAD_H,
+      yBar + BAR_H * 0.62,
+    );
+    pdfInvSetFont(doc, "normal");
+    doc.setTextColor(0, 0, 0);
+    yy = yBar + BAR_H + 2;
+    yy = pdfInvoiceGreenTableHeader(doc, LX, RX, yy, HDR_H, orderTableCols(), 8);
+    doc.setFont(PDF_FONT, "normal");
+    doc.setFontSize(FT_BODY);
+    y = yy;
+  };
+
   const drawPemesananRow = ({
     itemLines,
     kgStr,
@@ -954,6 +1037,11 @@ function pdfDrawInvoiceBody(doc, p, y) {
   invLines.forEach((row) => {
     const desk = `${row.tipeProduk || "-"} - ${row.jenisKopi || "-"} - ${row.prosesPengolahan || "-"}`;
     const itemLines = doc.splitTextToSize(desk, W_ITEM);
+    const nLines = Math.max(itemLines.length, 1);
+    const rowHApprox = CELL_PAD_V * 2 + nLines * LH + 2;
+    if (y + rowHApprox > orderTableBreakLimitY) {
+      continueDataPemesananTableOnNewPage();
+    }
     const jumlahKg = parseFloat(row.beratKg) || 0;
     const hargaKg = parseFloat(row.hargaPerKg) || 0;
     const subtotalBaris = jumlahKg * hargaKg;
@@ -972,6 +1060,22 @@ function pdfDrawInvoiceBody(doc, p, y) {
   });
 
   /** Baris DP/termin `pembayaranBertahapBaris` tidak ditampil di tabel order — hanya di kotak «Rincian pembayaran bertahap» di bawah. */
+
+  const statusBayar = String(p?.statusPembayaran || "").trim();
+  const showBertahapRingkasan =
+    statusBayar === "Pembayaran Bertahap" ||
+    barisPembayaranTambahan.length > 0;
+  const estimatedSummaryBlockMm =
+    12 +
+    LH * 3.2 +
+    (showBertahapRingkasan
+      ? LH * (4.5 + barisPembayaranTambahan.length * 0.92)
+      : 0) +
+    22;
+  if (y + estimatedSummaryBlockMm > pdfInvoicePageContentBottomMm()) {
+    doc.addPage();
+    y = pdfInvoiceContinuePageTopMm();
+  }
 
   y += 2;
   const boxL = RX - SUMMARY_BOX_W;
@@ -998,11 +1102,6 @@ function pdfDrawInvoiceBody(doc, p, y) {
     dangerValue: false,
     labelBold: true,
   });
-
-  const statusBayar = String(p?.statusPembayaran || "").trim();
-  const showBertahapRingkasan =
-    statusBayar === "Pembayaran Bertahap" ||
-    barisPembayaranTambahan.length > 0;
 
   if (showBertahapRingkasan) {
     yy += LH * 0.08;
@@ -1090,6 +1189,20 @@ function pdfDrawInvoiceBody(doc, p, y) {
   const sigColW = footInner * (1 / 3);
   const sigL0 = LX + catW + FOOT_GRID_GAP;
 
+  const estFootBlockMm =
+    SIG_BEFORE +
+    (catatan
+      ? Math.max(
+          pdfEstimateCatatanTableHeight(doc, catatan, catW, 3),
+          SIG_BOX_MIN_H * 0.48 + SIG_TOP_SPACE * 0.2,
+        )
+      : SIG_BOX_MIN_H * 0.48 + SIG_TOP_SPACE * 0.2) +
+    8;
+  if (y + estFootBlockMm > pdfInvoicePageContentBottomMm()) {
+    doc.addPage();
+    y = pdfInvoiceContinuePageTopMm();
+  }
+
   y += SIG_BEFORE;
   let yFooter = y;
 
@@ -1132,13 +1245,13 @@ function pdfDrawInvoiceBody(doc, p, y) {
   if (catatan) {
     const sigR = RX - CELL_PAD_H;
     const sigL = Math.max(sigL0, sigR - sigColW + 2);
+    const ySigEnd = drawTtdSeller(yFooter, sigL, sigR);
     const yCatEnd = pdfDrawCatatanPemesananTable(doc, LX, yFooter, catatan, {
       width: catW,
       marginBottom: 3,
-      forceSinglePage: true,
-      pageBottom: 297 - invoicePxToMm(40),
+      forceSinglePage: false,
+      pageBottom: pdfInvoicePageContentBottomMm(),
     });
-    const ySigEnd = drawTtdSeller(yFooter, sigL, sigR);
     yBottom = Math.max(yCatEnd, ySigEnd + 4);
   } else {
     const sigR = RX - CELL_PAD_H;
