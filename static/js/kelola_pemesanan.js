@@ -2535,8 +2535,11 @@ async function generateInvoicePDF(idPembelian) {
     const { jsPDF: jsPDFLib } = window.jspdf;
     const logoDataUrl = await fetchArgopuroLogoForPdf();
     const doc = new jsPDFLib();
-    let yCur = pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p);
-    yCur = pdfDrawInvoiceBody(doc, p, yCur);
+    const singlePagePdf = !!document.getElementById("invoicePdfSatuHalaman")
+      ?.checked;
+    const pdfPageOpts = { singlePage: singlePagePdf };
+    let yCur = pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p, pdfPageOpts);
+    yCur = pdfDrawInvoiceBody(doc, p, yCur, pdfPageOpts);
 
     let pdfBase64 = doc.output("datauristring");
     console.log("📤 Uploading Invoice PDF to backend...");

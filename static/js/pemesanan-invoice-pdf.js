@@ -198,21 +198,23 @@ async function fetchArgopuroLogoForPdf() {
 /**
  * Kop invoice (gaya INVOICE PEMESANAN): logo kiri, perusahaan kanan (hijau), judul tengah.
  * ID / tanggal / badge status ada di kotak "Ringkasan dokumen" pada isi halaman.
+ * @param {{ singlePage?: boolean }} [opts]
  */
-function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p) {
+function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p, opts) {
   void p;
+  const sp = opts && opts.singlePage ? 0.9 : 1;
   const MARGIN_L = invoicePxToMm(40);
   const MARGIN_R = invoicePxToMm(40);
-  const MARGIN_T = invoicePxToMm(30);
+  const MARGIN_T = invoicePxToMm(30) * sp;
   const PAGE_W = 210;
   const RX = PAGE_W - MARGIN_R;
   const CX = PAGE_W / 2;
-  const FT_TITLE = invoiceFontPtFromPx(18);
-  const FT_BODY = invoiceFontPtFromPx(12);
-  const FT_CO = invoiceFontPtFromPx(14);
-  const SECTION_AFTER_TITLE = invoicePxToMm(22);
-  const LINE_ADDR = 4.15;
-  const GAP_AFTER_KOP = 2.8;
+  const FT_TITLE = invoiceFontPtFromPx(18 * sp);
+  const FT_BODY = invoiceFontPtFromPx(12 * sp);
+  const FT_CO = invoiceFontPtFromPx(14 * sp);
+  const SECTION_AFTER_TITLE = invoicePxToMm(22) * sp;
+  const LINE_ADDR = 3.85 * sp + 0.3;
+  const GAP_AFTER_KOP = opts && opts.singlePage ? 2.2 : 2.8;
 
   const nama = "Argopuro Walida";
   const kontak = "+62 857-0766-1006";
@@ -260,7 +262,7 @@ function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p) {
   doc.setLineWidth(0.18);
   doc.line(MARGIN_L, yRule, RX, yRule);
 
-  const gapTitle = 5.5;
+  const gapTitle = opts && opts.singlePage ? 4.2 : 5.5;
   let yTitle = yRule + gapTitle;
   doc.setTextColor(22, 22, 22);
   doc.setFontSize(FT_TITLE);
@@ -283,19 +285,22 @@ function pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p) {
 
 /**
  * Ringkasan dokumen: grid 2 kolom sama lebar, gap 24px, label 160px + nilai/badge.
+ * @param {{ compact?: boolean }} [layoutOpts]
  */
-function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p) {
-  const pad = invoicePxToMm(32) * 0.12 + 3;
-  const gap = invoicePxToMm(24);
+function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p, layoutOpts) {
+  const compact = !!(layoutOpts && layoutOpts.compact);
+  const sc = compact ? 0.93 : 1;
+  const pad = (invoicePxToMm(32) * 0.12 + 3) * sc;
+  const gap = invoicePxToMm(24) * sc;
   const lblW = invoicePxToMm(160);
-  const titleBarH = 7;
+  const titleBarH = compact ? 6.2 : 7;
   const W = RX - LX;
   const innerW = W - pad * 2;
   const colW = (innerW - gap) / 2;
   const c1 = LX + pad;
   const c2 = c1 + colW + gap;
-  const FT = invoiceFontPtFromPx(12);
-  const FT_TITLE = invoiceFontPtFromPx(14);
+  const FT = invoiceFontPtFromPx(compact ? 11 : 12);
+  const FT_TITLE = invoiceFontPtFromPx(compact ? 13 : 14);
 
   const idDoc = p?.idPembelian || "-";
   const tgl = invoiceFormatDateForPdf(
@@ -305,8 +310,8 @@ function pdfDrawRingkasanDokumenBox(doc, LX, RX, yTop, p) {
   const bayarLabel = (p?.statusPembayaran || "Belum Lunas").trim();
 
   /** Jarak pusat vertikal antar baris: tinggi badge (22px) + gap 8px — rowH lama < tinggi badge sehingga badge overlap. */
-  const badgeH = invoicePxToMm(22);
-  const statusRowGap = invoicePxToMm(8);
+  const badgeH = invoicePxToMm(22) * sc;
+  const statusRowGap = invoicePxToMm(8) * sc;
   const rowPitch = badgeH + statusRowGap;
   const lineMm = (FT * 25.4) / 72;
   const innerTop = yTop + titleBarH + pad;
@@ -493,8 +498,11 @@ function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
     displayLines.push("");
   }
 
-  const drawChunk = (yTop, titleText, chunkLines) => {
-    const bodyH = bodyPadTop + chunkLines.length * lineH + bodyPadBottom;
+  const drawChunk = (yTop, titleText, chunkLines, lhIn, fsBodyIn) => {
+    const lhUse = Number.isFinite(lhIn) && lhIn > 0 ? lhIn : lineH;
+    const fsB =
+      Number.isFinite(fsBodyIn) && fsBodyIn > 0 ? fsBodyIn : 8;
+    const bodyH = bodyPadTop + chunkLines.length * lhUse + bodyPadBottom;
     const tableH = headerH + bodyH;
     doc.setDrawColor(38, 120, 55);
     doc.setLineWidth(0.15);
@@ -508,16 +516,16 @@ function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
 
     doc.setTextColor(...INV_GREEN_RGB);
     pdfInvSetFont(doc, "bold");
-    doc.setFontSize(8.5);
+    doc.setFontSize(Math.min(8.5, fsB + 0.7));
     doc.text(titleText, LX + padX, yTop + 5.7);
     doc.setTextColor(35, 35, 35);
     pdfInvSetFont(doc, "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(fsB);
 
     let ty = yTop + headerH + bodyPadTop;
     chunkLines.forEach((ln) => {
       if (ln !== "") doc.text(ln, LX + padX, ty);
-      ty += lineH;
+      ty += lhUse;
     });
 
     doc.setTextColor(0, 0, 0);
@@ -529,22 +537,43 @@ function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
   };
 
   if (forceSinglePage) {
-    let bodyH = bodyPadTop + displayLines.length * lineH + bodyPadBottom;
-    let tableH = headerH + bodyH;
-    const linesWork = displayLines.slice();
-    if (y + tableH > pageBottom) {
+    const shrinkToFit = !!optsObj.shrinkToFit;
+    let fsB = 8;
+    let lhU = lineH;
+    const linesWork = [];
+    const rebuildLines = () => {
+      linesWork.length = 0;
+      doc.setFontSize(fsB);
+      pdfInvSetFont(doc, "normal");
+      blocks.forEach((blk, idx) => {
+        doc.splitTextToSize(blk, innerW).forEach((ln) => linesWork.push(ln));
+        if (idx < blocks.length - 1) linesWork.push("");
+      });
+      if (!linesWork.length) linesWork.push("");
+    };
+    rebuildLines();
+    if (shrinkToFit) {
+      for (let i = 0; i < 22; i++) {
+        const th =
+          headerH + bodyPadTop + linesWork.length * lhU + bodyPadBottom;
+        if (y + th <= pageBottom || fsB <= 5.05) break;
+        fsB -= 0.32;
+        lhU = Math.max(2.45, lhU - 0.06);
+        rebuildLines();
+      }
+    }
+    let th = headerH + bodyPadTop + linesWork.length * lhU + bodyPadBottom;
+    if (y + th > pageBottom) {
       const avail = pageBottom - y - headerH - bodyPadTop - bodyPadBottom;
-      const maxLines = Math.max(1, Math.floor(avail / lineH));
+      const maxLines = Math.max(1, Math.floor(avail / lhU));
       if (linesWork.length > maxLines) {
         const head = linesWork.slice(0, Math.max(0, maxLines - 1));
         head.push("…");
         linesWork.length = 0;
         head.forEach((ln) => linesWork.push(ln));
-        bodyH = bodyPadTop + linesWork.length * lineH + bodyPadBottom;
-        tableH = headerH + bodyH;
       }
     }
-    const yEnd = drawChunk(y, "CATATAN PEMESANAN", linesWork);
+    const yEnd = drawChunk(y, "CATATAN PEMESANAN", linesWork, lhU, fsB);
     return yEnd + marginBottom;
   }
 
@@ -565,7 +594,7 @@ function pdfDrawCatatanPemesananTable(doc, LX, y, catatanRaw, opts) {
     const chunk = remaining.splice(0, take);
     const title = firstChunk ? "CATATAN PEMESANAN" : "CATATAN PEMESANAN (lanjutan)";
     firstChunk = false;
-    positionY = drawChunk(positionY, title, chunk);
+    positionY = drawChunk(positionY, title, chunk, lineH, 8);
     positionY += marginBottom;
   }
   return positionY;
@@ -814,30 +843,37 @@ function pdfDrawInvoiceSummaryKVRow(doc, xBox, yTop, innerW, padX, spec) {
   return yTop + blockH + lineStep * 0.15;
 }
 
-function pdfDrawInvoiceBody(doc, p, y) {
+function pdfDrawInvoiceBody(doc, p, y, opts) {
   pdfInvSetFont(doc, "normal");
+  const layout = opts && typeof opts === "object" ? opts : {};
+  const singlePage = !!layout.singlePage;
+  const sp = singlePage ? 0.82 : 1;
+
   const MARGIN_L = invoicePxToMm(40);
   const MARGIN_R = invoicePxToMm(40);
   const LX = MARGIN_L;
   const RX = 210 - MARGIN_R;
 
-  const FT_SEC = invoiceFontPtFromPx(14);
-  const FT_BODY = invoiceFontPtFromPx(12);
-  const LH = invoicePxToMm(18);
-  const SECTION_MB = invoicePxToMm(28);
-  const BAR_H = 6.8;
-  const CELL_PAD_H = invoicePxToMm(8);
-  const CELL_PAD_V = invoicePxToMm(10);
-  const HDR_H = CELL_PAD_V * 2 + invoiceFontPtFromPx(11) * 0.45 + 1.2;
-  const BUYER_LBL_W = invoicePxToMm(160);
-  const BUYER_ROW_GAP = invoicePxToMm(8);
+  const FT_SEC = invoiceFontPtFromPx(singlePage ? 11.5 : 14);
+  const FT_BODY = invoiceFontPtFromPx(singlePage ? 9 : 12);
+  const LH = invoicePxToMm(singlePage ? 13 : 18);
+  const SECTION_MB = invoicePxToMm(singlePage ? 17 : 28) * (singlePage ? 0.92 : 1);
+  const BAR_H = singlePage ? 5.2 : 6.8;
+  const CELL_PAD_H = invoicePxToMm(8) * sp;
+  const CELL_PAD_V = invoicePxToMm(10) * sp;
+  const HDR_H =
+    CELL_PAD_V * 2 +
+    invoiceFontPtFromPx(singlePage ? 9 : 11) * 0.45 +
+    (singlePage ? 0.55 : 1.2);
+  const BUYER_LBL_W = invoicePxToMm(160) * (singlePage ? 0.92 : 1);
+  const BUYER_ROW_GAP = invoicePxToMm(singlePage ? 6 : 8);
   const LX_LABEL = LX + CELL_PAD_H;
   const VX_VALUE = LX_LABEL + BUYER_LBL_W;
-  const SUMMARY_BOX_W = invoicePxToMm(320);
-  const SIG_BEFORE = invoicePxToMm(36);
-  const FOOT_GRID_GAP = invoicePxToMm(24);
-  const SIG_TOP_SPACE = invoicePxToMm(60);
-  const SIG_BOX_MIN_H = invoicePxToMm(160);
+  const SUMMARY_BOX_W = invoicePxToMm(singlePage ? 300 : 320);
+  const SIG_BEFORE = invoicePxToMm(singlePage ? 22 : 36);
+  const FOOT_GRID_GAP = invoicePxToMm(24) * sp;
+  const SIG_TOP_SPACE = invoicePxToMm(singlePage ? 44 : 60);
+  const SIG_BOX_MIN_H = invoicePxToMm(singlePage ? 118 : 160);
 
   const edges = pdfOrderTableEdges(LX, RX);
   const xNoC = (edges[0] + edges[1]) / 2;
@@ -872,7 +908,9 @@ function pdfDrawInvoiceBody(doc, p, y) {
   };
 
   y += SECTION_MB * 0.2;
-  y = pdfDrawRingkasanDokumenBox(doc, LX, RX, y, p);
+  y = pdfDrawRingkasanDokumenBox(doc, LX, RX, y, p, {
+    compact: singlePage,
+  });
   y += SECTION_MB * 0.85;
 
   const yPembeliBar = y;
@@ -940,19 +978,21 @@ function pdfDrawInvoiceBody(doc, p, y) {
     y,
     HDR_H,
     orderTableCols(),
-    8,
+    singlePage ? 6.5 : 8,
   );
 
   doc.setFont(PDF_FONT, "normal");
   doc.setFontSize(FT_BODY);
   let rowIdx = 0;
 
-  const orderTableBreakLimitY =
-    PDF_PAGE_HEIGHT_MM -
-    PDF_SAFE_BOTTOM_MM -
-    PDF_INVOICE_ORDER_TABLE_RESERVE_BELOW_MM;
+  const orderTableBreakLimitY = singlePage
+    ? 1e9
+    : PDF_PAGE_HEIGHT_MM -
+      PDF_SAFE_BOTTOM_MM -
+      PDF_INVOICE_ORDER_TABLE_RESERVE_BELOW_MM;
 
   const continueDataPemesananTableOnNewPage = () => {
+    if (singlePage) return;
     doc.addPage();
     let yy = pdfInvoiceContinuePageTopMm();
     doc.setFillColor(...INV_GREEN_LIGHT_RGB);
@@ -1072,7 +1112,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
       ? LH * (4.5 + barisPembayaranTambahan.length * 0.92)
       : 0) +
     22;
-  if (y + estimatedSummaryBlockMm > pdfInvoicePageContentBottomMm()) {
+  if (!singlePage && y + estimatedSummaryBlockMm > pdfInvoicePageContentBottomMm()) {
     doc.addPage();
     y = pdfInvoiceContinuePageTopMm();
   }
@@ -1156,14 +1196,14 @@ function pdfDrawInvoiceBody(doc, p, y) {
     yy += LH * 0.2;
   }
 
-  const totalBandH = 8.5;
+  const totalBandH = singlePage ? 7.2 : 8.5;
   doc.setFillColor(14, 78, 44);
   doc.setDrawColor(12, 70, 40);
   doc.setLineWidth(0.1);
   doc.rect(boxL + boxPad, yy, innerW, totalBandH, "FD");
   doc.setTextColor(255, 255, 255);
   pdfInvSetFont(doc, "bold");
-  doc.setFontSize(invoiceFontPtFromPx(14));
+  doc.setFontSize(invoiceFontPtFromPx(singlePage ? 12 : 14));
   doc.text("TOTAL TAGIHAN (Rp)", boxL + boxPad + 2, yy + totalBandH * 0.68);
   doc.setFont("courier", "bold");
   doc.text(
@@ -1198,7 +1238,7 @@ function pdfDrawInvoiceBody(doc, p, y) {
         )
       : SIG_BOX_MIN_H * 0.48 + SIG_TOP_SPACE * 0.2) +
     8;
-  if (y + estFootBlockMm > pdfInvoicePageContentBottomMm()) {
+  if (!singlePage && y + estFootBlockMm > pdfInvoicePageContentBottomMm()) {
     doc.addPage();
     y = pdfInvoiceContinuePageTopMm();
   }
@@ -1248,8 +1288,9 @@ function pdfDrawInvoiceBody(doc, p, y) {
     const ySigEnd = drawTtdSeller(yFooter, sigL, sigR);
     const yCatEnd = pdfDrawCatatanPemesananTable(doc, LX, yFooter, catatan, {
       width: catW,
-      marginBottom: 3,
-      forceSinglePage: false,
+      marginBottom: singlePage ? 2 : 3,
+      forceSinglePage: singlePage,
+      shrinkToFit: singlePage,
       pageBottom: pdfInvoicePageContentBottomMm(),
     });
     yBottom = Math.max(yCatEnd, ySigEnd + 4);
