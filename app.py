@@ -3395,8 +3395,7 @@ def get_stok():
 def get_stok_filter_options():
     """Opsi filter stok: tipe produk (Green Beans/Pixel), tanggal pengemasan dari produksi."""
     try:
-        # Tipe produk tetap: Green Beans dan Pixel
-        tipe_produk_list = ['Green Beans', 'Pixel']
+        tipe_produk_list = sorted(_get_tipe_produk_master_set())
         # Tanggal pengemasan dari produksi yang memenuhi syarat stok hasil
         produksi_list = list(db.produksi.find({
             'statusTahapan': {'$regex': 'Pengemasan', '$options': 'i'},
@@ -4853,6 +4852,26 @@ def _compute_pemesanan_pembayaran_kloter_agg(status_bayar, total_harga, kloter_l
     return sum_lunas, sisa, None
 
 
+def _get_tipe_produk_master_set():
+    """Nama tipe produk dari koleksi dataProduk (Kelola Data → tab Produk)."""
+    names = set()
+    try:
+        for doc in db.dataProduk.find():
+            n = (doc.get('nama') or '').strip()
+            if n:
+                names.add(n)
+    except Exception as e:
+        print(f"⚠️ [TIPE PRODUK MASTER] {e}")
+    if not names:
+        names = {'Green Beans', 'Pixel'}
+    return names
+
+
+def _tipe_produk_valid(tp):
+    tp = (tp or '').strip()
+    return bool(tp) and tp in _get_tipe_produk_master_set()
+
+
 def _normalize_pemesanan_kloter_from_body(data):
     """
     Normalisasi array `kloter` (model utama) atau `items` (kompatibel lama).
@@ -4883,8 +4902,12 @@ def _normalize_pemesanan_kloter_from_body(data):
             hp = float(it.get('hargaPerKg') or 0)
         except (TypeError, ValueError):
             return None, f'Kloter {idx + 1}: harga tidak valid'
-        if tp not in ('Green Beans', 'Pixel'):
-            return None, f'Kloter {idx + 1}: tipeProduk harus Green Beans atau Pixel'
+        if not _tipe_produk_valid(tp):
+            allowed = ', '.join(sorted(_get_tipe_produk_master_set()))
+            return None, (
+                f'Kloter {idx + 1}: tipeProduk tidak valid. '
+                f'Pilih dari master data (Kelola Data → Produk): {allowed}'
+            )
         if not jk or not pr:
             return None, f'Kloter {idx + 1}: jenis kopi dan proses pengolahan wajib diisi'
         if jm <= 0 or hp <= 0:
@@ -5630,8 +5653,11 @@ def proses_ordering():
             tipe_produk_selected = (line_items[0].get('tipeProduk') or '').strip()
         else:
             tipe_produk_selected = ''
-        if tipe_produk_selected not in ('Green Beans', 'Pixel'):
-            return jsonify({'error': 'Tipe produk harus Green Beans atau Pixel'}), 400
+        if not _tipe_produk_valid(tipe_produk_selected):
+            allowed = ', '.join(sorted(_get_tipe_produk_master_set()))
+            return jsonify({
+                'error': f'Tipe produk tidak valid. Pilih dari master data: {allowed}'
+            }), 400
 
         tipe_produk_pemesanan = (pemesanan.get('tipeProduk') or '').strip()
         multi_barang = len(line_items) > 1
@@ -5653,8 +5679,11 @@ def proses_ordering():
             it0 = line_items[0]
             jumlah_pesanan = float(it0['jumlahPesananKg'])
             tipe_produk_selected = (it0.get('tipeProduk') or tipe_produk_selected).strip()
-            if tipe_produk_selected not in ('Green Beans', 'Pixel'):
-                return jsonify({'error': 'Tipe produk baris harus Green Beans atau Pixel'}), 400
+            if not _tipe_produk_valid(tipe_produk_selected):
+                allowed = ', '.join(sorted(_get_tipe_produk_master_set()))
+                return jsonify({
+                    'error': f'Tipe produk baris tidak valid. Pilih dari master data: {allowed}'
+                }), 400
             # --- Cabang lama: satu id produksi eksplisit ---
             produksi = db.produksi.find_one({'idProduksi': id_produksi_payload})
             if not produksi:
@@ -5788,8 +5817,12 @@ def proses_ordering():
         try:
             for idx, it in enumerate(line_items):
                 tipe_sel = (it.get('tipeProduk') or '').strip()
-                if tipe_sel not in ('Green Beans', 'Pixel'):
-                    raise ValueError(f'Baris {idx + 1}: tipeProduk harus Green Beans atau Pixel')
+                if not _tipe_produk_valid(tipe_sel):
+                    allowed = ', '.join(sorted(_get_tipe_produk_master_set()))
+                    raise ValueError(
+                        f'Baris {idx + 1}: tipeProduk tidak valid. '
+                        f'Pilih dari master data: {allowed}'
+                    )
                 jum_baris = float(it.get('jumlahPesananKg') or 0)
                 if jum_baris <= 0:
                     raise ValueError(f'Baris {idx + 1}: jumlah (kg) tidak valid')

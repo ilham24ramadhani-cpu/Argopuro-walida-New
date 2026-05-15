@@ -13,6 +13,7 @@ let currentPembeliEditId = null;
 /** Opsi master untuk baris kloter (diisi loadMasterDataOptions) */
 let masterProsesNames = [];
 let masterJenisKopiNames = [];
+let masterProdukNames = [];
 
 // Wait for API to be ready (event-based + polling fallback)
 async function waitForAPI() {
@@ -236,11 +237,22 @@ function ringkasProdukUntukTabel(p) {
 }
 
 function buildTipeProdukOptionsHtml(selected) {
-  const opts = ["Green Beans", "Pixel"].map(
+  const names =
+    masterProdukNames.length > 0
+      ? masterProdukNames
+      : ["Green Beans", "Pixel"];
+  const opts = names.map(
     (nama) =>
       `<option value="${escapeHtmlAttr(nama)}"${selected === nama ? " selected" : ""}>${escapeHtmlAttr(nama)}</option>`,
   );
   return `<option value="">Pilih</option>${opts.join("")}`;
+}
+
+function refreshKloterTipeProdukSelects() {
+  document.querySelectorAll(".kloter-tipe").forEach((sel) => {
+    const cur = sel.value;
+    sel.innerHTML = buildTipeProdukOptionsHtml(cur);
+  });
 }
 
 function buildJenisKopiOptionsHtml(selected) {
@@ -879,6 +891,14 @@ async function loadMasterDataOptions() {
       .map((j) => (j.namaJenisKopi || j.nama || "").trim())
       .filter(Boolean);
 
+    const produk = await window.API.MasterData.produk.getAll();
+    masterProdukNames = (produk || [])
+      .map((p) => (p.nama || "").trim())
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, "id"));
+
+    refreshKloterTipeProdukSelects();
+
     // Kemasan tidak lagi digunakan di pemesanan
   } catch (error) {
     console.error("❌ Error loading master data options:", error);
@@ -960,7 +980,7 @@ function displayStokProduksi() {
         (s, index) => `
       <tr>
         <td>${index + 1}</td>
-        <td><span class="badge ${s.tipeProduk === 'Green Beans' ? 'bg-success' : 'bg-info'}">${s.tipeProduk || "-"}</span></td>
+        <td><span class="badge bg-info">${escapeHtmlAttr(s.tipeProduk || "-")}</span></td>
         <td><span class="badge ${(window.getJenisKopiBadgeClass || (() => 'bg-secondary'))(s.jenisKopi)}">${s.jenisKopi || "-"}</span></td>
         <td>${s.prosesPengolahan || "-"}</td>
         <td class="text-end"><strong>${parseFloat(
@@ -2725,6 +2745,17 @@ document.addEventListener("DOMContentLoaded", async function () {
   window.openModalPembeli = openModalPembeli;
   window.savePembeliMaster = savePembeliMaster;
   window.onSelectMasterPembeliChange = onSelectMasterPembeliChange;
+
+  window.addEventListener("dataMasterUpdated", async (event) => {
+    const t = event?.detail?.type;
+    if (t && t !== "produk") return;
+    try {
+      await loadMasterDataOptions();
+      console.log("✅ Master tipe produk diperbarui dari Kelola Data");
+    } catch (e) {
+      console.warn("Gagal refresh master tipe produk:", e);
+    }
+  });
 
   console.log("✅ Kelola Pemesanan page initialized");
 });
