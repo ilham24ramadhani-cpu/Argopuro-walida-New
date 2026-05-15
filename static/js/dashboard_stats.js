@@ -8,7 +8,7 @@ let updateInterval = null;
 // Variabel untuk menyimpan chart instances
 let bahanChart = null;
 let produksiChart = null;
-let stokChart = null;
+let pemesananBuyerChart = null;
 
 /** Warna batang bergantian per kategori. */
 const DASHBOARD_CHART_SERIES_COLORS = [
@@ -83,16 +83,41 @@ function dashboardProduksiBeratKg(p) {
   return 0;
 }
 
+/** Total kg satu dokumen pemesanan (kloter/items atau legacy jumlahPesananKg). */
+function dashboardPemesananBeratKgFromDoc(p) {
+  if (!p) return 0;
+  const rows = p.kloter || p.items;
+  if (Array.isArray(rows) && rows.length > 0) {
+    return rows.reduce((sum, r) => {
+      const w = parseFloat(r.beratKg ?? r.jumlahPesananKg ?? r.berat ?? 0);
+      return sum + (Number.isFinite(w) ? w : 0);
+    }, 0);
+  }
+  const single = parseFloat(p.jumlahPesananKg);
+  return Number.isFinite(single) ? single : 0;
+}
+
+function dashboardPemesananMillis(p) {
+  const raw = p.tanggalPemesanan || p.createdAt || p.updatedAt;
+  const t = new Date(raw).getTime();
+  return Number.isFinite(t) ? t : NaN;
+}
+
 function bindDashboardChartPeriodFilters() {
   const bahanSel = document.getElementById("dashboardBahanPeriodeFilter");
   const prodSel = document.getElementById("dashboardProduksiPeriodeFilter");
+  const pemSel = document.getElementById("dashboardPemesananPeriodeFilter");
   const savedB = sessionStorage.getItem("dashboardBahanPeriod");
   const savedP = sessionStorage.getItem("dashboardProduksiPeriod");
+  const savedPe = sessionStorage.getItem("dashboardPemesananPeriod");
   if (bahanSel && savedB && [...bahanSel.options].some((o) => o.value === savedB)) {
     bahanSel.value = savedB;
   }
   if (prodSel && savedP && [...prodSel.options].some((o) => o.value === savedP)) {
     prodSel.value = savedP;
+  }
+  if (pemSel && savedPe && [...pemSel.options].some((o) => o.value === savedPe)) {
+    pemSel.value = savedPe;
   }
   if (bahanSel && !bahanSel.dataset.dashboardPeriodBound) {
     bahanSel.dataset.dashboardPeriodBound = "1";
@@ -106,6 +131,13 @@ function bindDashboardChartPeriodFilters() {
     prodSel.addEventListener("change", () => {
       sessionStorage.setItem("dashboardProduksiPeriod", prodSel.value);
       createProduksiChart();
+    });
+  }
+  if (pemSel && !pemSel.dataset.dashboardPeriodBound) {
+    pemSel.dataset.dashboardPeriodBound = "1";
+    pemSel.addEventListener("change", () => {
+      sessionStorage.setItem("dashboardPemesananPeriod", pemSel.value);
+      createPemesananBuyerChart();
     });
   }
 }
@@ -990,154 +1022,176 @@ async function createProduksiChart() {
   });
 }
 
-// Fungsi untuk membuat grafik stok (Bar Chart)
-async function createStokChart() {
-  let hasilProduksi = [];
+// Grafik pemesanan: pembeli (X) vs total kg dipesan (Y), agregasi semua pemesanan per pembeli
+async function createPemesananBuyerChart() {
+  let pemesanan = [];
   try {
-    if (window.API && window.API.HasilProduksi) {
-      hasilProduksi = await window.API.HasilProduksi.getAll();
-    } else {
-      hasilProduksi = JSON.parse(localStorage.getItem("hasilProduksi") || "[]");
+    if (window.API && window.API.Pemesanan) {
+      pemesanan = await window.API.Pemesanan.getAll();
     }
   } catch (error) {
-    console.error("Error loading hasil produksi for chart:", error);
-    hasilProduksi = JSON.parse(localStorage.getItem("hasilProduksi") || "[]");
+    console.error("Error loading pemesanan for chart:", error);
+    pemesanan = [];
   }
-  const chartContainer = document.querySelector("#stokChart")?.parentElement;
-  const ctx = document.getElementById("stokChart");
+  const chartContainer = document.getElementById(
+    "dashboardPemesananBuyerChartContainer"
+  );
 
   if (!chartContainer) return;
 
-  // Group by tipe produk
-  const stokByTipe = {};
-  hasilProduksi.forEach((h) => {
-    if (!stokByTipe[h.tipeProduk]) {
-      stokByTipe[h.tipeProduk] = {
-        totalBerat: 0,
-        totalJumlah: 0,
-      };
-    }
-    stokByTipe[h.tipeProduk].totalBerat += parseFloat(h.beratSaatIni || 0);
-    stokByTipe[h.tipeProduk].totalJumlah += parseInt(h.jumlah || 0);
-  });
-
-  const labels = Object.keys(stokByTipe);
-
-  // Jika tidak ada data, tampilkan pesan
-  if (labels.length === 0) {
-    if (stokChart) {
-      stokChart.destroy();
-      stokChart = null;
+  if (!Array.isArray(pemesanan) || pemesanan.length === 0) {
+    if (pemesananBuyerChart) {
+      pemesananBuyerChart.destroy();
+      pemesananBuyerChart = null;
     }
     chartContainer.innerHTML = `
       <div class="text-center text-muted py-5">
         <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-        <p class="mb-0">Belum ada data stok</p>
-        <small>Data akan muncul setelah ada hasil produksi</small>
+        <p class="mb-0">Belum ada data pemesanan</p>
+        <small>Data akan muncul setelah ada pemesanan di Kelola Pemesanan</small>
       </div>
     `;
     return;
   }
 
-  const beratData = labels.map((tipe) => stokByTipe[tipe].totalBerat);
-  const jumlahData = labels.map((tipe) => stokByTipe[tipe].totalJumlah);
+  const preset = dashboardChartPreset("dashboardPemesananPeriodeFilter");
+  const startMs = dashboardChartPeriodStartMs(preset);
 
-  // Color palette
-  const colors = [
-    "rgba(255, 99, 132, 0.8)",
-    "rgba(54, 162, 235, 0.8)",
-    "rgba(255, 206, 86, 0.8)",
-    "rgba(75, 192, 192, 0.8)",
-    "rgba(153, 102, 255, 0.8)",
-    "rgba(255, 159, 64, 0.8)",
-  ];
+  const filtered = pemesanan.filter((p) => {
+    if (startMs == null) return true;
+    const t = dashboardPemesananMillis(p);
+    if (!Number.isFinite(t)) return false;
+    return t >= startMs;
+  });
 
-  // Destroy existing chart if any
-  if (stokChart) {
-    stokChart.destroy();
-    stokChart = null;
+  if (filtered.length === 0) {
+    if (pemesananBuyerChart) {
+      pemesananBuyerChart.destroy();
+      pemesananBuyerChart = null;
+    }
+    chartContainer.innerHTML = `
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>
+        <p class="mb-0">Tidak ada pemesanan pada periode ini</p>
+        <small>Ubah filter waktu atau tunggu data baru</small>
+      </div>
+    `;
+    return;
   }
 
-  // Restore canvas if it was replaced (jika container tidak berisi canvas)
+  const rawTotals = {};
+  filtered.forEach((p) => {
+    const name = (p.namaPembeli && String(p.namaPembeli).trim()) || "Tanpa nama pembeli";
+    const kg = dashboardPemesananBeratKgFromDoc(p);
+    rawTotals[name] = (rawTotals[name] || 0) + kg;
+  });
+
+  const desc = Object.entries(rawTotals).sort((a, b) => b[1] - a[1]);
+  const rowsTrim = dashboardTrimCategories(desc, DASHBOARD_BAR_MAX_CATEGORIES);
+
+  if (rowsTrim.length === 0) {
+    if (pemesananBuyerChart) {
+      pemesananBuyerChart.destroy();
+      pemesananBuyerChart = null;
+    }
+    chartContainer.innerHTML = `
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+        <p class="mb-0">Belum ada berat pemesanan</p>
+        <small>Periksa isian kloter / kg pada data pemesanan</small>
+      </div>
+    `;
+    return;
+  }
+
+  const labels = rowsTrim.map(([name]) => name);
+  const values = rowsTrim.map(([, v]) => v);
+  const barColors = labels.map(
+    (_, i) =>
+      DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
+        .replace("rgb(", "rgba(")
+        .replace(")", ", 0.88)")
+  );
+  const borderColors = labels.map(
+    (_, i) => DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
+  );
+
+  if (pemesananBuyerChart) {
+    pemesananBuyerChart.destroy();
+    pemesananBuyerChart = null;
+  }
   if (!chartContainer.querySelector("canvas")) {
-    chartContainer.innerHTML = '<canvas id="stokChart"></canvas>';
+    chartContainer.innerHTML = '<canvas id="pemesananBuyerChart"></canvas>';
   }
-
-  const chartCtx = document.getElementById("stokChart");
+  const chartCtx = document.getElementById("pemesananBuyerChart");
   if (!chartCtx) return;
 
-  stokChart = new Chart(chartCtx, {
+  pemesananBuyerChart = new Chart(chartCtx, {
     type: "bar",
     data: {
-      labels: labels,
+      labels,
       datasets: [
         {
-          label: "Total Berat Stok (kg)",
-          data: beratData,
-          backgroundColor: colors.slice(0, labels.length),
-          borderColor: colors
-            .slice(0, labels.length)
-            .map((c) => c.replace("0.8", "1")),
-          borderWidth: 2,
+          label: "Total kg dipesan",
+          data: values,
+          backgroundColor: barColors,
+          borderColor: borderColors,
+          borderWidth: 1,
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { mode: "nearest", intersect: false },
+      elements: {
+        bar: { borderRadius: 4, borderSkipped: false },
+      },
+      datasets: { bar: { maxBarThickness: 48 } },
       plugins: {
-        legend: {
-          display: true,
-          position: "top",
-        },
+        legend: { display: false },
         tooltip: {
           callbacks: {
+            title: function (items) {
+              return items.length ? items[0].label : "";
+            },
             label: function (context) {
-              const index = context.dataIndex;
-              return [
-                "Berat: " + context.parsed.y.toLocaleString("id-ID") + " kg",
-                "Kemasan: " +
-                  jumlahData[index].toLocaleString("id-ID") +
-                  " kemasan",
-              ];
+              const num = Number(context.parsed.y) || 0;
+              return `Total pesanan: ${num.toLocaleString("id-ID")} kg`;
             },
           },
         },
       },
       scales: {
+        x: {
+          title: {
+            display: true,
+            text: "Pembeli",
+            font: { size: 11, weight: "bold" },
+          },
+          ticks: {
+            autoSkip: false,
+            font: { size: 10 },
+            maxRotation: 55,
+            minRotation: 35,
+          },
+          grid: { display: false },
+        },
         y: {
           beginAtZero: true,
           title: {
             display: true,
-            text: "Total Berat Stok (kg)",
-            font: {
-              size: 12,
-              weight: "bold",
-            },
+            text: "Total kg dipesan (periode)",
+            font: { size: 11, weight: "bold" },
           },
           ticks: {
-            callback: function (value) {
-              return value.toLocaleString("id-ID") + " kg";
-            },
-            font: {
-              size: 11,
-            },
+            callback: (value) =>
+              typeof value === "number"
+                ? value.toLocaleString("id-ID") + " kg"
+                : value,
+            font: { size: 10 },
           },
-          grid: {
-            color: "rgba(0, 0, 0, 0.05)",
-          },
-        },
-        x: {
-          ticks: {
-            font: {
-              size: 11,
-            },
-            maxRotation: 45,
-            minRotation: 45,
-          },
-          grid: {
-            display: false,
-          },
+          grid: { color: "rgba(0, 0, 0, 0.06)" },
         },
       },
     },
@@ -1162,7 +1216,7 @@ async function refreshAllStatistics(animate = true) {
   // Update charts
   await createBahanChart();
   await createProduksiChart();
-  await createStokChart();
+  await createPemesananBuyerChart();
 
   // Tampilkan notifikasi update
   if (animate) {
@@ -1256,7 +1310,7 @@ document.addEventListener("DOMContentLoaded", function () {
       // Initialize charts
       await createBahanChart();
       await createProduksiChart();
-      await createStokChart();
+      await createPemesananBuyerChart();
 
       // Initialize data hashes
       const keys = [
