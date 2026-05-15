@@ -615,8 +615,8 @@ function updateHintFormulaTotalHarga() {
   const tipe = normalizeTipePajak(document.getElementById("tipePajak")?.value);
   el.textContent =
     tipe === "pengurangan"
-      ? "Subtotal kloter − pajak + pengiriman"
-      : "Subtotal kloter + pajak + pengiriman";
+      ? "Subtotal kloter − PPh 22 + pengiriman"
+      : "Subtotal kloter + PPh 22 + pengiriman";
 }
 
 function updateRingkasanPembayaranBertahap() {

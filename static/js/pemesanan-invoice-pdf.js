@@ -82,10 +82,16 @@ function normalizeTipePajak(raw) {
   return "penjumlahan";
 }
 
+/** Label tipe pajak di form & laporan. */
 function labelTipePajak(raw) {
   return normalizeTipePajak(raw) === "pengurangan"
-    ? "Pajak pengurangan"
-    : "Pajak penjumlahan";
+    ? 'PPh 22 (-)'
+    : 'PPh 22 (+)';
+}
+
+/** Keterangan pajak di invoice PDF (tanpa tanda +/-). */
+function labelTipePajakInvoice() {
+  return "PPh 22";
 }
 
 /** Total tagihan: subtotal kloter ± pajak + pengiriman. */
@@ -1162,7 +1168,7 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   const innerW = SUMMARY_BOX_W - 2 * boxPad;
 
   yy = pdfDrawInvoiceSummaryKVRow(doc, boxL, yy, innerW, boxPad, {
-    label: `${labelTipePajak(tipePajakInv)} (Rp)`,
+    label: `${labelTipePajakInvoice()} (Rp)`,
     valueStr: pajakInvStr,
     fontPt: FT_BODY,
     labelRgb: INV_LABEL_MUTED_RGB,
