@@ -4872,6 +4872,58 @@ def _tipe_produk_valid(tp):
     return bool(tp) and tp in _get_tipe_produk_master_set()
 
 
+def _is_tipe_produk_invoice_only(tp):
+    """Roasted Beans: hanya untuk invoice, tidak memotong stok hasil produksi."""
+    return (tp or '').strip().lower() == 'roasted beans'
+
+
+def _line_items_all_invoice_only(line_items):
+    return bool(line_items) and all(
+        _is_tipe_produk_invoice_only(x.get('tipeProduk')) for x in line_items
+    )
+
+
+def _line_items_stock_lines(line_items):
+    return [x for x in (line_items or []) if not _is_tipe_produk_invoice_only(x.get('tipeProduk'))]
+
+
+def _finalize_pemesanan_invoice_only(id_pembelian, pemesanan, line_items, tanggal_ordering):
+    """
+    Selesaikan pemesanan invoice-only (Roasted Beans): tidak insert hasilProduksi,
+    tidak mengurangi stok; catat jejak ordering untuk audit.
+    """
+    jumlah_total = float(sum(float(x.get('jumlahPesananKg') or 0) for x in line_items))
+    multi = len(line_items) > 1
+    tipe_label = 'Campuran' if multi else (line_items[0].get('tipeProduk') or 'Roasted Beans').strip()
+    new_id = get_next_id('ordering')
+    ordering_data = {
+        'id': new_id,
+        'idPembelian': id_pembelian,
+        'idProduksi': '',
+        'tipeProduk': tipe_label,
+        'jumlahPesananKg': jumlah_total,
+        'kloterRingkasan': line_items,
+        'stokSebelum': None,
+        'stokSesudah': None,
+        'statusPemesanan': 'Complete',
+        'tanggalOrdering': tanggal_ordering,
+        'invoiceOnly': True,
+        'createdAt': datetime.now(),
+        'updatedAt': datetime.now(),
+    }
+    result_ordering = db.ordering.insert_one(ordering_data)
+    ordering_data['_id'] = result_ordering.inserted_id
+    db.pemesanan.update_one(
+        {'_id': pemesanan['_id']},
+        {'$set': {
+            'statusPemesanan': 'Complete',
+            'statusPembayaran': 'Lunas',
+            'updatedAt': datetime.now(),
+        }},
+    )
+    return ordering_data
+
+
 def _normalize_pemesanan_kloter_from_body(data):
     """
     Normalisasi array `kloter` (model utama) atau `items` (kompatibel lama).
@@ -5083,11 +5135,18 @@ def create_pemesanan():
 
         status_pem = (data.get('statusPemesanan') or '').strip()
         if status_pem == 'Complete':
-            # Complete hanya boleh setelah proses ordering (pengurangan stok).
-            # Selain itu, aturan bisnis: Complete => Pembayaran wajib Lunas.
-            return jsonify({
-                'error': 'Status Complete hanya bisa dicapai melalui proses ordering. Gunakan endpoint /api/ordering/proses untuk mengurangi stok dan menyelesaikan pemesanan.'
-            }), 400
+            lines_for_complete = kloter_norm if use_kloter else [{
+                'tipeProduk': (data.get('tipeProduk') or '').strip(),
+            }]
+            if _line_items_all_invoice_only(lines_for_complete):
+                if status_bayar != 'Lunas':
+                    return jsonify({
+                        'error': 'Pemesanan Roasted Beans (invoice) hanya bisa Complete jika status pembayaran Lunas.'
+                    }), 400
+            else:
+                return jsonify({
+                    'error': 'Status Complete hanya bisa dicapai melalui proses ordering. Gunakan endpoint /api/ordering/proses untuk mengurangi stok dan menyelesaikan pemesanan.'
+                }), 400
 
         biaya_pajak = float(data.get('biayaPajak') or 0)
         if biaya_pajak < 0:
@@ -5396,13 +5455,28 @@ def update_pemesanan(pemesanan_id):
             transitioning_to_complete = old_status_pem != 'Complete'
 
             if not ordering:
+                lines_complete_check = []
+                if isinstance(merged_k_val, list) and merged_k_val:
+                    for row in merged_k_val:
+                        if isinstance(row, dict):
+                            lines_complete_check.append({
+                                'tipeProduk': (row.get('tipeProduk') or '').strip(),
+                            })
+                if not lines_complete_check:
+                    lines_complete_check = pemesanan_items_from_doc(pemesanan)
+                invoice_only_complete = _line_items_all_invoice_only(lines_complete_check)
                 safe_complete = (
                     old_status_pem == 'Complete'
                     or has_hasil_pb
+                    or invoice_only_complete
                 )
                 if transitioning_to_complete and not safe_complete:
                     return jsonify({
                         'error': 'Status Complete hanya bisa dicapai melalui proses ordering. Gunakan endpoint /api/ordering/proses untuk mengurangi stok dan menyelesaikan pemesanan.'
+                    }), 400
+                if transitioning_to_complete and invoice_only_complete and new_status_bayar != 'Lunas':
+                    return jsonify({
+                        'error': 'Pemesanan Roasted Beans (invoice) hanya bisa Complete jika status pembayaran Lunas.'
                     }), 400
             else:
                 # Dokumen ordering ada → pemesanan selesai dari sisi stok → lunas (perilaku bisnis tetap).
@@ -5643,6 +5717,18 @@ def proses_ordering():
             return jsonify({'error': 'Pemesanan tidak memiliki barang'}), 400
 
         tanggal_ordering = data.get('tanggalOrdering', datetime.now().strftime('%Y-%m-%d'))
+
+        if _line_items_all_invoice_only(line_items):
+            ordering_data = _finalize_pemesanan_invoice_only(
+                id_pb, pemesanan, line_items, tanggal_ordering
+            )
+            return jsonify({
+                'success': True,
+                'message': 'Pemesanan Roasted Beans diselesaikan (invoice only, stok tidak dikurangi).',
+                'ordering': json_serialize(ordering_data),
+                'invoiceOnly': True,
+                'jumlahDikurangi': 0,
+            }), 201
         id_produksi_payload = data.get('idProduksi')
         use_single_batch = id_produksi_payload is not None and str(id_produksi_payload).strip() != ''
 
@@ -5677,6 +5763,10 @@ def proses_ordering():
                     'error': 'Pemesanan beberapa barang tidak mendukung pemilihan satu id produksi. Kosongkan id produksi untuk alokasi otomatis (FIFO).'
                 }), 400
             it0 = line_items[0]
+            if _is_tipe_produk_invoice_only(it0.get('tipeProduk')):
+                return jsonify({
+                    'error': 'Roasted Beans tidak memerlukan pemilihan batch produksi (hanya untuk invoice, tanpa pengurangan stok).'
+                }), 400
             jumlah_pesanan = float(it0['jumlahPesananKg'])
             tipe_produk_selected = (it0.get('tipeProduk') or tipe_produk_selected).strip()
             if not _tipe_produk_valid(tipe_produk_selected):
@@ -5823,6 +5913,8 @@ def proses_ordering():
                         f'Baris {idx + 1}: tipeProduk tidak valid. '
                         f'Pilih dari master data: {allowed}'
                     )
+                if _is_tipe_produk_invoice_only(tipe_sel):
+                    continue
                 jum_baris = float(it.get('jumlahPesananKg') or 0)
                 if jum_baris <= 0:
                     raise ValueError(f'Baris {idx + 1}: jumlah (kg) tidak valid')
@@ -5887,6 +5979,13 @@ def proses_ordering():
 
                 stok_remaining_by_key[key_pem] = stok_tersedia - jum_baris
                 last_stok_after = stok_remaining_by_key[key_pem]
+
+            stock_lines_needed = _line_items_stock_lines(line_items)
+            if stock_lines_needed and not inserted_hasil_ids:
+                raise ValueError(
+                    'Tidak ada stok yang dapat dialokasikan untuk barang selain Roasted Beans. '
+                    'Periksa ketersediaan stok di Kelola Stok.'
+                )
 
             id_produksi_gabung = ','.join(dict.fromkeys(all_prod_ids_order))
             new_id = get_next_id('ordering')

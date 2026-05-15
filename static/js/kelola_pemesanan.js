@@ -15,6 +15,34 @@ let masterProsesNames = [];
 let masterJenisKopiNames = [];
 let masterProdukNames = [];
 
+/** Tipe produk yang hanya untuk invoice (tanpa pengurangan stok). */
+function isTipeProdukInvoiceOnly(tipe) {
+  return String(tipe || "")
+    .trim()
+    .toLowerCase() === "roasted beans";
+}
+
+function pemesananIsInvoiceOnly(doc) {
+  const lines = getPemesananKloterLinesFromDoc(doc);
+  return (
+    lines.length > 0 &&
+    lines.every((L) => isTipeProdukInvoiceOnly(L.tipeProduk))
+  );
+}
+
+function kloterRowsAllInvoiceOnly(kloterRows) {
+  const valid = (kloterRows || []).filter(
+    (r) =>
+      (r.tipeProduk || "").trim() &&
+      parseFloat(r.beratKg) > 0 &&
+      parseFloat(r.hargaPerKg) > 0,
+  );
+  return (
+    valid.length > 0 &&
+    valid.every((r) => isTipeProdukInvoiceOnly(r.tipeProduk))
+  );
+}
+
 // Wait for API to be ready (event-based + polling fallback)
 async function waitForAPI() {
   if (window.API && window.API.Pemesanan && window.API.Pembeli) return true;
@@ -104,6 +132,30 @@ function findStokRowForPemesanan(p) {
 }
 
 function showAggregatedStokForPemesanan(p) {
+  if (pemesananIsInvoiceOnly(p)) {
+    const displayStokTersedia = document.getElementById("displayStokTersedia");
+    const displayProduksiProses = document.getElementById(
+      "displayProduksiProses",
+    );
+    const displayProduksiJenisKopi = document.getElementById(
+      "displayProduksiJenisKopi",
+    );
+    const stokInfoDisplay = document.getElementById("stokInfoDisplay");
+    const hintEl = document.getElementById("displayStokAgregatHint");
+    if (displayStokTersedia) displayStokTersedia.textContent = "—";
+    if (displayProduksiProses)
+      displayProduksiProses.textContent = p.prosesPengolahan || "-";
+    if (displayProduksiJenisKopi)
+      displayProduksiJenisKopi.textContent = p.jenisKopi || "-";
+    if (hintEl) {
+      hintEl.textContent =
+        "Roasted Beans: hanya untuk invoice — tidak memotong stok. Pemesanan bisa langsung Complete (pembayaran Lunas).";
+      hintEl.className = "small text-muted mb-0";
+    }
+    if (stokInfoDisplay) stokInfoDisplay.style.display = "block";
+    return;
+  }
+
   const lines = getPemesananKloterLinesFromDoc(p);
   const multi =
     lines.length > 1 ||
@@ -631,11 +683,56 @@ function updateBertahapStatusLocks() {
     if (spBayar.value === "Lunas") spBayar.value = "Pembayaran Bertahap";
     if (spPem.value === "Complete") spPem.value = "Ordering";
   }
+  syncStatusPemesananInvoiceOnlyForm();
 }
 
 /** Nama lama (tombol / handler) — tetap dipakai agar kompatibel. */
 function syncPembayaranKloterColumnsVisibility() {
   syncPembayaranBertahapSections();
+}
+
+/**
+ * Tampilkan opsi Complete & petunjuk jika semua kloter Roasted Beans + pembayaran Lunas.
+ */
+function syncStatusPemesananInvoiceOnlyForm() {
+  const statusField = document.getElementById("statusPemesanan");
+  const hint = document.getElementById("hintStatusPemesananForm");
+  const pemesananId = (document.getElementById("pemesananId")?.value || "").trim();
+  if (!statusField) return;
+
+  const allInv = kloterRowsAllInvoiceOnly(collectKloterFromForm());
+  const lunas =
+    (document.getElementById("statusPembayaran")?.value || "") === "Lunas";
+  const allowDirectComplete =
+    allInv && lunas && !currentEditPreservesComplete;
+
+  let optComplete = statusField.querySelector('option[value="Complete"]');
+  if (allowDirectComplete) {
+    if (!optComplete) {
+      optComplete = document.createElement("option");
+      optComplete.value = "Complete";
+      optComplete.textContent = "Complete";
+      statusField.appendChild(optComplete);
+    }
+    if (hint) {
+      hint.style.display = "block";
+      hint.innerHTML =
+        "<strong>Roasted Beans (invoice):</strong> pilih <strong>Complete</strong> untuk menyelesaikan tanpa mengurangi stok (pembayaran <strong>Lunas</strong>).";
+    }
+  } else if (!pemesananId && !currentEditPreservesComplete) {
+    if (optComplete) optComplete.remove();
+    if (statusField.value === "Complete") statusField.value = "Ordering";
+    if (hint) hint.style.display = "none";
+  } else if (pemesananId && allInv && !currentEditPreservesComplete && hint) {
+    hint.style.display = "block";
+    hint.innerHTML =
+      "<strong>Roasted Beans (invoice):</strong> pilih <strong>Complete</strong> untuk menyelesaikan tanpa stok, atau gunakan <strong>Proses Ordering</strong> (sama, tanpa potong stok).";
+  }
+
+  const wPem = document.getElementById("wrapSelectIdProduksiPemesanan");
+  if (wPem && !currentEditPreservesComplete) {
+    wPem.style.display = allInv ? "none" : "";
+  }
 }
 
 // Calculate total harga (Σ subtotal kloter + pajak + pengiriman)
@@ -647,6 +744,7 @@ function calculateTotalHarga() {
     th.value = total.toLocaleString("id-ID").replace(/\./g, ",");
   }
   updateRingkasanPembayaranBertahap();
+  syncStatusPemesananInvoiceOnlyForm();
 }
 
 // ==================== MASTER PEMBELI (tab Data Pembeli) ====================
@@ -1457,9 +1555,9 @@ async function editPemesanan(id) {
       const wP = document.getElementById("wrapSelectIdProduksiPemesanan");
       if (wP) wP.style.display = "none";
     }
+    syncStatusPemesananInvoiceOnlyForm();
     const htEdit = document.getElementById("hintStatusPemesananForm");
-    if (htEdit)
-      htEdit.style.display = currentEditPreservesComplete ? "none" : "";
+    if (htEdit && currentEditPreservesComplete) htEdit.style.display = "none";
 
     // Disable ID Pembelian saat edit (tidak bisa diubah)
     const idPembelianField = document.getElementById("idPembelian");
@@ -1650,6 +1748,39 @@ async function savePemesanan(cetakInvoice) {
         if (!pFromApi || !pFromApi.idPembelian) {
           throw new Error("Gagal memuat data pemesanan setelah simpan");
         }
+
+        if (pemesananIsInvoiceOnly(pFromApi)) {
+          if (statusPembayaran !== "Lunas") {
+            alert(
+              "Pemesanan Roasted Beans (invoice) hanya bisa Complete jika pembayaran sudah Lunas.",
+            );
+            return;
+          }
+          await window.API.Pemesanan.update(pemesananId, {
+            ...pemesananData,
+            statusPemesanan: "Complete",
+            statusPembayaran: "Lunas",
+          });
+          if (window.showNotification) {
+            window.showNotification(
+              "update",
+              "Pemesanan",
+              "success",
+              "Pemesanan Roasted Beans Complete (invoice, tanpa pengurangan stok).",
+            );
+          } else {
+            alert(
+              "Pemesanan Roasted Beans diselesaikan (invoice only, stok tidak dikurangi).",
+            );
+          }
+          await loadPemesanan();
+          const modalInv = bootstrap.Modal.getInstance(
+            document.getElementById("modalPemesanan"),
+          );
+          modalInv?.hide();
+          return;
+        }
+
         await loadStokData();
         const stokErr = await validateOrderingStok(pFromApi, idProdForm);
         if (stokErr) {
@@ -1727,10 +1858,18 @@ async function savePemesanan(cetakInvoice) {
       }
     } else {
       if (statusPemesanan === "Complete") {
-        alert(
-          "Pemesanan baru tidak bisa langsung **Complete**. Simpan sebagai **Ordering** dulu, lalu selesaikan lewat **Edit → pilih Complete** atau tombol **Proses Ordering**.",
-        );
-        return;
+        if (!kloterRowsAllInvoiceOnly(kloterRaw)) {
+          alert(
+            "Pemesanan baru tidak bisa langsung **Complete** (kecuali semua kloter **Roasted Beans** dengan pembayaran **Lunas**). Simpan sebagai **Ordering** dulu, lalu selesaikan lewat **Edit → Complete** atau **Proses Ordering**.",
+          );
+          return;
+        }
+        if (statusPembayaran !== "Lunas") {
+          alert(
+            "Pemesanan Roasted Beans (invoice) hanya bisa langsung Complete jika pembayaran **Lunas**.",
+          );
+          return;
+        }
       }
       // Add mode - Create via API
       console.log("🔄 Creating new pemesanan");
@@ -2086,7 +2225,17 @@ function unwrapPemesananResponse(res) {
  * @returns {Promise<string|null>} pesan error, atau null jika OK
  */
 async function validateOrderingStok(pemesananDoc, idProduksiPilihan) {
-  const linesCheck = getPemesananKloterLinesFromDoc(pemesananDoc);
+  if (pemesananIsInvoiceOnly(pemesananDoc)) {
+    return null;
+  }
+
+  const linesCheck = getPemesananKloterLinesFromDoc(pemesananDoc).filter(
+    (L) => !isTipeProdukInvoiceOnly(L.tipeProduk),
+  );
+  if (!linesCheck.length) {
+    return null;
+  }
+
   const multiStok =
     linesCheck.length > 1 ||
     new Set(
@@ -2127,11 +2276,16 @@ async function validateOrderingStok(pemesananDoc, idProduksiPilihan) {
   }
 
   if (!multiStok) {
-    let stokRow = findStokRowForPemesanan(pemesananDoc);
+    const pseudoSingle = {
+      tipeProduk: linesCheck[0].tipeProduk,
+      jenisKopi: linesCheck[0].jenisKopi,
+      prosesPengolahan: linesCheck[0].prosesPengolahan,
+    };
+    let stokRow = findStokRowForPemesanan(pseudoSingle);
     if (!stokRow) {
       try {
         await loadStokData();
-        stokRow = findStokRowForPemesanan(pemesananDoc);
+        stokRow = findStokRowForPemesanan(pseudoSingle);
       } catch (_) {
         /* noop */
       }
@@ -2139,7 +2293,7 @@ async function validateOrderingStok(pemesananDoc, idProduksiPilihan) {
     const stokTersedia = stokRow
       ? parseFloat(stokRow.stokTersedia ?? stokRow.totalBerat ?? 0) || 0
       : 0;
-    const jumlahPesanan = totalBeratKloterFromDoc(pemesananDoc);
+    const jumlahPesanan = parseFloat(linesCheck[0].beratKg) || 0;
 
     if (!stokRow) {
       return "Tidak ada stok hasil produksi yang cocok dengan pemesanan ini.\nPastikan kombinasi tipe produk, jenis kopi, dan proses pengolahan sama dengan baris di Kelola Stok.";
@@ -2221,7 +2375,19 @@ async function fillSelectIdProduksiUntukPemesanan(
       : '<option value="">Otomatis (FIFO — sistem memilih batch)</option>';
   sel.innerHTML = optFifo;
 
-  const lines = getPemesananKloterLinesFromDoc(pemesananDoc);
+  if (pemesananIsInvoiceOnly(pemesananDoc)) {
+    wrap.style.display = "none";
+    if (hint) {
+      hint.textContent =
+        "Roasted Beans: tidak perlu pilih batch — stok tidak dikurangi.";
+      hint.classList.remove("d-none");
+    }
+    return;
+  }
+
+  const lines = getPemesananKloterLinesFromDoc(pemesananDoc).filter(
+    (L) => !isTipeProdukInvoiceOnly(L.tipeProduk),
+  );
   const multi =
     lines.length > 1 ||
     new Set(
@@ -2414,6 +2580,11 @@ async function saveOrdering() {
             ? "Data ordering sudah ada; status pemesanan diselaraskan (stok tidak dikurangi lagi)."
             : "Pemesanan ini sudah pernah diproses.");
         alert(msg);
+      } else if (result.invoiceOnly) {
+        alert(
+          result.message ||
+            "Pemesanan Roasted Beans diselesaikan (invoice only, stok tidak dikurangi).",
+        );
       } else if (
         result.stokSebelum != null &&
         result.stokSesudah != null &&
@@ -2715,7 +2886,10 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   const statusPembayaranEl = document.getElementById("statusPembayaran");
   if (statusPembayaranEl) {
-    statusPembayaranEl.addEventListener("change", syncPembayaranKloterColumnsVisibility);
+    statusPembayaranEl.addEventListener("change", () => {
+      syncPembayaranKloterColumnsVisibility();
+      updateBertahapStatusLocks();
+    });
   }
 
   const statusPemesananEl = document.getElementById("statusPemesanan");
