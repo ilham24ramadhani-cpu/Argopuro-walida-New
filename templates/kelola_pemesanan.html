@@ -887,9 +887,29 @@
                   Pajak, pengiriman &amp; total
                 </h6>
                 <div class="row g-3 align-items-end">
+                  <div class="col-12 col-md-6 col-xl-3">
+                    <label for="tipePajak" class="form-label"
+                      >Tipe pajak <span class="text-danger">*</span></label
+                    >
+                    <select
+                      class="form-select"
+                      id="tipePajak"
+                      required
+                      onchange="calculateTotalHarga()"
+                    >
+                      <option value="penjumlahan" selected>
+                        Pajak penjumlahan
+                      </option>
+                      <option value="pengurangan">Pajak pengurangan</option>
+                    </select>
+                    <small class="text-muted d-block mt-1"
+                      >Penjumlahan: ditambah ke subtotal. Pengurangan: mengurangi
+                      subtotal.</small
+                    >
+                  </div>
                   <div class="col-6 col-xl-2">
                     <label for="biayaPajak" class="form-label">
-                      Pajak (Rp)
+                      Nominal pajak (Rp)
                       <span class="text-muted fw-normal small">opsional</span>
                     </label>
                     <input
@@ -932,8 +952,8 @@
                       tabindex="-1"
                       aria-readonly="true"
                     />
-                    <small class="text-muted"
-                      >(kg × harga/kg) + pajak + pengiriman</small
+                    <small class="text-muted" id="hintFormulaTotalHarga"
+                      >Subtotal kloter + pajak + pengiriman</small
                     >
                   </div>
                 </div>

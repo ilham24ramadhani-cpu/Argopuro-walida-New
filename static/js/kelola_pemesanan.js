@@ -581,7 +581,7 @@ function collectKloterFromForm() {
   return out;
 }
 
-/** Total rupiah pemesanan dari form (subtotal kloter + pajak + kirim). */
+/** Total rupiah pemesanan dari form (subtotal kloter ± pajak + kirim). */
 function getTotalHargaNumericFromForm() {
   const tb = document.getElementById("tbodyKloterPemesanan");
   let subtotalBarang = 0;
@@ -600,7 +600,23 @@ function getTotalHargaNumericFromForm() {
   );
   const pajak = Number.isFinite(pajakRaw) ? Math.max(0, pajakRaw) : 0;
   const kirim = Number.isFinite(kirimRaw) ? Math.max(0, kirimRaw) : 0;
-  return subtotalBarang + pajak + kirim;
+  const tipePajak = document.getElementById("tipePajak")?.value || "penjumlahan";
+  return hitungTotalPemesananDariKomponen(
+    subtotalBarang,
+    pajak,
+    kirim,
+    tipePajak,
+  );
+}
+
+function updateHintFormulaTotalHarga() {
+  const el = document.getElementById("hintFormulaTotalHarga");
+  if (!el) return;
+  const tipe = normalizeTipePajak(document.getElementById("tipePajak")?.value);
+  el.textContent =
+    tipe === "pengurangan"
+      ? "Subtotal kloter − pajak + pengiriman"
+      : "Subtotal kloter + pajak + pengiriman";
 }
 
 function updateRingkasanPembayaranBertahap() {
@@ -735,9 +751,10 @@ function syncStatusPemesananInvoiceOnlyForm() {
   }
 }
 
-// Calculate total harga (Σ subtotal kloter + pajak + pengiriman)
+// Calculate total harga (subtotal kloter ± pajak + pengiriman)
 function calculateTotalHarga() {
   const total = getTotalHargaNumericFromForm();
+  updateHintFormulaTotalHarga();
 
   const th = document.getElementById("totalHarga");
   if (th) {
@@ -1441,10 +1458,13 @@ async function openModal(mode = "add") {
     if (spBayar) spBayar.value = "Belum Lunas";
     const catPm = document.getElementById("catatanPemesanan");
     if (catPm) catPm.value = "";
+    const tp = document.getElementById("tipePajak");
+    if (tp) tp.value = "penjumlahan";
     const bp = document.getElementById("biayaPajak");
     if (bp) bp.value = "0";
     const bpg = document.getElementById("biayaPengiriman");
     if (bpg) bpg.value = "0";
+    updateHintFormulaTotalHarga();
 
     const btnCetak = document.getElementById("btnSimpanCetakInvoice");
     if (btnCetak) btnCetak.style.display = "";
@@ -1508,6 +1528,8 @@ async function editPemesanan(id) {
     }
     await loadMasterDataOptions();
     renderKloterTable(getPemesananKloterLinesFromDoc(p));
+    const tpEl = document.getElementById("tipePajak");
+    if (tpEl) tpEl.value = normalizeTipePajak(p.tipePajak);
     const bpEl = document.getElementById("biayaPajak");
     if (bpEl) bpEl.value = p.biayaPajak != null ? p.biayaPajak : "0";
     const bpgEl = document.getElementById("biayaPengiriman");
@@ -1643,12 +1665,20 @@ async function savePemesanan(cetakInvoice) {
   if (!Number.isFinite(biayaPengiriman) || biayaPengiriman < 0) {
     biayaPengiriman = 0;
   }
+  const tipePajak = normalizeTipePajak(
+    document.getElementById("tipePajak")?.value || "penjumlahan",
+  );
 
   const subtotalBarang = kloterPayload.reduce(
     (s, k) => s + k.beratKg * k.hargaPerKg,
     0,
   );
-  const totalHarga = subtotalBarang + biayaPajak + biayaPengiriman;
+  const totalHarga = hitungTotalPemesananDariKomponen(
+    subtotalBarang,
+    biayaPajak,
+    biayaPengiriman,
+    tipePajak,
+  );
 
   if (statusPembayaran === "Pembayaran Bertahap") {
     const sumSemua = sumAllPembayaranBertahapFromForm();
@@ -1708,6 +1738,7 @@ async function savePemesanan(cetakInvoice) {
       tipePemesanan,
       negara: tipePemesanan === "International" ? negara : "",
       kloter: kloterPayload,
+      tipePajak,
       biayaPajak,
       biayaPengiriman,
       totalHarga,

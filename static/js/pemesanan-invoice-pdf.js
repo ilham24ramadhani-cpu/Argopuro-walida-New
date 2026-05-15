@@ -73,6 +73,37 @@ function pemesananKloterSubtotalRpFromRow(row) {
   return Math.round(j * hp * 100) / 100;
 }
 
+/** Normalisasi tipe pajak (default penjumlahan untuk dokumen lama). */
+function normalizeTipePajak(raw) {
+  const t = String(raw || "penjumlahan")
+    .trim()
+    .toLowerCase();
+  if (t === "pengurangan" || t === "kurang" || t === "minus") return "pengurangan";
+  return "penjumlahan";
+}
+
+function labelTipePajak(raw) {
+  return normalizeTipePajak(raw) === "pengurangan"
+    ? "Pajak pengurangan"
+    : "Pajak penjumlahan";
+}
+
+/** Total tagihan: subtotal kloter ± pajak + pengiriman. */
+function hitungTotalPemesananDariKomponen(
+  subtotalBarang,
+  biayaPajak,
+  biayaPengiriman,
+  tipePajak,
+) {
+  const sub = Math.max(0, parseFloat(subtotalBarang) || 0);
+  const pajak = Math.max(0, parseFloat(biayaPajak) || 0);
+  const kirim = Math.max(0, parseFloat(biayaPengiriman) || 0);
+  const tipe = normalizeTipePajak(tipePajak);
+  const dasar =
+    tipe === "pengurangan" ? sub - pajak : sub + pajak;
+  return Math.max(0, Math.round((dasar + kirim) * 100) / 100);
+}
+
 /** Σ pembayaran yang sudah lunas (per kloter + pembayaranBertahapBaris). Selaras totalPembayaranKloter di API. */
 function sumJumlahPembayaranKloterFromDoc(p) {
   if (!p) return 0;
@@ -889,6 +920,11 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   const totalTagihanKotakInv = invoiceTotalTagihanKotakFromDoc(p);
   const pajakInv = Math.max(0, parseFloat(p.biayaPajak) || 0);
   const kirimInv = Math.max(0, parseFloat(p.biayaPengiriman) || 0);
+  const tipePajakInv = normalizeTipePajak(p.tipePajak);
+  const pajakInvStr =
+    tipePajakInv === "pengurangan" && pajakInv > 0
+      ? `− ${pdfFmtIdNumber(pajakInv)}`
+      : pdfFmtIdNumber(pajakInv);
   const invLines = getPemesananKloterLinesFromDoc(p);
   const barisPembayaranTambahan = pdfPembayaranBertahapBarisOnlyForInvoice(p);
 
@@ -1126,8 +1162,8 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   const innerW = SUMMARY_BOX_W - 2 * boxPad;
 
   yy = pdfDrawInvoiceSummaryKVRow(doc, boxL, yy, innerW, boxPad, {
-    label: "Pajak (Rp)",
-    valueStr: pdfFmtIdNumber(pajakInv),
+    label: `${labelTipePajak(tipePajakInv)} (Rp)`,
+    valueStr: pajakInvStr,
     fontPt: FT_BODY,
     labelRgb: INV_LABEL_MUTED_RGB,
     valueRgb: INV_TEXT_BODY_RGB,

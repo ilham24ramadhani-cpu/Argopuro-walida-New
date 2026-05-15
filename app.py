@@ -4990,6 +4990,23 @@ def _total_harga_pemesanan_tolerance(expected):
     return max(2.0, exp * 1e-6)
 
 
+def _normalize_tipe_pajak(raw):
+    """penjumlahan = ditambah ke subtotal; pengurangan = mengurangi subtotal."""
+    t = str(raw or 'penjumlahan').strip().lower()
+    if t in ('pengurangan', 'kurang', 'minus'):
+        return 'pengurangan'
+    return 'penjumlahan'
+
+
+def _hitung_total_pemesanan_dari_komponen(subtotal_barang, biaya_pajak, biaya_pengiriman, tipe_pajak):
+    sub = max(0.0, float(subtotal_barang or 0))
+    pajak = max(0.0, float(biaya_pajak or 0))
+    kirim = max(0.0, float(biaya_pengiriman or 0))
+    if _normalize_tipe_pajak(tipe_pajak) == 'pengurangan':
+        return max(0.0, round(sub - pajak + kirim, 2))
+    return round(sub + pajak + kirim, 2)
+
+
 def _normalize_status_pembayaran_canonical(raw):
     """
     Samakan variasi input status pembayaran ke nilai kanonik.
@@ -5154,6 +5171,7 @@ def create_pemesanan():
         biaya_pengiriman = float(data.get('biayaPengiriman') or 0)
         if biaya_pengiriman < 0:
             return jsonify({'error': 'Biaya pengiriman tidak boleh negatif'}), 400
+        tipe_pajak = _normalize_tipe_pajak(data.get('tipePajak'))
 
         if use_kloter:
             jumlah_total_kg = sum(float(i['jumlahPesananKg']) for i in kloter_norm)
@@ -5167,7 +5185,9 @@ def create_pemesanan():
             subtotal_barang = jumlah_total_kg * float(data['hargaPerKg'])
 
         total_harga_received = float(data['totalHarga'])
-        calculated_total = subtotal_barang + biaya_pajak + biaya_pengiriman
+        calculated_total = _hitung_total_pemesanan_dari_komponen(
+            subtotal_barang, biaya_pajak, biaya_pengiriman, tipe_pajak,
+        )
 
         tol = _total_harga_pemesanan_tolerance(calculated_total)
         if abs(total_harga_received - calculated_total) > tol:
@@ -5175,7 +5195,7 @@ def create_pemesanan():
             print(f"   Received: {total_harga_received}")
             print(f"   Calculated: {calculated_total}")
             return jsonify({
-                'error': 'Total harga tidak sesuai dengan perhitungan (subtotal barang + pajak + pengiriman)',
+                'error': 'Total harga tidak sesuai dengan perhitungan (subtotal barang ± pajak + pengiriman)',
                 'received': total_harga_received,
                 'calculated': calculated_total,
             }), 400
@@ -5204,6 +5224,7 @@ def create_pemesanan():
                 'prosesPengolahan': pr_root,
                 'jumlahPesananKg': jumlah_total_kg,
                 'hargaPerKg': harga_avg,
+                'tipePajak': tipe_pajak,
                 'biayaPajak': biaya_pajak,
                 'biayaPengiriman': biaya_pengiriman,
                 'totalHarga': float(data['totalHarga']),
@@ -5225,6 +5246,7 @@ def create_pemesanan():
                 'jenisKopi': data['jenisKopi'],
                 'jumlahPesananKg': float(data['jumlahPesananKg']),
                 'hargaPerKg': float(data['hargaPerKg']),
+                'tipePajak': tipe_pajak,
                 'biayaPajak': biaya_pajak,
                 'biayaPengiriman': biaya_pengiriman,
                 'totalHarga': float(data['totalHarga']),
@@ -5308,7 +5330,7 @@ def update_pemesanan(pemesanan_id):
         update_data = {}
         for field in ['idPembelian', 'namaPembeli', 'tipePemesanan', 'negara', 'tipeProduk',
                      'prosesPengolahan', 'jenisKopi', 'jumlahPesananKg', 'hargaPerKg',
-                     'biayaPajak', 'biayaPengiriman', 'totalHarga', 'statusPemesanan', 'tanggalPemesanan', 'idMasterPembeli',
+                     'tipePajak', 'biayaPajak', 'biayaPengiriman', 'totalHarga', 'statusPemesanan', 'tanggalPemesanan', 'idMasterPembeli',
                      'kontakPembeli', 'alamatPembeli', 'statusPembayaran', 'catatanPemesanan']:
             if field in data:
                 if field in ['jumlahPesananKg', 'hargaPerKg', 'totalHarga', 'biayaPajak', 'biayaPengiriman']:
@@ -5318,6 +5340,8 @@ def update_pemesanan(pemesanan_id):
                         update_data[field] = float(data[field])
                 elif field == 'catatanPemesanan':
                     update_data[field] = (data[field] or '').strip()
+                elif field == 'tipePajak':
+                    update_data[field] = _normalize_tipe_pajak(data[field])
                 else:
                     update_data[field] = data[field]
 
@@ -5339,7 +5363,7 @@ def update_pemesanan(pemesanan_id):
             update_data['jenisKopi'] = first['jenisKopi'] if len(kloter_norm) == 1 else 'Campuran'
             update_data['prosesPengolahan'] = first['prosesPengolahan'] if len(kloter_norm) == 1 else 'Campuran'
 
-        _total_keys = ('totalHarga', 'jumlahPesananKg', 'hargaPerKg', 'biayaPajak', 'biayaPengiriman', 'kloter', 'items')
+        _total_keys = ('totalHarga', 'jumlahPesananKg', 'hargaPerKg', 'tipePajak', 'biayaPajak', 'biayaPengiriman', 'kloter', 'items')
         if any(k in update_data for k in _total_keys):
             if 'kloter' in update_data:
                 sub_lines = sum(float(i.get('subtotal', 0) or 0) for i in update_data['kloter'])
@@ -5351,16 +5375,20 @@ def update_pemesanan(pemesanan_id):
                 sub_lines = j * hk
             pj = float(update_data.get('biayaPajak', pemesanan.get('biayaPajak', 0)) or 0)
             pg = float(update_data.get('biayaPengiriman', pemesanan.get('biayaPengiriman', 0)) or 0)
+            tpj = _normalize_tipe_pajak(
+                update_data.get('tipePajak', pemesanan.get('tipePajak', 'penjumlahan')),
+            )
+            update_data['tipePajak'] = tpj
             th = float(update_data.get('totalHarga', pemesanan.get('totalHarga', 0)))
             if pj < 0:
                 return jsonify({'error': 'Biaya pajak tidak boleh negatif'}), 400
             if pg < 0:
                 return jsonify({'error': 'Biaya pengiriman tidak boleh negatif'}), 400
-            expected = sub_lines + pj + pg
+            expected = _hitung_total_pemesanan_dari_komponen(sub_lines, pj, pg, tpj)
             tol = _total_harga_pemesanan_tolerance(expected)
             if abs(th - expected) > tol:
                 return jsonify({
-                    'error': 'Total harga tidak sesuai (subtotal barang + pajak + pengiriman)',
+                    'error': 'Total harga tidak sesuai (subtotal barang ± pajak + pengiriman)',
                     'expected': expected,
                     'received': th,
                 }), 400

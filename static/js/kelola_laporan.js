@@ -1924,6 +1924,10 @@ const LAPORAN_REKAP_CONFIG = {
         excelNumFmt: "#,##0",
       },
       {
+        label: "Tipe pajak",
+        value: (item) => labelTipePajak(item.tipePajak),
+      },
+      {
         label: "Biaya pajak (Rp)",
         align: "right",
         value: (item) =>
@@ -6823,6 +6827,11 @@ function renderLaporanPemesananInvoiceDetailHtml(p) {
   const totalInv = Number(p.totalHarga) || 0;
   const pajak = Math.max(0, Number(p.biayaPajak) || 0);
   const kirim = Math.max(0, Number(p.biayaPengiriman) || 0);
+  const tipePajakDoc = normalizeTipePajak(p.tipePajak);
+  const pajakTampil =
+    tipePajakDoc === "pengurangan" && pajak > 0
+      ? `− ${formatCurrencyNumeric(pajak)}`
+      : formatCurrencyNumeric(pajak);
   const statusBayarKey = (p.statusPembayaran || "")
     .trim()
     .replace(/\s+/g, " ")
@@ -6935,7 +6944,7 @@ function renderLaporanPemesananInvoiceDetailHtml(p) {
     <div class="row justify-content-end mt-2">
       <div class="col-md-6">
         <table class="table table-sm mb-0">
-          <tr><td>Pajak</td><td class="text-end">${formatCurrencyNumeric(pajak)}</td></tr>
+          <tr><td>${labelTipePajak(tipePajakDoc)}</td><td class="text-end">${pajakTampil}</td></tr>
           <tr><td>Pengiriman</td><td class="text-end">${formatCurrencyNumeric(kirim)}</td></tr>
           <tr class="fw-bold text-success"><td>Total tagihan</td><td class="text-end">${formatCurrencyNumeric(totalInv)}</td></tr>
           ${modeBertahap ? `<tr><td>Total terbayar</td><td class="text-end">${formatCurrencyNumeric(sumBayar)}</td></tr><tr class="fw-bold ${sisa > 0 ? "text-danger" : "text-success"}"><td>Sisa tagihan</td><td class="text-end">${formatCurrencyNumeric(sisa)}</td></tr>` : ""}
