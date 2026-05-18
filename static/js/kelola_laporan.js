@@ -1046,6 +1046,29 @@ function formatDate(dateString) {
   });
 }
 
+/** Waktu ekspor rekap: hari, tanggal lengkap, jam (detik), dan zona waktu. */
+function formatRekapExportTimestamp(when) {
+  const d = when instanceof Date ? when : new Date(when || Date.now());
+  if (Number.isNaN(d.getTime())) return "-";
+  const tanggal = d.toLocaleDateString("id-ID", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const jam = d.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const zona =
+    Intl.DateTimeFormat("id-ID", { timeZoneName: "short" })
+      .formatToParts(d)
+      .find((p) => p.type === "timeZoneName")?.value || "";
+  return zona ? `${tanggal} pukul ${jam} ${zona}` : `${tanggal} pukul ${jam}`;
+}
+
 function formatShortDate(dateValue, includeYear = false) {
   if (!dateValue) return "-";
   const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
@@ -2796,14 +2819,13 @@ async function loadRekapExportContext(category) {
     return { error: "no_data" };
   }
 
+  const exportedAt = new Date();
   return {
     config,
     data,
     filterInfo: getFilterDescription(category),
-    generatedAt: new Date().toLocaleString("id-ID", {
-      dateStyle: "long",
-      timeStyle: "short",
-    }),
+    exportedAt,
+    generatedAt: formatRekapExportTimestamp(exportedAt),
   };
 }
 
@@ -3187,7 +3209,19 @@ async function exportRekapView(category) {
           .meta {
             color: #6b7280;
             font-size: 12px;
+            margin-bottom: 8px;
+          }
+          .meta-export {
+            font-size: 12px;
+            color: #374151;
             margin-bottom: 16px;
+            padding: 10px 12px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+          }
+          .meta-export strong {
+            color: #0f172a;
           }
           table {
             width: 100%;
@@ -3244,6 +3278,7 @@ async function exportRekapView(category) {
       <body class="rekap-laporan">
         <h1>${config.title}</h1>
         <div class="meta">${filterInfo} • Total data: ${data.length}</div>
+        <div class="meta-export"><strong>Waktu ekspor laporan:</strong> ${generatedAt}</div>
         <table class="rekap-laporan-main">
           <thead>
             <tr>
@@ -3260,7 +3295,7 @@ async function exportRekapView(category) {
         ${summaryHtml}
         ${extraSummaryHtml}
         <div class="footer">
-          Ditampilkan pada ${generatedAt} — Argopuro Walida
+          Laporan diekspor pada ${generatedAt} — Argopuro Walida
         </div>
       </body>
     </html>
@@ -3303,7 +3338,7 @@ async function exportRekapPdf(category) {
         <tr><th scope="row">Judul laporan</th><td>${config.title}</td></tr>
         <tr><th scope="row">Filter &amp; periode</th><td>${filterInfo}</td></tr>
         <tr><th scope="row">Jumlah baris data</th><td>${data.length}</td></tr>
-        <tr><th scope="row">Waktu generate</th><td>${generatedAt}</td></tr>
+        <tr><th scope="row">Waktu ekspor laporan</th><td>${generatedAt}</td></tr>
         <tr><th scope="row">Sistem</th><td>Argopuro Walida</td></tr>
       </tbody>
     </table>
@@ -3453,7 +3488,7 @@ async function exportRekapPdf(category) {
         ${summaryHtml}
         ${extraSummaryHtml}
         <div class="footer">
-          Dokumen ini dibuat otomatis. Dicetak / diekspor pada ${generatedAt}.
+          Dokumen ini dibuat otomatis. Laporan diekspor pada ${generatedAt}.
         </div>
       </body>
     </html>
@@ -3492,7 +3527,7 @@ async function exportRekapExcel(category) {
     return;
   }
 
-  const { config, data, filterInfo, generatedAt } = ctx;
+  const { config, data, filterInfo, generatedAt, exportedAt } = ctx;
   const fillSection = {
     type: "pattern",
     pattern: "solid",
@@ -3512,7 +3547,7 @@ async function exportRekapExcel(category) {
   try {
     const wb = new ExcelJS.Workbook();
     wb.creator = "Argopuro Walida";
-    wb.created = new Date();
+    wb.created = exportedAt instanceof Date ? exportedAt : new Date();
 
     // --- Ringkasan (dua kolom: label | nilai, seperti cuplikan Numbers) ---
     const wsRing = wb.addWorksheet("Ringkasan", {
@@ -3553,7 +3588,7 @@ async function exportRekapExcel(category) {
     kvRing("Judul laporan", config.title);
     kvRing("Filter & periode", filterInfo);
     kvRing("Jumlah baris data", data.length, { numeric: true });
-    kvRing("Diekspor pada", generatedAt);
+    kvRing("Waktu ekspor laporan", generatedAt);
     kvRing("Sistem", "Argopuro Walida");
     kvRing(
       "Struktur berkas",
@@ -3585,7 +3620,7 @@ async function exportRekapExcel(category) {
       ["Judul laporan", config.title],
       ["Filter & periode", filterInfo],
       ["Jumlah baris data", data.length],
-      ["Waktu generate", generatedAt],
+      ["Waktu ekspor laporan", generatedAt],
       ["Sistem", "Argopuro Walida"],
     ];
     infoPairs.forEach(([k, v]) => {
