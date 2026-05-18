@@ -414,15 +414,9 @@ function pdfFmtIdNumber(n) {
   return v.toLocaleString("id-ID");
 }
 
-/** Nominal pajak di invoice (minus ASCII, aman untuk font Courier/jsPDF). */
-function pdfFmtPajakInvoiceValue(amount, tipePajak) {
-  const v = Math.max(0, parseFloat(amount) || 0);
-  const formatted = pdfFmtIdNumber(v);
-  if (v <= 0) return formatted;
-  if (normalizeTipePajak(tipePajak) === "pengurangan") {
-    return `-${formatted}`;
-  }
-  return formatted;
+/** Nominal pajak di invoice: selalu positif & hitam (tanda ± hanya di form pencatatan). */
+function pdfFmtPajakInvoiceValue(amount) {
+  return pdfFmtIdNumber(Math.max(0, parseFloat(amount) || 0));
 }
 
 /**
@@ -937,8 +931,7 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   const totalTagihanKotakInv = invoiceTotalTagihanKotakFromDoc(p);
   const pajakInv = Math.max(0, parseFloat(p.biayaPajak) || 0);
   const kirimInv = Math.max(0, parseFloat(p.biayaPengiriman) || 0);
-  const tipePajakInv = normalizeTipePajak(p.tipePajak);
-  const pajakInvStr = pdfFmtPajakInvoiceValue(pajakInv, tipePajakInv);
+  const pajakInvStr = pdfFmtPajakInvoiceValue(pajakInv);
   const invLines = getPemesananKloterLinesFromDoc(p);
   const barisPembayaranTambahan = pdfPembayaranBertahapBarisOnlyForInvoice(p);
 
@@ -1181,7 +1174,7 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
     fontPt: FT_BODY,
     labelRgb: INV_LABEL_MUTED_RGB,
     valueRgb: INV_TEXT_BODY_RGB,
-    dangerValue: normalizeTipePajak(tipePajakInv) === "pengurangan" && pajakInv > 0,
+    dangerValue: false,
     labelBold: true,
     reserveNumMm: 34,
   });
