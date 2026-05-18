@@ -1295,10 +1295,11 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
 
   const catatan = (p.catatanPemesanan && String(p.catatanPemesanan).trim()) || "";
   const boxPadSig = 3;
-  const footInner = RX - LX - FOOT_GRID_GAP;
-  const catW = footInner * (2 / 3);
-  const sigColW = footInner * (1 / 3);
-  const sigL0 = LX + catW + FOOT_GRID_GAP;
+  /** Catatan hanya di kiri; kolom kanan (≥ boxL) untuk ringkasan di atas + TTD di bawah. */
+  const footColGap = FOOT_GRID_GAP;
+  const catW = Math.max(52, boxL - LX - footColGap);
+  const sigL = boxL + footColGap;
+  const sigR = RX - CELL_PAD_H;
 
   y += SECTION_MB * 0.65;
 
@@ -1357,8 +1358,6 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   let yBottom = yFooter;
 
   if (catatan) {
-    const sigR = RX - CELL_PAD_H;
-    const sigL = Math.max(sigL0, sigR - sigColW + 2);
     const ySigEnd = drawTtdSeller(yFooter, sigL, sigR);
     const yCatEnd = pdfDrawCatatanPemesananTable(doc, LX, yFooter, catatan, {
       width: catW,
@@ -1369,8 +1368,6 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
     });
     yBottom = Math.max(yCatEnd, ySigEnd + 4);
   } else {
-    const sigR = RX - CELL_PAD_H;
-    const sigL = Math.max(sigL0, sigR - sigColW + 2);
     const ySigEnd = drawTtdSeller(yFooter, sigL, sigR);
     yBottom = ySigEnd + 6;
   }
