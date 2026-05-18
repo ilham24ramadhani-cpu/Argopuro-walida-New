@@ -455,6 +455,8 @@ const PDF_SAFE_BOTTOM_MM = 10;
  * Ringkasan + footer punya pengecekan addPage terpisah.
  */
 const PDF_INVOICE_TABLE_ROW_SAFE_BOTTOM_MM = 8;
+/** Invoice standar: jangan pecah halaman ringkasan/footer jika kloter ≤ batas ini (layout tetap sama). */
+const PDF_INVOICE_STANDARD_ONE_PAGE_MAX_KLOTER = 10;
 
 function pdfInvoiceContinuePageTopMm() {
   return invoicePxToMm(24);
@@ -1169,14 +1171,19 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
     statusBayar === "Pembayaran Bertahap" ||
     barisPembayaranTambahan.length > 0;
   const estimatedSummaryBlockMm =
-    10 +
-    LH * (2.8 + (showBertahapRingkasan ? 2.2 : 0)) +
+    12 +
+    LH * 3.2 +
     (showBertahapRingkasan
-      ? LH * (1.2 + barisPembayaranTambahan.length * 0.88)
+      ? LH * (4.5 + barisPembayaranTambahan.length * 0.92)
       : 0) +
-    14;
+    22;
   const pageBottom = pdfInvoicePageContentBottomMm();
-  if (!singlePage && y + estimatedSummaryBlockMm > pageBottom) {
+  const standardOnePageInvoice =
+    !singlePage && invLines.length <= PDF_INVOICE_STANDARD_ONE_PAGE_MAX_KLOTER;
+  if (
+    !standardOnePageInvoice &&
+    y + estimatedSummaryBlockMm > pageBottom
+  ) {
     doc.addPage();
     y = pdfInvoiceContinuePageTopMm();
   }
@@ -1293,6 +1300,8 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   const sigColW = footInner * (1 / 3);
   const sigL0 = LX + catW + FOOT_GRID_GAP;
 
+  y += SECTION_MB * 0.65;
+
   const estFootBlockMm = pdfEstimateInvoiceFooterBlockMm(
     doc,
     catatan,
@@ -1300,13 +1309,10 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
     singlePage,
     SIG_BEFORE,
   );
-  const footGapAfterSummary =
-    !singlePage && y + estFootBlockMm > pageBottom
-      ? 0
-      : Math.min(SECTION_MB * 0.65, Math.max(4, pageBottom - y - estFootBlockMm - 2));
-  y += footGapAfterSummary;
-
-  if (!singlePage && y + estFootBlockMm > pageBottom) {
+  if (
+    !standardOnePageInvoice &&
+    y + estFootBlockMm > pageBottom
+  ) {
     doc.addPage();
     y = pdfInvoiceContinuePageTopMm();
   }
