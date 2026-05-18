@@ -674,12 +674,11 @@ function pdfEstimateCatatanTableHeight(doc, catatanRaw, W, marginBottom) {
 
 /** Tinggi kolom tanda tangan (mm), selaras drawTtdSeller di pdfDrawInvoiceBody. */
 function pdfEstimateSignatureColumnHeightMm(singlePage) {
-  const SIG_TOP_SPACE = invoicePxToMm(singlePage ? 44 : 60);
   const SIG_BOX_MIN_H = invoicePxToMm(singlePage ? 118 : 160);
-  const boxPadSig = 3;
-  const sigTopPad = singlePage ? SIG_TOP_SPACE * 0.55 : SIG_TOP_SPACE * 0.72;
-  const innerFromTop = sigTopPad * 0.15 + sigTopPad + 8.5 + boxPadSig;
-  return Math.max(innerFromTop, SIG_BOX_MIN_H * (singlePage ? 0.36 : 0.4));
+  return Math.max(
+    singlePage ? 30 : 38,
+    SIG_BOX_MIN_H * (singlePage ? 0.44 : 0.54),
+  );
 }
 
 /** Perkiraan tinggi blok footer (catatan + TTD sejajar), untuk cek muat satu halaman. */
@@ -936,7 +935,6 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   const SUMMARY_BOX_W = invoicePxToMm(singlePage ? 300 : 320);
   const SIG_BEFORE = invoicePxToMm(singlePage ? 22 : 36);
   const FOOT_GRID_GAP = invoicePxToMm(24) * sp;
-  const SIG_TOP_SPACE = invoicePxToMm(singlePage ? 44 : 60);
   const SIG_BOX_MIN_H = invoicePxToMm(singlePage ? 118 : 160);
 
   const edges = pdfOrderTableEdges(LX, RX);
@@ -1294,11 +1292,10 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   doc.rect(boxL, boxTop, SUMMARY_BOX_W, yy - boxTop, "S");
 
   const catatan = (p.catatanPemesanan && String(p.catatanPemesanan).trim()) || "";
-  const boxPadSig = 3;
   /** Catatan hanya di kiri; kolom kanan (≥ boxL) untuk ringkasan di atas + TTD di bawah. */
   const footColGap = FOOT_GRID_GAP;
   const catW = Math.max(52, boxL - LX - footColGap);
-  const sigL = boxL + footColGap;
+  const sigL = boxL + 1.2;
   const sigR = RX - CELL_PAD_H;
 
   /** yy = bawah kotak ringkasan; y lama masih di boxTop — wajib pakai yy agar TTD tidak menimpa PPh/pengiriman. */
@@ -1324,37 +1321,38 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
 
   const drawTtdSeller = (yTop, sigL, sigR) => {
     const xC = (sigL + sigR) / 2;
-    const sigTopPad = singlePage ? SIG_TOP_SPACE * 0.55 : SIG_TOP_SPACE * 0.72;
-    const y0 = yTop + sigTopPad * 0.15;
-    const yGr = yTop + sigTopPad;
-    const yNm = yGr + 4.5;
-    const bTop = yTop;
-    const bottomNama = yNm + 4;
-    const bH = Math.max(
-      bottomNama + boxPadSig - bTop,
-      SIG_BOX_MIN_H * (singlePage ? 0.36 : 0.4),
+    const padIn = singlePage ? 3.5 : 5;
+    const boxW = Math.max(28, sigR - sigL);
+    const boxH = Math.max(
+      singlePage ? 30 : 38,
+      SIG_BOX_MIN_H * (singlePage ? 0.44 : 0.54),
     );
-    const outerL = sigL - boxPadSig;
-    const outerW = sigR - sigL + boxPadSig * 2;
+    const bTop = yTop;
+
     doc.setDrawColor(...INVOICE_BORDER_RGB);
     doc.setLineWidth(0.12);
-    doc.roundedRect(outerL, bTop, outerW, bH, 0.8, 0.8, "S");
+    doc.roundedRect(sigL, bTop, boxW, boxH, 0.8, 0.8, "S");
+
+    const yHormat = bTop + padIn + (singlePage ? 3.2 : 4);
+    const yLine = bTop + boxH * 0.56;
+    const yNama = bTop + boxH * 0.76;
+    const lineInset = padIn + 2;
+
     doc.setFontSize(FT_BODY);
     pdfInvSetFont(doc, "normal");
     doc.setTextColor(75, 75, 75);
-    doc.text("Hormat Kami,", xC, y0, { align: "center" });
+    doc.text("Hormat Kami,", xC, yHormat, { align: "center" });
     doc.setDrawColor(110, 110, 110);
     doc.setLineWidth(0.18);
-    doc.line(sigL, yGr, sigR, yGr);
+    doc.line(sigL + lineInset, yLine, sigR - lineInset, yLine);
     doc.setDrawColor(0, 0, 0);
     doc.setLineWidth(0.1);
-    doc.setFontSize(FT_BODY);
     pdfInvSetFont(doc, "bold");
     doc.setTextColor(...INV_GREEN_RGB);
-    doc.text("Argopuro Walida", xC, yNm, { align: "center" });
+    doc.text("Argopuro Walida", xC, yNama, { align: "center" });
     doc.setTextColor(0, 0, 0);
     pdfInvSetFont(doc, "normal");
-    return bTop + bH;
+    return bTop + boxH;
   };
 
   let yBottom = yFooter;
