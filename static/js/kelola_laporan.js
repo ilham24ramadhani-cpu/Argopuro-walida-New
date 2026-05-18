@@ -6830,7 +6830,7 @@ function renderLaporanPemesananInvoiceDetailHtml(p) {
   const tipePajakDoc = normalizeTipePajak(p.tipePajak);
   const pajakTampil =
     tipePajakDoc === "pengurangan" && pajak > 0
-      ? `− ${formatCurrencyNumeric(pajak)}`
+      ? `- ${formatCurrencyNumeric(pajak)}`
       : formatCurrencyNumeric(pajak);
   const statusBayarKey = (p.statusPembayaran || "")
     .trim()
