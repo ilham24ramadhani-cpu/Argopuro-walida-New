@@ -7076,8 +7076,19 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
     const { jsPDF: jsPDFLib } = window.jspdf;
     const logoDataUrl = await fetchArgopuroLogoForPdf();
     const doc = new jsPDFLib();
-    let yCur = pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p);
-    yCur = pdfDrawInvoiceBody(doc, p, yCur);
+    const invLineCount =
+      typeof getPemesananKloterLinesFromDoc === "function"
+        ? getPemesananKloterLinesFromDoc(p).length
+        : 0;
+    const catatanLineCount = String(p.catatanPemesanan || "")
+      .trim()
+      .split(/\r?\n/)
+      .filter((t) => t.trim()).length;
+    const pdfPageOpts = {
+      singlePage: invLineCount <= 8 && catatanLineCount <= 14,
+    };
+    let yCur = pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p, pdfPageOpts);
+    yCur = pdfDrawInvoiceBody(doc, p, yCur, pdfPageOpts);
 
     let pdfBase64 = doc.output("datauristring");
 

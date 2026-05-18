@@ -670,6 +670,25 @@ function pdfEstimateCatatanTableHeight(doc, catatanRaw, W, marginBottom) {
   return headerH + bodyH + mb;
 }
 
+/** Tinggi kolom tanda tangan (mm), selaras drawTtdSeller di pdfDrawInvoiceBody. */
+function pdfEstimateSignatureColumnHeightMm(singlePage) {
+  const SIG_TOP_SPACE = invoicePxToMm(singlePage ? 44 : 60);
+  const SIG_BOX_MIN_H = invoicePxToMm(singlePage ? 118 : 160);
+  const boxPadSig = 3;
+  const innerFromTop =
+    SIG_TOP_SPACE * 0.08 + SIG_TOP_SPACE + 10 + boxPadSig;
+  return Math.max(innerFromTop + boxPadSig, SIG_BOX_MIN_H * 0.42 + boxPadSig);
+}
+
+/** Perkiraan tinggi blok footer (catatan + TTD sejajar), untuk cek muat satu halaman. */
+function pdfEstimateInvoiceFooterBlockMm(doc, catatanRaw, catW, singlePage, sigBeforeMm) {
+  const sigH = pdfEstimateSignatureColumnHeightMm(singlePage);
+  const catH = catatanRaw
+    ? pdfEstimateCatatanTableHeight(doc, catatanRaw, catW, 3)
+    : 0;
+  return (sigBeforeMm || 0) + Math.max(catH, sigH) + 3;
+}
+
 /**
  * Warna badge pembayaran — sama logika kelas di kelola_pemesanan.js:
  * Lunas → bg-success putih; Pembayaran Bertahap → bg-info text-dark;
@@ -1150,13 +1169,14 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
     statusBayar === "Pembayaran Bertahap" ||
     barisPembayaranTambahan.length > 0;
   const estimatedSummaryBlockMm =
-    12 +
-    LH * 3.2 +
+    10 +
+    LH * (2.8 + (showBertahapRingkasan ? 2.2 : 0)) +
     (showBertahapRingkasan
-      ? LH * (4.5 + barisPembayaranTambahan.length * 0.92)
+      ? LH * (1.2 + barisPembayaranTambahan.length * 0.88)
       : 0) +
-    22;
-  if (!singlePage && y + estimatedSummaryBlockMm > pdfInvoicePageContentBottomMm()) {
+    14;
+  const pageBottom = pdfInvoicePageContentBottomMm();
+  if (!singlePage && y + estimatedSummaryBlockMm > pageBottom) {
     doc.addPage();
     y = pdfInvoiceContinuePageTopMm();
   }
@@ -1265,7 +1285,6 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   doc.setDrawColor(...INVOICE_BORDER_RGB);
   doc.setLineWidth(0.15);
   doc.rect(boxL, boxTop, SUMMARY_BOX_W, yy - boxTop, "S");
-  y = yy + SECTION_MB * 0.65;
 
   const catatan = (p.catatanPemesanan && String(p.catatanPemesanan).trim()) || "";
   const boxPadSig = 3;
@@ -1274,16 +1293,20 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   const sigColW = footInner * (1 / 3);
   const sigL0 = LX + catW + FOOT_GRID_GAP;
 
-  const estFootBlockMm =
-    SIG_BEFORE +
-    (catatan
-      ? Math.max(
-          pdfEstimateCatatanTableHeight(doc, catatan, catW, 3),
-          SIG_BOX_MIN_H * 0.48 + SIG_TOP_SPACE * 0.2,
-        )
-      : SIG_BOX_MIN_H * 0.48 + SIG_TOP_SPACE * 0.2) +
-    8;
-  if (!singlePage && y + estFootBlockMm > pdfInvoicePageContentBottomMm()) {
+  const estFootBlockMm = pdfEstimateInvoiceFooterBlockMm(
+    doc,
+    catatan,
+    catW,
+    singlePage,
+    SIG_BEFORE,
+  );
+  const footGapAfterSummary =
+    !singlePage && y + estFootBlockMm > pageBottom
+      ? 0
+      : Math.min(SECTION_MB * 0.65, Math.max(4, pageBottom - y - estFootBlockMm - 2));
+  y += footGapAfterSummary;
+
+  if (!singlePage && y + estFootBlockMm > pageBottom) {
     doc.addPage();
     y = pdfInvoiceContinuePageTopMm();
   }

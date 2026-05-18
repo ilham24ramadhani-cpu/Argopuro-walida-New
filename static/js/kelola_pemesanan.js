@@ -2757,8 +2757,17 @@ async function generateInvoicePDF(idPembelian) {
     const { jsPDF: jsPDFLib } = window.jspdf;
     const logoDataUrl = await fetchArgopuroLogoForPdf();
     const doc = new jsPDFLib();
-    const singlePagePdf = !!document.getElementById("invoicePdfSatuHalaman")
-      ?.checked;
+    const invLineCount =
+      typeof getPemesananKloterLinesFromDoc === "function"
+        ? getPemesananKloterLinesFromDoc(p).length
+        : 0;
+    const catatanLineCount = String(p.catatanPemesanan || "")
+      .trim()
+      .split(/\r?\n/)
+      .filter((t) => t.trim()).length;
+    const singlePagePdf =
+      !!document.getElementById("invoicePdfSatuHalaman")?.checked ||
+      (invLineCount <= 8 && catatanLineCount <= 14);
     const pdfPageOpts = { singlePage: singlePagePdf };
     let yCur = pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p, pdfPageOpts);
     yCur = pdfDrawInvoiceBody(doc, p, yCur, pdfPageOpts);
