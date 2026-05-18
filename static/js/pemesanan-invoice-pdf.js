@@ -677,9 +677,9 @@ function pdfEstimateSignatureColumnHeightMm(singlePage) {
   const SIG_TOP_SPACE = invoicePxToMm(singlePage ? 44 : 60);
   const SIG_BOX_MIN_H = invoicePxToMm(singlePage ? 118 : 160);
   const boxPadSig = 3;
-  const innerFromTop =
-    SIG_TOP_SPACE * 0.08 + SIG_TOP_SPACE + 10 + boxPadSig;
-  return Math.max(innerFromTop + boxPadSig, SIG_BOX_MIN_H * 0.42 + boxPadSig);
+  const sigTopPad = singlePage ? SIG_TOP_SPACE * 0.55 : SIG_TOP_SPACE * 0.72;
+  const innerFromTop = sigTopPad * 0.15 + sigTopPad + 8.5 + boxPadSig;
+  return Math.max(innerFromTop, SIG_BOX_MIN_H * (singlePage ? 0.36 : 0.4));
 }
 
 /** Perkiraan tinggi blok footer (catatan + TTD sejajar), untuk cek muat satu halaman. */
@@ -1301,7 +1301,8 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   const sigL = boxL + footColGap;
   const sigR = RX - CELL_PAD_H;
 
-  y += SECTION_MB * 0.65;
+  /** yy = bawah kotak ringkasan; y lama masih di boxTop — wajib pakai yy agar TTD tidak menimpa PPh/pengiriman. */
+  y = yy + SECTION_MB * 0.45;
 
   const estFootBlockMm = pdfEstimateInvoiceFooterBlockMm(
     doc,
@@ -1323,14 +1324,15 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
 
   const drawTtdSeller = (yTop, sigL, sigR) => {
     const xC = (sigL + sigR) / 2;
-    const y0 = yTop + SIG_TOP_SPACE * 0.08;
-    const yGr = yTop + SIG_TOP_SPACE;
-    const yNm = yGr + 5;
-    const bTop = yTop - boxPadSig;
-    const bottomNama = yNm + 5;
+    const sigTopPad = singlePage ? SIG_TOP_SPACE * 0.55 : SIG_TOP_SPACE * 0.72;
+    const y0 = yTop + sigTopPad * 0.15;
+    const yGr = yTop + sigTopPad;
+    const yNm = yGr + 4.5;
+    const bTop = yTop;
+    const bottomNama = yNm + 4;
     const bH = Math.max(
       bottomNama + boxPadSig - bTop,
-      SIG_BOX_MIN_H * 0.42,
+      SIG_BOX_MIN_H * (singlePage ? 0.36 : 0.4),
     );
     const outerL = sigL - boxPadSig;
     const outerW = sigR - sigL + boxPadSig * 2;
