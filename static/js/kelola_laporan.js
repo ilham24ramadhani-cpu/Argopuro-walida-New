@@ -885,6 +885,7 @@ async function loadAllReportData() {
 
     refreshBahanPemasokFilterOptions();
     refreshLaporanProsesTahapanFilterOptions();
+    refreshPemesananProsesFilterOptions();
 
     const endTime = performance.now();
     const loadTime = ((endTime - startTime) / 1000).toFixed(2);
@@ -2735,10 +2736,12 @@ function getFilterDescription(category) {
     const elB = document.getElementById("pemesananFilterBulan");
     const elS = document.getElementById("pemesananFilterStatus");
     const elTip = document.getElementById("pemesananFilterTipe");
+    const elPro = document.getElementById("pemesananFilterProses");
     const ft = elT && elT.value;
     const fb = elB && elB.value;
     const fs = elS && elS.value;
     const ftip = elTip && elTip.value;
+    const fpro = elPro && elPro.value;
     if (ft) parts.push(`Tanggal: ${formatDate(ft)}`);
     if (fb) {
       const m = parseInt(String(fb), 10);
@@ -2748,6 +2751,7 @@ function getFilterDescription(category) {
     }
     if (fs) parts.push(`Status: ${fs}`);
     if (ftip) parts.push(`Tipe: ${ftip}`);
+    if (fpro) parts.push(`Proses pengolahan: ${fpro}`);
     return parts.length ? parts.join(" | ") : "Filter: semua pemesanan";
   }
   if (category === "pemasok") {
@@ -6795,6 +6799,24 @@ document.addEventListener("DOMContentLoaded", function () {
 
 // ==================== LAPORAN PEMESANAN ====================
 
+/** Ambil daftar nama proses pengolahan dari semua kloter sebuah dokumen pemesanan. */
+function getPemesananProsesPengolahanList(p) {
+  if (!p) return [];
+  const rows =
+    Array.isArray(p.kloter) && p.kloter.length > 0
+      ? p.kloter
+      : Array.isArray(p.items) && p.items.length > 0
+        ? p.items
+        : null;
+  if (rows) {
+    return rows
+      .map((r) => (r && r.prosesPengolahan ? String(r.prosesPengolahan).trim() : ""))
+      .filter(Boolean);
+  }
+  const single = p.prosesPengolahan ? String(p.prosesPengolahan).trim() : "";
+  return single ? [single] : [];
+}
+
 /** Filter pemesanan dari kontrol tab laporan (sama untuk tabel & rekap). */
 function getPemesananFilteredForLaporan() {
   if (!Array.isArray(pemesanan)) return [];
@@ -6811,6 +6833,10 @@ function getPemesananFilteredForLaporan() {
   const filterTipe = document.getElementById("pemesananFilterTipe")
     ? document.getElementById("pemesananFilterTipe").value
     : "";
+  const filterProsesRaw = document.getElementById("pemesananFilterProses")
+    ? document.getElementById("pemesananFilterProses").value
+    : "";
+  const filterProses = normalizeLaporanFilterStr(filterProsesRaw);
   return pemesanan.filter((p) => {
     const matchTanggal =
       !filterTanggal || p.tanggalPemesanan === filterTanggal;
@@ -6821,8 +6847,43 @@ function getPemesananFilteredForLaporan() {
     }
     const matchStatus = !filterStatus || p.statusPemesanan === filterStatus;
     const matchTipe = !filterTipe || p.tipePemesanan === filterTipe;
-    return matchTanggal && matchBulan && matchStatus && matchTipe;
+    let matchProses = true;
+    if (filterProses) {
+      const list = getPemesananProsesPengolahanList(p).map((s) =>
+        normalizeLaporanFilterStr(s),
+      );
+      matchProses = list.includes(filterProses);
+    }
+    return matchTanggal && matchBulan && matchStatus && matchTipe && matchProses;
   });
+}
+
+/** Isi dropdown proses pengolahan pemesanan dari data terbaru (semua kloter). */
+function refreshPemesananProsesFilterOptions() {
+  const sel = document.getElementById("pemesananFilterProses");
+  if (!sel) return;
+  const prev = sel.value || "";
+  const set = new Set();
+  (pemesanan || []).forEach((p) => {
+    getPemesananProsesPengolahanList(p).forEach((n) => {
+      if (n) set.add(n);
+    });
+  });
+  const keep = prev && set.has(prev) ? prev : "";
+  sel.innerHTML = "";
+  const o0 = document.createElement("option");
+  o0.value = "";
+  o0.textContent = "Semua proses";
+  sel.appendChild(o0);
+  [...set]
+    .sort((a, b) => a.localeCompare(b, "id"))
+    .forEach((v) => {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = v;
+      sel.appendChild(o);
+    });
+  sel.value = keep;
 }
 
 // Load dan display pemesanan data untuk laporan
@@ -7230,5 +7291,12 @@ document.addEventListener("DOMContentLoaded", function () {
   const pemesananFilterBulan = document.getElementById("pemesananFilterBulan");
   if (pemesananFilterBulan) {
     pemesananFilterBulan.addEventListener("change", displayPemesananLaporan);
+  }
+
+  const pemesananFilterProses = document.getElementById(
+    "pemesananFilterProses"
+  );
+  if (pemesananFilterProses) {
+    pemesananFilterProses.addEventListener("change", displayPemesananLaporan);
   }
 });
