@@ -125,21 +125,12 @@ function getIdBahanListFromProduksi(p) {
 }
 
 /**
- * Setelah tahap Pengeringan Akhir (dan berikutnya), tambah ID bahan tidak diizinkan saat edit.
+ * Mulai tahap Pengemasan, penambahan ID bahan tidak diizinkan saat edit.
  */
-function isTambahBahanTerlarangSetelahPengeringanAkhir(statusTahapan) {
+function isTambahBahanTerlarangMulaiPengemasan(statusTahapan) {
   const s = (statusTahapan || "").trim();
   if (!s) return false;
-  if (s.includes("Pengeringan Akhir")) return true;
-  const later = [
-    "Hulling",
-    "Hand Sortasi",
-    "Grinding",
-    "Pengemasan",
-    "Pengupasan Kulit Tanduk",
-    "Roasting",
-  ];
-  return later.some((m) => s.includes(m));
+  return s.includes("Pengemasan");
 }
 
 let _produksiBahanRowsCache = [];
@@ -335,7 +326,7 @@ async function renderIdBahanEditMode(p) {
     p.statusTahapan ||
     "";
   const kunciTambahBahan =
-    isTambahBahanTerlarangSetelahPengeringanAkhir(statusEff);
+    isTambahBahanTerlarangMulaiPengemasan(statusEff);
 
   const oldIds = getIdBahanListFromProduksi(p);
   let rows = [];
@@ -392,7 +383,7 @@ async function renderIdBahanEditMode(p) {
       "alert alert-secondary border py-2 small mb-0 mt-2 readonly-bahan-blok";
     info.setAttribute("role", "status");
     info.innerHTML =
-      '<i class="bi bi-lock-fill me-1"></i> Penambahan ID bahan <strong>dikunci</strong> mulai tahap <strong>Pengeringan Akhir</strong> (dan tahap setelahnya).';
+      '<i class="bi bi-lock-fill me-1"></i> Penambahan ID bahan <strong>dikunci</strong> sebelum masuk tahap <strong>Pengemasan</strong>.';
     container.appendChild(info);
   }
 
@@ -478,9 +469,9 @@ function syncProduksiBahanEditCheckbox() {
     document.getElementById("statusTahapan")?.value ||
     window._produksiEditSnapshot?.statusTahapan ||
     "";
-  if (isTambahBahanTerlarangSetelahPengeringanAkhir(st)) {
+  if (isTambahBahanTerlarangMulaiPengemasan(st)) {
     beratAwalInput.title =
-      "Total alokasi bahan tercatat. Penambahan bahan dikunci mulai tahap Pengeringan Akhir.";
+      "Total alokasi bahan tercatat. Penambahan bahan dikunci sebelum masuk tahap Pengemasan.";
   } else {
     beratAwalInput.title =
       "Jumlah total alokasi semua ID bahan (bertambah otomatis jika menambah centang).";
@@ -2335,10 +2326,10 @@ window.editProduksi = async function editProduksi(id) {
       beratAwalInput.value = p.beratAwal || "";
       beratAwalInput.readOnly = true;
       beratAwalInput.style.backgroundColor = "#e9ecef";
-      beratAwalInput.title = isTambahBahanTerlarangSetelahPengeringanAkhir(
+      beratAwalInput.title = isTambahBahanTerlarangMulaiPengemasan(
         p.statusTahapan,
       )
-        ? "Total alokasi bahan tercatat. Penambahan bahan dikunci mulai tahap Pengeringan Akhir."
+        ? "Total alokasi bahan tercatat. Penambahan bahan dikunci sebelum masuk tahap Pengemasan."
         : "Total alokasi semua ID bahan. Bertambah otomatis jika Anda menambah centang bahan baru.";
     }
     if (beratAwalInfo) {

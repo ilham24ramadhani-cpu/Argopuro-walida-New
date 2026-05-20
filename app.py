@@ -595,20 +595,12 @@ def _produksi_filter_by_bahan_id(id_bahan):
 
 def _status_tambah_bahan_dikunci(status_tahapan):
     """
-    Setelah tahap Pengeringan Akhir (dan selanjutnya), penambahan ID bahan tidak diizinkan.
+    Mulai tahap Pengemasan, penambahan ID bahan tidak diizinkan.
     """
     s = (status_tahapan or '').strip()
     if not s:
         return False
-    if 'Pengeringan Akhir' in s:
-        return True
-    for m in (
-        'Hulling', 'Hand Sortasi', 'Grinding', 'Pengemasan',
-        'Pengupasan Kulit Tanduk', 'Roasting',
-    ):
-        if m in s:
-            return True
-    return False
+    return 'Pengemasan' in s
 
 
 def _sisa_bahan_line(bahan_doc, id_bahan, proses_pengolahan=None, id_proses=None):
@@ -1819,7 +1811,7 @@ def update_produksi(produksi_id):
             _status_tambah_bahan_dikunci(st_lama) or _status_tambah_bahan_dikunci(st_baru)
         ):
             return jsonify({
-                'error': 'Menambah ID Bahan tidak diizinkan setelah tahap Pengeringan Akhir.',
+                'error': 'Menambah ID Bahan tidak diizinkan mulai tahap Pengemasan.',
             }), 400
 
         alokasi_req = data.get('alokasiBeratBahan')
