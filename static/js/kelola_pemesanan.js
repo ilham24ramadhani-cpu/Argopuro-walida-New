@@ -2756,9 +2756,53 @@ async function generateInvoicePDF(idPembelian) {
 
     const { jsPDF: jsPDFLib } = window.jspdf;
     const logoDataUrl = await fetchArgopuroLogoForPdf();
-    const doc = new jsPDFLib();
-    const singlePagePdf = !!document.getElementById("invoicePdfSatuHalaman")
+
+    /**
+     * Mode "satu halaman" diaktifkan jika:
+     * 1. User mencentang checkbox `invoicePdfSatuHalaman` (override manual), ATAU
+     * 2. Auto-deteksi: render percobaan dengan layout normal pecah halaman /
+     *    melewati batas aman A4 (297mm − 10mm safe-bottom = 287mm).
+     * Tanpa auto-deteksi, invoice dengan banyak kloter, catatan panjang, atau
+     * banyak baris pembayaran bertahap dapat tumpah ke halaman 2 dan tampak
+     * tidak rapi meski user lupa mencentang.
+     */
+    const userExplicitOn = !!document.getElementById("invoicePdfSatuHalaman")
       ?.checked;
+    let singlePagePdf = userExplicitOn;
+    if (!userExplicitOn) {
+      try {
+        const dryDoc = new jsPDFLib();
+        const dryOpts = { singlePage: false };
+        const dryHeaderY = pdfDrawArgopuroInvoiceHeader(
+          dryDoc,
+          logoDataUrl,
+          p,
+          dryOpts,
+        );
+        const dryFinalY = pdfDrawInvoiceBody(dryDoc, p, dryHeaderY, dryOpts);
+        const dryPages =
+          typeof dryDoc.getNumberOfPages === "function"
+            ? dryDoc.getNumberOfPages()
+            : (dryDoc.internal?.getNumberOfPages?.() || 1);
+        const pageBottomLimit = 287;
+        const overflow =
+          dryPages > 1 || (Number.isFinite(dryFinalY) && dryFinalY > pageBottomLimit);
+        if (overflow) {
+          singlePagePdf = true;
+          console.log(
+            `📄 Auto-singlePage aktif (dryPages=${dryPages}, finalY=${
+              Number.isFinite(dryFinalY) ? dryFinalY.toFixed(1) : "?"
+            }mm > ${pageBottomLimit}mm)`,
+          );
+        }
+      } catch (autoErr) {
+        console.warn(
+          "Auto-deteksi singlePage gagal, fallback ke mode normal:",
+          autoErr,
+        );
+      }
+    }
+    const doc = new jsPDFLib();
     const pdfPageOpts = { singlePage: singlePagePdf };
     let yCur = pdfDrawArgopuroInvoiceHeader(doc, logoDataUrl, p, pdfPageOpts);
     yCur = pdfDrawInvoiceBody(doc, p, yCur, pdfPageOpts);

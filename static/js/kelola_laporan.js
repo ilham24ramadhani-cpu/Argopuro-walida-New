@@ -2015,22 +2015,60 @@ const LAPORAN_REKAP_CONFIG = {
     dateGetter: (item) => item.tanggalPemesanan,
     extraSummary: (items) => {
       if (!items.length) return [];
-      const totalKg = items.reduce(
-        (sum, p) => sum + safeNumber(p.jumlahPesananKg),
-        0
-      );
-      const totalHarga = items.reduce(
+      let totalKgFilter = 0;
+      let totalNilaiFilter = 0;
+      let totalKloterFilter = 0;
+      items.forEach((p) => {
+        const lines =
+          typeof getPemesananKloterLinesFilteredForLaporan === "function"
+            ? getPemesananKloterLinesFilteredForLaporan(p)
+            : [];
+        lines.forEach((row) => {
+          totalKgFilter += parseFloat(row.beratKg) || 0;
+          totalNilaiFilter +=
+            typeof pemesananKloterSubtotalRpFromRow === "function"
+              ? pemesananKloterSubtotalRpFromRow(row)
+              : 0;
+          totalKloterFilter += 1;
+        });
+      });
+      const totalTagihanDok = items.reduce(
         (sum, p) => sum + safeNumber(p.totalHarga),
         0
       );
+      const prosesAktif =
+        typeof getActivePemesananFilterProses === "function"
+          ? getActivePemesananFilterProses().raw
+          : "";
+      const labelKg = prosesAktif
+        ? `Total kg kloter (proses: ${prosesAktif})`
+        : "Total kg kloter (semua proses)";
+      const labelNilai = prosesAktif
+        ? `Total nilai kloter (proses: ${prosesAktif}, Rp)`
+        : "Total nilai kloter (semua proses, Rp)";
+      const labelKloter = prosesAktif
+        ? `Jumlah kloter (proses: ${prosesAktif})`
+        : "Jumlah kloter (semua)";
       return [
         {
-          label: "Total jumlah pesanan (kg)",
-          value: formatKgValue(totalKg),
+          label: "Jumlah dokumen pemesanan",
+          value: String(items.length),
         },
         {
-          label: "Total harga (Rp)",
-          value: formatCurrencyNumeric(totalHarga),
+          label: labelKloter,
+          value: String(totalKloterFilter),
+        },
+        {
+          label: labelKg,
+          value: formatKgValue(totalKgFilter),
+        },
+        {
+          label: labelNilai,
+          value: formatCurrencyNumeric(totalNilaiFilter),
+        },
+        {
+          label: "Total tagihan dokumen (semua kloter, Rp)",
+          value: formatCurrencyNumeric(totalTagihanDok),
         },
       ];
     },
@@ -2625,10 +2663,17 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       </div>`;
 }
 
-/** Agregat pemesanan: banyaknya baris (kloter) & total kg per proses pengolahan. */
+/** Agregat pemesanan: banyaknya baris (kloter) & total kg per proses pengolahan.
+ * Konsisten dengan filter proses aktif: jika dropdown filter di tab laporan
+ * memilih sebuah proses, hanya kloter dengan proses tersebut yang diagregasi.
+ */
 function aggregatePemesananPerProses(items) {
   const byProses = new Map();
   if (!Array.isArray(items)) return [];
+  const filterProses =
+    typeof getActivePemesananFilterProses === "function"
+      ? getActivePemesananFilterProses().norm
+      : "";
   items.forEach((p) => {
     const inner =
       Array.isArray(p.kloter) && p.kloter.length
@@ -2657,6 +2702,12 @@ function aggregatePemesananPerProses(items) {
     pieces.forEach((row) => {
       const raw =
         (row.prosesPengolahan && String(row.prosesPengolahan).trim()) || "";
+      if (
+        filterProses &&
+        normalizeLaporanFilterStr(raw) !== filterProses
+      ) {
+        return;
+      }
       const key = raw || "(Tanpa proses pengolahan)";
       const cur = byProses.get(key) || { kg: 0, n: 0 };
       cur.kg += safeNumber(row.jumlahPesananKg);
@@ -6817,6 +6868,34 @@ function getPemesananProsesPengolahanList(p) {
   return single ? [single] : [];
 }
 
+/** Ambil nilai filter proses pengolahan aktif (normalisasi lower-case, trim). */
+function getActivePemesananFilterProses() {
+  const el = document.getElementById("pemesananFilterProses");
+  const raw = el ? el.value : "";
+  return {
+    raw: (raw || "").trim(),
+    norm: normalizeLaporanFilterStr(raw),
+  };
+}
+
+/**
+ * Daftar kloter sebuah dokumen pemesanan yang sesuai filter proses aktif pada
+ * tab laporan. Tanpa filter aktif, mengembalikan seluruh kloter dokumen.
+ */
+function getPemesananKloterLinesFilteredForLaporan(p) {
+  const lines =
+    typeof getPemesananKloterLinesFromDoc === "function"
+      ? getPemesananKloterLinesFromDoc(p)
+      : [];
+  const { norm: filterProses } = getActivePemesananFilterProses();
+  if (!filterProses) return lines;
+  return lines.filter(
+    (row) =>
+      row &&
+      normalizeLaporanFilterStr(row.prosesPengolahan || "") === filterProses,
+  );
+}
+
 /** Filter pemesanan dari kontrol tab laporan (sama untuk tabel & rekap). */
 function getPemesananFilteredForLaporan() {
   if (!Array.isArray(pemesanan)) return [];
@@ -6907,7 +6986,26 @@ function renderLaporanPemesananInvoiceDetailHtml(p) {
   if (typeof getPemesananKloterLinesFromDoc !== "function") {
     return `<div class="alert alert-warning mb-0 small">Modul invoice belum dimuat. Muat ulang halaman.</div>`;
   }
-  const lines = getPemesananKloterLinesFromDoc(p);
+  const allLines = getPemesananKloterLinesFromDoc(p);
+  const lines = getPemesananKloterLinesFilteredForLaporan(p);
+  const { raw: filterProsesRaw } = getActivePemesananFilterProses();
+  const isProsesFiltered = !!filterProsesRaw;
+  const fmtKgLocale = (n) =>
+    Number.isFinite(n)
+      ? n.toLocaleString("id-ID", { maximumFractionDigits: 4 })
+      : "0";
+  const subtotalKgFilter = lines.reduce(
+    (s, row) => s + (parseFloat(row.beratKg) || 0),
+    0,
+  );
+  const subtotalRpFilter = lines.reduce(
+    (s, row) =>
+      s +
+      (typeof pemesananKloterSubtotalRpFromRow === "function"
+        ? pemesananKloterSubtotalRpFromRow(row)
+        : 0),
+    0,
+  );
   const payRows =
     typeof pdfPembayaranBertahapRowsForInvoice === "function"
       ? pdfPembayaranBertahapRowsForInvoice(p)
@@ -7028,21 +7126,38 @@ function renderLaporanPemesananInvoiceDetailHtml(p) {
         </table>
       </div>
     </div>
-    <h6 class="text-success fw-bold small mt-3 mb-2">Data pemesanan (barang)</h6>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 mb-2">
+      <h6 class="text-success fw-bold small mb-0">Data pemesanan (barang)</h6>
+      ${
+        isProsesFiltered
+          ? `<span class="badge bg-info-subtle text-info border border-info-subtle d-inline-flex align-items-center gap-1">
+               <i class="bi bi-funnel-fill"></i>
+               Filter proses: <strong>${safe(filterProsesRaw)}</strong>
+               (${lines.length}/${allLines.length} kloter)
+             </span>`
+          : ""
+      }
+    </div>
     <div class="table-responsive">
       <table class="table table-sm table-bordered align-middle mb-0">
         <thead class="table-light">
           <tr><th>No</th><th>Item (tipe · jenis · proses)</th><th class="text-end">Kg</th><th class="text-end">Harga/kg</th><th class="text-end">Subtotal</th></tr>
         </thead>
-        <tbody>${kloterRows || `<tr><td colspan="5" class="text-center text-muted">—</td></tr>`}</tbody>
+        <tbody>${kloterRows || `<tr><td colspan="5" class="text-center text-muted">${isProsesFiltered ? "Tidak ada kloter sesuai filter pada dokumen ini." : "—"}</td></tr>`}</tbody>
       </table>
     </div>
     <div class="row justify-content-end mt-2">
       <div class="col-md-6">
         <table class="table table-sm mb-0">
+          ${
+            isProsesFiltered
+              ? `<tr class="text-info"><td>Subtotal kg (filter proses)</td><td class="text-end">${fmtKgLocale(subtotalKgFilter)} kg</td></tr>
+                 <tr class="text-info"><td>Subtotal nilai kloter (filter proses)</td><td class="text-end">${formatCurrencyNumeric(subtotalRpFilter)}</td></tr>`
+              : ""
+          }
           <tr><td>${labelTipePajak(tipePajakDoc)}</td><td class="text-end">${pajakTampil}</td></tr>
           <tr><td>Pengiriman</td><td class="text-end">${formatCurrencyNumeric(kirim)}</td></tr>
-          <tr class="fw-bold text-success"><td>Total tagihan</td><td class="text-end">${formatCurrencyNumeric(totalInv)}</td></tr>
+          <tr class="fw-bold text-success"><td>Total tagihan dokumen</td><td class="text-end">${formatCurrencyNumeric(totalInv)}</td></tr>
           ${modeBertahap ? `<tr><td>Total terbayar</td><td class="text-end">${formatCurrencyNumeric(sumBayar)}</td></tr><tr class="fw-bold ${sisa > 0 ? "text-danger" : "text-success"}"><td>Sisa tagihan</td><td class="text-end">${formatCurrencyNumeric(sisa)}</td></tr>` : ""}
         </table>
       </div>
