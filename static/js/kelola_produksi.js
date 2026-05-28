@@ -1642,8 +1642,8 @@ function populateProduksiListFilters(bahanById) {
   refillSelect(selTahapan, tahapanSorted, prevTahapan, "Semua tahapan");
 }
 
-/** Kolom hasil randomen: tampil untuk admin/owner; disembunyikan jika body memiliki data-role="karyawan". */
-function showHasilRandomenDiTabelKelolaProduksi() {
+/** Kolom hasil rendemen: tampil untuk admin/owner; disembunyikan jika body memiliki data-role="karyawan". */
+function showHasilRendemenDiTabelKelolaProduksi() {
   const role =
     (typeof document !== "undefined" &&
       document.body &&
@@ -1655,8 +1655,8 @@ function showHasilRandomenDiTabelKelolaProduksi() {
 // Fungsi untuk menampilkan data produksi
 async function displayProduksi(options = {}) {
   const reloadData = options.reload !== false;
-  const showRandomenCol = showHasilRandomenDiTabelKelolaProduksi();
-  const tableColspan = showRandomenCol ? 14 : 13;
+  const showRendemenCol = showHasilRendemenDiTabelKelolaProduksi();
+  const tableColspan = showRendemenCol ? 14 : 13;
   console.log("🔄 displayProduksi() called", { reloadData });
 
   if (reloadData) {
@@ -1782,14 +1782,14 @@ async function displayProduksi(options = {}) {
         const catCell = catRaw
           ? `<span class="small text-muted d-inline-block text-truncate" style="max-width: 10rem" title="${attrEscapeProduksi(catRaw)}">${escapeHtmlProduksi(catShort)}</span>`
           : '<span class="text-muted">—</span>';
-        let randomenTd = "";
-        if (showRandomenCol) {
-          const PR = window.ProduksiRandomen;
-          const cellRandomen = PR ? PR.formatRandomenPerIdCell(p) : "—";
-          const titleRand = PR
+        let rendemenTd = "";
+        if (showRendemenCol) {
+          const PR = window.ProduksiRendemen;
+          const cellRendemen = PR ? PR.formatRendemenPerIdCell(p) : "—";
+          const titleRend = PR
             ? attrEscapeProduksi(
                 [
-                  PR.formatRandomenPerIdTooltip(p),
+                  PR.formatRendemenPerIdTooltip(p),
                   String(PR.buildRingkasanPerTahapanText(p) || "").replace(
                     /\n/g,
                     " ",
@@ -1799,7 +1799,7 @@ async function displayProduksi(options = {}) {
                   .join(" | "),
               )
             : "";
-          randomenTd = `<td class="text-nowrap small" title="${titleRand}">${escapeHtmlProduksi(cellRandomen)}</td>`;
+          rendemenTd = `<td class="text-nowrap small" title="${titleRend}">${escapeHtmlProduksi(cellRendemen)}</td>`;
         }
         const idBahanTampil = (() => {
           const lst = getIdBahanListFromProduksi(p);
@@ -1818,7 +1818,7 @@ async function displayProduksi(options = {}) {
       <td>${(p.beratAwal || 0).toLocaleString("id-ID")} kg</td>
       <td>${p.beratTerkini ? p.beratTerkini.toLocaleString("id-ID") : "-"} kg</td>
       <td>${p.beratAkhir ? p.beratAkhir.toLocaleString("id-ID") : "-"} kg</td>
-      ${randomenTd}
+      ${rendemenTd}
       <td><span class="badge ${(window.getProsesPengolahanBadgeClass || ((a) => 'bg-secondary'))(prosesLabel, p.idProses)}">${prosesLabel}</span></td>
       <td>${p.kadarAir || "-"}%</td>
       <td>${p.varietas || "-"}</td>

@@ -34,15 +34,15 @@ function isProduksiPengemasanBeratAkhir(p) {
   return Number.isFinite(ba) && ba > 0;
 }
 
-/** Randemen agregat = Σ bahan (kg) ÷ Σ berat green beans pengemasan (fallback berat akhir jika GB kosong). Pixel tidak dijumlahkan di penyebut. Dua desimal (sama seperti randomen). */
+/** Randemen agregat = Σ bahan (kg) ÷ Σ berat green beans pengemasan (fallback berat akhir jika GB kosong). Pixel tidak dijumlahkan di penyebut. Dua desimal (sama seperti rendemen). */
 function formatRandemenCell(totalBahanKg, totalPengemasanKg) {
   const d = Number(totalPengemasanKg) || 0;
   const n = Number(totalBahanKg) || 0;
   if (d <= 0) return "—";
   const r = n / d;
-  const PR = typeof window !== "undefined" && window.ProduksiRandomen;
-  if (PR && typeof PR.formatRandomenDesimal === "function") {
-    return PR.formatRandomenDesimal(r);
+  const PR = typeof window !== "undefined" && window.ProduksiRendemen;
+  if (PR && typeof PR.formatRendemenDesimal === "function") {
+    return PR.formatRendemenDesimal(r);
   }
   const dua = Math.round(r * 100) / 100;
   return dua.toLocaleString("id-ID", {
@@ -329,7 +329,7 @@ function buildAlurProduksiTableRows(item, options = {}) {
   const numericWeight = options.numericWeightInCells === true;
   const rows = [];
   const hist = Array.isArray(item.historyTahapan) ? item.historyTahapan : [];
-  const PR = window.ProduksiRandomen;
+  const PR = window.ProduksiRendemen;
   const fmtKg = (v) => {
     if (v == null || v === "") return "—";
     const n = typeof v === "number" ? v : parseFloat(v);
@@ -341,11 +341,11 @@ function buildAlurProduksiTableRows(item, options = {}) {
     if (v == null || v === "") return "—";
     return `${v}%`;
   };
-  const fmtRandomen = (hasilKg) => {
+  const fmtRendemen = (hasilKg) => {
     if (!PR) return "—";
     const b = PR.safeNum(item.beratAwal);
     const r = PR.ratioBahanPerHasil(b, hasilKg);
-    return r != null ? PR.formatRandomenBanding1(r) : "—";
+    return r != null ? PR.formatRendemenBanding1(r) : "—";
   };
 
   if (hist.length === 0) {
@@ -359,7 +359,7 @@ function buildAlurProduksiTableRows(item, options = {}) {
       tanggal: formatDate(item.tanggalSekarang),
       beratAwal: fmtKg(item.beratAwal),
       beratAkhir: fmtKg(item.beratAkhir),
-      randomen: fmtRandomen(hk),
+      rendemen: fmtRendemen(hk),
       kadar: fmtKadar(item.kadarAir),
       catatan: (item.catatan && String(item.catatan).trim()) || "—",
       fotoSrc: fotoU,
@@ -382,7 +382,7 @@ function buildAlurProduksiTableRows(item, options = {}) {
       tanggal: formatDate(h.tanggal),
       beratAwal: fmtKg(h.beratAwal),
       beratAkhir: fmtKg(h.beratAkhir),
-      randomen: fmtRandomen(hk),
+      rendemen: fmtRendemen(hk),
       kadar: fmtKadar(h.kadarAir),
       catatan: (h.catatan && String(h.catatan).trim()) || "—",
       fotoSrc: fotoU,
@@ -398,7 +398,7 @@ function buildAlurProduksiTableRows(item, options = {}) {
     tanggal: formatDate(item.tanggalSekarang),
     beratAwal: fmtKg(item.beratAwal),
     beratAkhir: fmtKg(item.beratAkhir),
-    randomen: fmtRandomen(hkCur),
+    rendemen: fmtRendemen(hkCur),
     kadar: fmtKadar(item.kadarAir),
     catatan: (item.catatan && String(item.catatan).trim()) || "—",
     fotoSrc: fotoCur,
@@ -507,7 +507,7 @@ async function pdfRenderAlurProduksiTable(doc, y, rows) {
     "Tanggal",
     "B. awal",
     "B. akhir",
-    "Randomen",
+    "Rendemen",
     "Kadar",
     "Foto",
     "Catatan",
@@ -574,7 +574,7 @@ async function pdfRenderAlurProduksiTable(doc, y, rows) {
       r.tanggal,
       r.beratAwal,
       r.beratAkhir,
-      r.randomen != null ? r.randomen : "—",
+      r.rendemen != null ? r.rendemen : "—",
       r.kadar,
       fi ? "\u00a0" : "—",
       r.catatan,
@@ -597,7 +597,7 @@ function buildAlurProduksiTableHtml(item) {
     <th scope="col" class="text-nowrap">Tanggal</th>
     <th scope="col" class="text-nowrap">B. awal</th>
     <th scope="col" class="text-nowrap">B. akhir</th>
-    <th scope="col" class="text-nowrap" title="N banding 1: kg bahan per 1 kg hasil tahap (dua angka di belakang koma)">Randomen</th>
+    <th scope="col" class="text-nowrap" title="N banding 1: kg bahan per 1 kg hasil tahap (dua angka di belakang koma)">Rendemen</th>
     <th scope="col" class="text-nowrap">Kadar</th>
     <th scope="col" class="text-center text-nowrap">Foto</th>
     <th scope="col">Catatan</th>
@@ -615,7 +615,7 @@ function buildAlurProduksiTableHtml(item) {
       <td class="text-nowrap">${escapeHtmlLaporan(r.tanggal)}</td>
       <td class="text-nowrap">${escapeHtmlLaporan(r.beratAwal)}</td>
       <td class="text-nowrap">${escapeHtmlLaporan(r.beratAkhir)}</td>
-      <td class="text-nowrap small">${escapeHtmlLaporan(r.randomen != null ? r.randomen : "—")}</td>
+      <td class="text-nowrap small">${escapeHtmlLaporan(r.rendemen != null ? r.rendemen : "—")}</td>
       <td class="text-nowrap">${escapeHtmlLaporan(r.kadar)}</td>
       <td class="text-center align-middle p-2">${fotoCell}</td>
       <td class="small text-break">${escapeHtmlLaporan(r.catatan)}</td>
@@ -1198,15 +1198,15 @@ function averageNumber(items, getter) {
   return total / count;
 }
 
-/** Rata-rata randomen keseluruhan (mean dari randomen per ID, bukan tertimbang). */
-function computeAverageRandomenOverall(items) {
-  const PR = typeof window !== "undefined" && window.ProduksiRandomen;
-  if (!PR || typeof PR.computeRandomenPerId !== "function") return null;
+/** Rata-rata rendemen keseluruhan (mean dari rendemen per ID, bukan tertimbang). */
+function computeAverageRendemenOverall(items) {
+  const PR = typeof window !== "undefined" && window.ProduksiRendemen;
+  if (!PR || typeof PR.computeRendemenPerId !== "function") return null;
   if (!Array.isArray(items) || items.length === 0) return null;
   let sum = 0;
   let n = 0;
   items.forEach((p) => {
-    const r = PR.computeRandomenPerId(p);
+    const r = PR.computeRendemenPerId(p);
     if (Number.isFinite(r) && r > 0) {
       sum += r;
       n += 1;
@@ -1473,7 +1473,7 @@ const LAPORAN_REKAP_CONFIG = {
             totalPengemasanKg > 0
               ? `${rasio} | bahan ${formatKgValue(
                   totalBahanKg
-                )}, Σ GB (randomen) ${formatKgValue(totalPengemasanKg)}`
+                )}, Σ GB (rendemen) ${formatKgValue(totalPengemasanKg)}`
               : `${rasio} | belum ada berat green beans / berat akhir pengemasan untuk ID bahan pada filter ini`;
           return {
             label: "Rendemen (Σ bahan kg ÷ Σ berat green beans)",
@@ -1515,16 +1515,16 @@ const LAPORAN_REKAP_CONFIG = {
         excelNumFmt: "#,##0.00",
       },
       {
-        label: "Randomen ID (N banding 1, 2 desimal)",
+        label: "Rendemen ID (N banding 1, 2 desimal)",
         align: "right",
         value: (item) =>
-          window.ProduksiRandomen
-            ? window.ProduksiRandomen.formatRandomenPerIdCell(item)
+          window.ProduksiRendemen
+            ? window.ProduksiRendemen.formatRendemenPerIdCell(item)
             : "—",
         excelValue: (item) => {
-          const PR = window.ProduksiRandomen;
+          const PR = window.ProduksiRendemen;
           if (!PR) return null;
-          const r = PR.computeRandomenPerId(item);
+          const r = PR.computeRendemenPerId(item);
           const n = PR.roundBahanPerSatuKgHasil(r);
           return n != null ? n : null;
         },
@@ -1630,7 +1630,7 @@ const LAPORAN_REKAP_CONFIG = {
         }
       });
 
-      const avgRnd = computeAverageRandomenOverall(items);
+      const avgRnd = computeAverageRendemenOverall(items);
 
       return [
         {
@@ -1642,11 +1642,11 @@ const LAPORAN_REKAP_CONFIG = {
           value: formatKgValue(totalBeratAkhir),
         },
         {
-          label: "Rata-rata randomen keseluruhan",
+          label: "Rata-rata rendemen keseluruhan",
           value: (() => {
-            const PR = window.ProduksiRandomen;
+            const PR = window.ProduksiRendemen;
             if (!avgRnd || !PR) return "—";
-            return `${PR.formatRandomenBanding1(avgRnd.avgRatio)} (dari ${avgRnd.counted} batch pengemasan)`;
+            return `${PR.formatRendemenBanding1(avgRnd.avgRatio)} (dari ${avgRnd.counted} batch pengemasan)`;
           })(),
         },
         {
@@ -2578,16 +2578,16 @@ function getFilteredDataForCategory(category) {
 }
 
 /**
- * Tabel terpisah di bawah rekap produksi: randomen agregat per proses (Natural, Anaerob, …).
- * Hanya batch pengemasan dengan berat valid (sama logika ProduksiRandomen.summarizeRandomenAgregat).
+ * Tabel terpisah di bawah rekap produksi: rendemen agregat per proses (Natural, Anaerob, …).
+ * Hanya batch pengemasan dengan berat valid (sama logika ProduksiRendemen.summarizeRendemenAgregat).
  */
-function htmlRekapRandomenPerProsesPengolahan(items) {
-  const PR = window.ProduksiRandomen;
+function htmlRekapRendemenPerProsesPengolahan(items) {
+  const PR = window.ProduksiRendemen;
   if (!PR || !items || items.length === 0) {
     return "";
   }
   const bahanMap = getBahanMapForLaporan();
-  const agg = PR.summarizeRandomenAgregat(items, (p) =>
+  const agg = PR.summarizeRendemenAgregat(items, (p) =>
     getProsesPengolahanTampilanLaporan(p, bahanMap)
   );
   const keys = Object.keys(agg.byProses || {}).sort();
@@ -2600,7 +2600,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
     return `
       <div class="summary rekap-subtable-card">
         <div class="inner">
-        <h2>Rekap randomen per proses pengolahan</h2>
+        <h2>Rekap rendemen per proses pengolahan</h2>
         <p class="meta">
           Belum ada batch pengemasan lengkap (berat awal &amp; berat green beans atau berat akhir valid) pada filter ini.
         </p>
@@ -2619,7 +2619,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       <td>${row.batch ?? "—"}</td>
       <td>${fmtKg(row.bahan)}</td>
       <td>${fmtKg(row.hasil)}</td>
-      <td>${r != null ? PR.formatRandomenBanding1(r) : "—"}</td>
+      <td>${r != null ? PR.formatRendemenBanding1(r) : "—"}</td>
     </tr>`;
     })
     .join("");
@@ -2631,7 +2631,7 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
       <td><strong>${totalBatch}</strong></td>
       <td><strong>${fmtKg(agg.sumBahan)}</strong></td>
       <td><strong>${fmtKg(agg.sumHasil)}</strong></td>
-      <td><strong>${PR.formatRandomenBanding1(
+      <td><strong>${PR.formatRendemenBanding1(
         agg.totalRatio
       )}</strong></td>
     </tr>`
@@ -2640,9 +2640,9 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
   return `
       <div class="summary rekap-subtable-card">
         <div class="inner">
-        <h2>Rekap randomen per proses pengolahan</h2>
+        <h2>Rekap rendemen per proses pengolahan</h2>
         <p class="meta">
-          Randomen: <strong>N banding 1</strong> (N kg bahan per 1 kg <strong>green beans</strong>), tampilan <strong>dua desimal</strong> dari hasil pembagian. Penyebut = berat green beans; pixel tidak dihitung. Data lama tanpa GB memakai berat akhir. Hanya batch pengemasan dengan berat valid.
+          Rendemen: <strong>N banding 1</strong> (N kg bahan per 1 kg <strong>green beans</strong>), tampilan <strong>dua desimal</strong> dari hasil pembagian. Penyebut = berat green beans; pixel tidak dihitung. Data lama tanpa GB memakai berat akhir. Hanya batch pengemasan dengan berat valid.
         </p>
         <table>
           <thead>
@@ -2650,8 +2650,8 @@ function htmlRekapRandomenPerProsesPengolahan(items) {
               <th>Proses pengolahan</th>
               <th>Jumlah batch</th>
               <th>Σ Berat awal (kg)</th>
-              <th>Σ Berat GB randomen (kg)</th>
-              <th>Randomen (N banding 1, 2 desimal)</th>
+              <th>Σ Berat GB rendemen (kg)</th>
+              <th>Rendemen (N banding 1, 2 desimal)</th>
             </tr>
           </thead>
           <tbody>
@@ -2893,23 +2893,23 @@ function rekapExportFilenameBase(category) {
   return `Rekap_${slug}_${y}-${m}-${day}`;
 }
 
-/** Baris untuk lembar "Randomen per proses" di Excel (sama logika dengan rekap PDF produksi). */
-function buildRandomenPerProsesSheetMatrix(items) {
-  const PR = window.ProduksiRandomen;
+/** Baris untuk lembar "Rendemen per proses" di Excel (sama logika dengan rekap PDF produksi). */
+function buildRendemenPerProsesSheetMatrix(items) {
+  const PR = window.ProduksiRendemen;
   if (!PR || !items || !items.length) {
     return [
       [
         "Proses pengolahan",
         "Jumlah batch",
         "Σ Berat awal (kg)",
-        "Σ Berat GB randomen (kg)",
-        "Randomen (N banding 1, 2 desimal)",
+        "Σ Berat GB rendemen (kg)",
+        "Rendemen (N banding 1, 2 desimal)",
       ],
       ["Tidak ada data produksi pada filter ini.", "", "", "", ""],
     ];
   }
   const bahanMap = getBahanMapForLaporan();
-  const agg = PR.summarizeRandomenAgregat(items, (p) =>
+  const agg = PR.summarizeRendemenAgregat(items, (p) =>
     getProsesPengolahanTampilanLaporan(p, bahanMap)
   );
   const keys = Object.keys(agg.byProses || {}).sort();
@@ -2917,8 +2917,8 @@ function buildRandomenPerProsesSheetMatrix(items) {
     "Proses pengolahan",
     "Jumlah batch",
     "Σ Berat awal (kg)",
-    "Σ Berat GB randomen (kg)",
-    "Randomen (N banding 1, 2 desimal)",
+    "Σ Berat GB rendemen (kg)",
+    "Rendemen (N banding 1, 2 desimal)",
   ];
   if (keys.length === 0) {
     return [
@@ -2942,7 +2942,7 @@ function buildRandomenPerProsesSheetMatrix(items) {
       row.batch ?? "",
       row.bahan ?? "",
       row.hasil ?? "",
-      r != null ? PR.formatRandomenBanding1(r) : "",
+      r != null ? PR.formatRendemenBanding1(r) : "",
     ];
   });
   if (agg.sumHasil > 0) {
@@ -2951,7 +2951,7 @@ function buildRandomenPerProsesSheetMatrix(items) {
       totalBatch,
       agg.sumBahan,
       agg.sumHasil,
-      PR.formatRandomenBanding1(agg.totalRatio),
+      PR.formatRendemenBanding1(agg.totalRatio),
     ]);
   }
   return [header, ...body];
@@ -3345,7 +3345,7 @@ async function exportRekapView(category) {
             ${rowsHtml}
           </tbody>
         </table>
-        ${category === "produksi" ? htmlRekapRandomenPerProsesPengolahan(data) : ""}
+        ${category === "produksi" ? htmlRekapRendemenPerProsesPengolahan(data) : ""}
         ${category === "pemesanan" ? htmlRekapPemesananAggPerProses(data) : ""}
         ${summaryHtml}
         ${extraSummaryHtml}
@@ -3538,7 +3538,7 @@ async function exportRekapPdf(category) {
             ${rowsHtml}
           </tbody>
         </table>
-        ${category === "produksi" ? htmlRekapRandomenPerProsesPengolahan(data) : ""}
+        ${category === "produksi" ? htmlRekapRendemenPerProsesPengolahan(data) : ""}
         ${category === "pemesanan" ? htmlRekapPemesananAggPerProses(data) : ""}
         ${summaryHtml}
         ${extraSummaryHtml}
@@ -3647,7 +3647,7 @@ async function exportRekapExcel(category) {
     kvRing("Sistem", "Argopuro Walida");
     kvRing(
       "Struktur berkas",
-      "Lembar «Data» = tabel utama. Produksi: lembar «Randomen». Pemesanan: lembar «Per proses»."
+      "Lembar «Data» = tabel utama. Produksi: lembar «Rendemen». Pemesanan: lembar «Per proses»."
     );
 
     if (config.averages && config.averages.length) {
@@ -3779,10 +3779,10 @@ async function exportRekapExcel(category) {
     }
 
     if (category === "produksi") {
-      const wsRnd = wb.addWorksheet("Randomen", {
+      const wsRnd = wb.addWorksheet("Rendemen", {
         views: [{ showGridLines: true }],
       });
-      const rndMatrix = buildRandomenPerProsesSheetMatrix(data);
+      const rndMatrix = buildRendemenPerProsesSheetMatrix(data);
       const rndHeader = rndMatrix[0] || [];
       const rndBody = rndMatrix.slice(1);
       const nc = Math.max(rndHeader.length, 5);
@@ -3806,7 +3806,7 @@ async function exportRekapExcel(category) {
 
       mergeBorderRow(
         rr,
-        "Rekap randomen per proses pengolahan",
+        "Rekap rendemen per proses pengolahan",
         11
       );
       rr += 1;
@@ -4117,14 +4117,14 @@ function renderProduksiTimeline() {
     return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
   });
 
-  const avgRnd = computeAverageRandomenOverall(sortedProduksi);
+  const avgRnd = computeAverageRendemenOverall(sortedProduksi);
   const avgBanner = (() => {
-    const PR = window.ProduksiRandomen;
+    const PR = window.ProduksiRendemen;
     if (!avgRnd || !PR) return "";
     return `<div class="alert alert-light border small mb-3 py-2">
-      <strong>Rata-rata randomen keseluruhan</strong>:
+      <strong>Rata-rata rendemen keseluruhan</strong>:
       <span class="fw-semibold">${escapeHtmlLaporan(
-        PR.formatRandomenBanding1(avgRnd.avgRatio)
+        PR.formatRendemenBanding1(avgRnd.avgRatio)
       )}</span>
       <span class="text-muted">— mean dari ${avgRnd.counted} batch pengemasan (sesuai filter)</span>
     </div>`;
@@ -4138,19 +4138,19 @@ function renderProduksiTimeline() {
 }
 
 function buildTimelineItem(item, isFirst, index = 0, bahanById) {
-  const PR = window.ProduksiRandomen;
-  const randomenPerIdHtml = PR
+  const PR = window.ProduksiRendemen;
+  const rendemenPerIdHtml = PR
     ? `<div class="alert alert-light border small mt-3 mb-0 py-2">
-          <strong>Randomen (per ID)</strong>:
-          ${escapeHtmlLaporan(PR.formatRandomenPerIdCell(item))}
-          <span class="text-muted"> — ${escapeHtmlLaporan(PR.formatRandomenPerIdTooltip(item) || "setelah pengemasan")}</span>
+          <strong>Rendemen (per ID)</strong>:
+          ${escapeHtmlLaporan(PR.formatRendemenPerIdCell(item))}
+          <span class="text-muted"> — ${escapeHtmlLaporan(PR.formatRendemenPerIdTooltip(item) || "setelah pengemasan")}</span>
         </div>
-        <p class="small text-muted mt-2 mb-1 fw-semibold">Randomen per tahapan (N banding 1, dua desimal)</p>
+        <p class="small text-muted mt-2 mb-1 fw-semibold">Rendemen per tahapan (N banding 1, dua desimal)</p>
         <pre class="small text-muted mb-0 bg-body-secondary rounded p-2" style="white-space:pre-wrap;font-family:inherit">${escapeHtmlLaporan(
           PR.buildRingkasanPerTahapanText(item)
         )}</pre>`
     : `<div class="alert alert-light border small mt-3 mb-0 py-2 text-muted">
-          <strong>Randomen</strong>: modul perhitungan tidak dimuat
+          <strong>Rendemen</strong>: modul perhitungan tidak dimuat
         </div>`;
   const fallbackId = `${item.idProduksi || "produksi"}-${index}`;
   const timelineId = item.id ? `produksi-${item.id}` : fallbackId;
@@ -4207,7 +4207,7 @@ function buildTimelineItem(item, isFirst, index = 0, bahanById) {
           <ul class="timeline">
             ${steps}
           </ul>
-          ${randomenPerIdHtml}
+          ${rendemenPerIdHtml}
           ${buildAlurProduksiTableHtml(item)}
         </div>
       </div>
@@ -4423,12 +4423,12 @@ function displayProduksi() {
         item,
         bahanByIdTable
       );
-      const PR = window.ProduksiRandomen;
-      const cellRandomenId = PR ? PR.formatRandomenPerIdCell(item) : "—";
+      const PR = window.ProduksiRendemen;
+      const cellRendemenId = PR ? PR.formatRendemenPerIdCell(item) : "—";
       const titleR = PR
         ? escapeHtmlLaporan(
             [
-              PR.formatRandomenPerIdTooltip(item),
+              PR.formatRendemenPerIdTooltip(item),
               String(PR.buildRingkasanPerTahapanText(item) || "").replace(
                 /\n/g,
                 " "
@@ -4449,7 +4449,7 @@ function displayProduksi() {
         <td>${
           item.beratAkhir ? item.beratAkhir.toLocaleString("id-ID") : "-"
         } kg</td>
-      <td class="text-nowrap small" title="${titleR}">${escapeHtmlLaporan(cellRandomenId)}</td>
+      <td class="text-nowrap small" title="${titleR}">${escapeHtmlLaporan(cellRendemenId)}</td>
       <td><span class="badge ${(window.getProsesPengolahanBadgeClass || ((a) => 'bg-secondary'))(prosesTampilan, item.idProses)}">${prosesTampilan}</span></td>
       <td>${item.kadarAir ? item.kadarAir + "%" : "-"}</td>
       <td>${item.varietas || "-"}</td>
@@ -4667,11 +4667,11 @@ async function generateProduksiPDF(id) {
   doc.line(20, 35, 190, 35);
 
   let y = 48;
-  const PRpdf = window.ProduksiRandomen;
-  const rndValPdf = PRpdf ? PRpdf.computeRandomenPerId(item) : null;
+  const PRpdf = window.ProduksiRendemen;
+  const rndValPdf = PRpdf ? PRpdf.computeRendemenPerId(item) : null;
   const rndPerId =
     rndValPdf != null && PRpdf
-      ? `${PRpdf.formatRandomenBanding1(rndValPdf)} — ${PRpdf.formatRandomenPerIdTooltip(item)}`
+      ? `${PRpdf.formatRendemenBanding1(rndValPdf)} — ${PRpdf.formatRendemenPerIdTooltip(item)}`
       : "—";
   const pairsProd = [
     ["ID Produksi", item.idProduksi || "—"],
@@ -4691,7 +4691,7 @@ async function generateProduksiPDF(id) {
       "Berat produk pixel (pengemasan)",
       formatBeratKgLaporanPdf(item.beratPixel),
     ],
-    ["Randomen (per ID produksi)", rndPerId],
+    ["Rendemen (per ID produksi)", rndPerId],
     ["Proses Pengolahan", prosesTampilanPdf],
     ["Kadar Air", item.kadarAir ? `${item.kadarAir}%` : "—"],
     ["Varietas", item.varietas || "—"],
@@ -4749,7 +4749,7 @@ async function generateProduksiPDF(id) {
   doc.setFont(undefined, "normal");
   doc.setTextColor(80, 80, 80);
   doc.text(
-    "Tiap baris: randomen = N banding 1 (dua desimal), bahan per 1 kg green beans (pengemasan); pixel tidak di penyebut; kadar air, catatan.",
+    "Tiap baris: rendemen = N banding 1 (dua desimal), bahan per 1 kg green beans (pengemasan); pixel tidak di penyebut; kadar air, catatan.",
     20,
     y
   );

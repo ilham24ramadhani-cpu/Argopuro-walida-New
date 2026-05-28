@@ -24,7 +24,7 @@
     <!-- JS - api-service.js HARUS di-load SEBELUM kelola_produksi.js -->
     <!-- IMPORTANT: api-service.js WITHOUT defer untuk memastikan dieksekusi lebih dulu -->
     <script src="{{ url_for('static', filename='js/api-service.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/produksi-randomen.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/produksi-rendemen.js') }}"></script>
     <script
       src="{{ url_for('static', filename='js/kelola_produksi.js') }}"
       defer
@@ -396,7 +396,7 @@
                         scope="col"
                         title="N banding 1: kg bahan per 1 kg green beans (pengemasan), dua desimal. Berat pixel tidak masuk penyebut. Tooltip memuat pembagian dan angka yang sama."
                       >
-                        Randomen
+                        Rendemen
                       </th>
                       <th scope="col">Proses Pengolahan</th>
                       <th scope="col">Kadar Air (%)</th>

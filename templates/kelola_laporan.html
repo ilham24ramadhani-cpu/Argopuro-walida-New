@@ -36,7 +36,7 @@
     <!-- JS - api-service.js HARUS di-load SEBELUM kelola_laporan.js -->
     <!-- IMPORTANT: api-service.js WITHOUT defer untuk memastikan dieksekusi lebih dulu -->
     <script src="{{ url_for('static', filename='js/api-service.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/produksi-randomen.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/produksi-rendemen.js') }}"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
@@ -848,7 +848,7 @@
                             scope="col"
                             title="N banding 1: kg bahan per 1 kg green beans (pengemasan), dua desimal. Pixel tidak di penyebut."
                           >
-                            Randomen
+                            Rendemen
                           </th>
                           <th scope="col">Proses Pengolahan</th>
                           <th scope="col">Kadar Air (%)</th>

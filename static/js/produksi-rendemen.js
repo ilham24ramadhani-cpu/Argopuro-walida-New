@@ -1,5 +1,5 @@
 /**
- * Randomen / rendemen: berat awal ÷ berat green beans (pengemasan).
+ * Rendemen: berat awal ÷ berat green beans (pengemasan).
  * Berat pixel hanya dicatat, tidak masuk penyebut. Jika beratGreenBeans belum ada (data lama), fallback ke beratAkhir.
  * Tampilan utama: rasio sebenarnya (bahan ÷ hasil) dengan dua angka di belakang koma, contoh "6,43 banding 1".
  */
@@ -43,7 +43,7 @@
   }
 
   /** Angka utama dua desimal (locale id-ID), tanpa sufiks " banding 1". */
-  function formatAngkaRandomenUtama(ratio) {
+  function formatAngkaRendemenUtama(ratio) {
     const n = roundBahanPerSatuKgHasil(ratio);
     if (n == null) return null;
     return n.toLocaleString("id-ID", {
@@ -53,16 +53,16 @@
   }
 
   /** Tampilan utama: "6,43 banding 1" = kg bahan per 1 kg hasil GB (dua desimal). */
-  function formatRandomenBanding1(ratio) {
-    const s = formatAngkaRandomenUtama(ratio);
+  function formatRendemenBanding1(ratio) {
+    const s = formatAngkaRendemenUtama(ratio);
     if (s == null) return "—";
     return `${s} banding 1`;
   }
 
   /** Rasio untuk tooltip / ringkasan (sama dua desimal dengan kolom utama). */
-  function formatRandomenDesimal(ratio) {
+  function formatRendemenDesimal(ratio) {
     if (ratio == null || !Number.isFinite(ratio)) return "—";
-    return formatAngkaRandomenUtama(ratio) || "—";
+    return formatAngkaRendemenUtama(ratio) || "—";
   }
 
   function formatKgAngka(kg) {
@@ -71,41 +71,41 @@
     return n.toLocaleString("id-ID", { maximumFractionDigits: 4 });
   }
 
-  /** @deprecated Gunakan formatRandomenBanding1 untuk rasio; formatKgAngka untuk berat. */
-  function formatRandomenRatio(ratio) {
-    return formatRandomenBanding1(ratio);
+  /** @deprecated Gunakan formatRendemenBanding1 untuk rasio; formatKgAngka untuk berat. */
+  function formatRendemenRatio(ratio) {
+    return formatRendemenBanding1(ratio);
   }
 
   /**
-   * Penyebut randomen: berat green beans (kg). Pixel tidak dihitung.
+   * Penyebut rendemen: berat green beans (kg). Pixel tidak dihitung.
    * Fallback beratAkhir untuk dokumen lama tanpa beratGreenBeans.
    */
-  function getDenominatorHasilRandomenFromDoc(doc) {
+  function getDenominatorHasilRendemenFromDoc(doc) {
     if (!doc) return 0;
     const gb = safeNum(doc.beratGreenBeans);
     if (gb > 0) return gb;
     return safeNum(doc.beratAkhir);
   }
 
-  function getDenominatorHasilRandomenFromHistory(h, doc) {
-    if (!h) return getDenominatorHasilRandomenFromDoc(doc);
+  function getDenominatorHasilRendemenFromHistory(h, doc) {
+    if (!h) return getDenominatorHasilRendemenFromDoc(doc);
     const gbH = safeNum(h.beratGreenBeans);
     if (gbH > 0) return gbH;
     const baH = safeNum(h.beratAkhir);
     if (baH > 0) return baH;
-    return getDenominatorHasilRandomenFromDoc(doc);
+    return getDenominatorHasilRendemenFromDoc(doc);
   }
 
-  /** @deprecated Gunakan getDenominatorHasilRandomenFromDoc */
+  /** @deprecated Gunakan getDenominatorHasilRendemenFromDoc */
   function getDenominatorAkhirProduksi(p) {
-    return getDenominatorHasilRandomenFromDoc(p);
+    return getDenominatorHasilRendemenFromDoc(p);
   }
 
-  /** Produksi sudah pengemasan dan punya penyebut randomen (GB atau fallback akhir) > 0 */
-  function isPengemasanUntukRandomen(p) {
+  /** Produksi sudah pengemasan dan punya penyebut rendemen (GB atau fallback akhir) > 0 */
+  function isPengemasanUntukRendemen(p) {
     const st = (p.statusTahapan || "").toLowerCase();
     if (!st.includes("pengemasan")) return false;
-    return getDenominatorHasilRandomenFromDoc(p) > 0;
+    return getDenominatorHasilRendemenFromDoc(p) > 0;
   }
 
   function tahapanIncludesPengemasan(name) {
@@ -113,7 +113,7 @@
   }
 
   /**
-   * Hasil (kg) untuk pembagi randomen pada satu baris alur.
+   * Hasil (kg) untuk pembagi rendemen pada satu baris alur.
    * @param {object} item dokumen produksi
    * @param {object|null} h entri history (jika baris dari riwayat)
    * @param {'history'|'current'} rowKind
@@ -121,14 +121,14 @@
   function getHasilKgUntukBarisAlur(item, h, rowKind) {
     if (rowKind === "current") {
       if (tahapanIncludesPengemasan(item.statusTahapan)) {
-        return getDenominatorHasilRandomenFromDoc(item);
+        return getDenominatorHasilRendemenFromDoc(item);
       }
       const bt = safeNum(item.beratTerkini);
       return bt > 0 ? bt : 0;
     }
     const nama = getTahapanLabelFromHistory(h, item);
     if (tahapanIncludesPengemasan(nama)) {
-      return getDenominatorHasilRandomenFromHistory(h, item);
+      return getDenominatorHasilRendemenFromHistory(h, item);
     }
     const bt = safeNum(h.beratTerkini);
     if (bt > 0) return bt;
@@ -144,29 +144,29 @@
   }
 
   /**
-   * Randomen per ID produksi: berat awal ÷ berat green beans (tahap pengemasan; pixel tidak dihitung).
+   * Rendemen per ID produksi: berat awal ÷ berat green beans (tahap pengemasan; pixel tidak dihitung).
    */
-  function computeRandomenPerId(p) {
-    if (!isPengemasanUntukRandomen(p)) return null;
+  function computeRendemenPerId(p) {
+    if (!isPengemasanUntukRendemen(p)) return null;
     const b = safeNum(p.beratAwal);
-    const d = getDenominatorHasilRandomenFromDoc(p);
+    const d = getDenominatorHasilRendemenFromDoc(p);
     return ratioBahanPerHasil(b, d);
   }
 
-  function formatRandomenPerIdCell(p) {
-    const r = computeRandomenPerId(p);
-    return r != null ? formatRandomenBanding1(r) : "—";
+  function formatRendemenPerIdCell(p) {
+    const r = computeRendemenPerId(p);
+    return r != null ? formatRendemenBanding1(r) : "—";
   }
 
   /** Tooltip: contoh 921,75 ÷ 143,25 kg (green beans) = 6,43 */
-  function formatRandomenPerIdTooltip(p) {
-    const r = computeRandomenPerId(p);
+  function formatRendemenPerIdTooltip(p) {
+    const r = computeRendemenPerId(p);
     if (r == null) return "";
     const b = safeNum(p.beratAwal);
-    const h = getDenominatorHasilRandomenFromDoc(p);
+    const h = getDenominatorHasilRendemenFromDoc(p);
     const pakaiGb = safeNum(p.beratGreenBeans) > 0;
     const label = pakaiGb ? "green beans" : "berat akhir (data lama)";
-    return `${formatKgAngka(b)} ÷ ${formatKgAngka(h)} kg (${label}) = ${formatRandomenDesimal(r)}`;
+    return `${formatKgAngka(b)} ÷ ${formatKgAngka(h)} kg (${label}) = ${formatRendemenDesimal(r)}`;
   }
 
   /**
@@ -183,7 +183,7 @@
       const short =
         clean.length > 22 ? `${clean.slice(0, 19)}…` : clean;
       parts.push(
-        `${short}: ${ratio != null ? formatRandomenBanding1(ratio) : "—"}`
+        `${short}: ${ratio != null ? formatRendemenBanding1(ratio) : "—"}`
       );
     };
     if (hist.length === 0) {
@@ -214,7 +214,7 @@
     const push = (label, hasilKg) => {
       const ratio = ratioBahanPerHasil(bahan, hasilKg);
       const tail =
-        ratio != null ? formatRandomenBanding1(ratio) : "—";
+        ratio != null ? formatRendemenBanding1(ratio) : "—";
       parts.push(`${label}: ${tail}`);
     };
 
@@ -241,15 +241,15 @@
    * Agregasi untuk rekap: hanya batch yang sudah pengemasan + berat valid.
    * getProses: (p) => string label proses pengolahan
    */
-  function summarizeRandomenAgregat(items, getProses) {
+  function summarizeRendemenAgregat(items, getProses) {
     const byProses = {};
     let sumBahan = 0;
     let sumHasil = 0;
 
     (items || []).forEach((p) => {
-      if (!isPengemasanUntukRandomen(p)) return;
+      if (!isPengemasanUntukRendemen(p)) return;
       const b = safeNum(p.beratAwal);
-      const h = getDenominatorHasilRandomenFromDoc(p);
+      const h = getDenominatorHasilRendemenFromDoc(p);
       if (b <= 0 || h <= 0) return;
       const key = (getProses && getProses(p)) || p.prosesPengolahan || "—";
       if (!byProses[key]) byProses[key] = { bahan: 0, hasil: 0, batch: 0 };
@@ -265,10 +265,10 @@
       .map((k) => {
         const { bahan, hasil } = byProses[k];
         const r = hasil > 0 ? bahan / hasil : null;
-        const rasioStr = r != null ? formatRandomenBanding1(r) : "—";
+        const rasioStr = r != null ? formatRendemenBanding1(r) : "—";
         return `${k}: ${rasioStr} (Σ berat awal ${formatKgAngka(
           bahan
-        )} kg ÷ Σ GB randomen ${formatKgAngka(hasil)} kg)`;
+        )} kg ÷ Σ GB rendemen ${formatKgAngka(hasil)} kg)`;
       });
 
     const totalRatio = sumHasil > 0 ? sumBahan / sumHasil : null;
@@ -282,26 +282,26 @@
     };
   }
 
-  global.ProduksiRandomen = {
+  global.ProduksiRendemen = {
     safeNum,
     ratioBahanPerHasil,
-    formatRandomenRatio,
-    formatRandomenBanding1,
-    formatRandomenDesimal,
-    formatAngkaRandomenUtama,
+    formatRendemenRatio,
+    formatRendemenBanding1,
+    formatRendemenDesimal,
+    formatAngkaRendemenUtama,
     formatKgAngka,
     roundBahanPerSatuKgHasil,
     getDenominatorAkhirProduksi,
-    getDenominatorHasilRandomenFromDoc,
-    getDenominatorHasilRandomenFromHistory,
-    isPengemasanUntukRandomen,
-    computeRandomenPerId,
-    formatRandomenPerIdCell,
-    formatRandomenPerIdTooltip,
+    getDenominatorHasilRendemenFromDoc,
+    getDenominatorHasilRendemenFromHistory,
+    isPengemasanUntukRendemen,
+    computeRendemenPerId,
+    formatRendemenPerIdCell,
+    formatRendemenPerIdTooltip,
     getHasilKgUntukBarisAlur,
     getTahapanLabelFromHistory,
     buildRingkasanPerTahapanText,
     formatRingkasanPerTahapanSatuBaris,
-    summarizeRandomenAgregat,
+    summarizeRendemenAgregat,
   };
 })(typeof window !== "undefined" ? window : globalThis);
