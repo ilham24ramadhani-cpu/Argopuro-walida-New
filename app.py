@@ -4864,9 +4864,20 @@ def _tipe_produk_valid(tp):
     return bool(tp) and tp in _get_tipe_produk_master_set()
 
 
+# Tipe produk yang hanya untuk invoice (tidak terikat stok hasil produksi).
+# Dicocokkan case-insensitive setelah strip.
+_INVOICE_ONLY_TIPE_PRODUK = {
+    'roasted beans',
+    'argopuro walida collective',
+}
+
+
 def _is_tipe_produk_invoice_only(tp):
-    """Roasted Beans: hanya untuk invoice, tidak memotong stok hasil produksi."""
-    return (tp or '').strip().lower() == 'roasted beans'
+    """Tipe produk hanya-invoice (tidak memotong stok hasil produksi).
+
+    Saat ini mencakup `Roasted Beans` dan `Argopuro Walida Collective`.
+    """
+    return (tp or '').strip().lower() in _INVOICE_ONLY_TIPE_PRODUK
 
 
 def _line_items_all_invoice_only(line_items):
@@ -4881,12 +4892,12 @@ def _line_items_stock_lines(line_items):
 
 def _finalize_pemesanan_invoice_only(id_pembelian, pemesanan, line_items, tanggal_ordering):
     """
-    Selesaikan pemesanan invoice-only (Roasted Beans): tidak insert hasilProduksi,
-    tidak mengurangi stok; catat jejak ordering untuk audit.
+    Selesaikan pemesanan invoice-only (mis. Roasted Beans, Argopuro Walida Collective):
+    tidak insert hasilProduksi, tidak mengurangi stok; catat jejak ordering untuk audit.
     """
     jumlah_total = float(sum(float(x.get('jumlahPesananKg') or 0) for x in line_items))
     multi = len(line_items) > 1
-    tipe_label = 'Campuran' if multi else (line_items[0].get('tipeProduk') or 'Roasted Beans').strip()
+    tipe_label = 'Campuran' if multi else (line_items[0].get('tipeProduk') or '').strip()
     new_id = get_next_id('ordering')
     ordering_data = {
         'id': new_id,
@@ -5150,7 +5161,7 @@ def create_pemesanan():
             if _line_items_all_invoice_only(lines_for_complete):
                 if status_bayar != 'Lunas':
                     return jsonify({
-                        'error': 'Pemesanan Roasted Beans (invoice) hanya bisa Complete jika status pembayaran Lunas.'
+                        'error': 'Pemesanan invoice-only (mis. Roasted Beans, Argopuro Walida Collective) hanya bisa Complete jika status pembayaran Lunas.'
                     }), 400
             else:
                 return jsonify({
@@ -5496,7 +5507,7 @@ def update_pemesanan(pemesanan_id):
                     }), 400
                 if transitioning_to_complete and invoice_only_complete and new_status_bayar != 'Lunas':
                     return jsonify({
-                        'error': 'Pemesanan Roasted Beans (invoice) hanya bisa Complete jika status pembayaran Lunas.'
+                        'error': 'Pemesanan invoice-only (mis. Roasted Beans, Argopuro Walida Collective) hanya bisa Complete jika status pembayaran Lunas.'
                     }), 400
             else:
                 # Dokumen ordering ada → pemesanan selesai dari sisi stok → lunas (perilaku bisnis tetap).
@@ -5744,7 +5755,7 @@ def proses_ordering():
             )
             return jsonify({
                 'success': True,
-                'message': 'Pemesanan Roasted Beans diselesaikan (invoice only, stok tidak dikurangi).',
+                'message': 'Pemesanan invoice-only (tidak terikat stok) diselesaikan, stok tidak dikurangi.',
                 'ordering': json_serialize(ordering_data),
                 'invoiceOnly': True,
                 'jumlahDikurangi': 0,
@@ -5785,7 +5796,7 @@ def proses_ordering():
             it0 = line_items[0]
             if _is_tipe_produk_invoice_only(it0.get('tipeProduk')):
                 return jsonify({
-                    'error': 'Roasted Beans tidak memerlukan pemilihan batch produksi (hanya untuk invoice, tanpa pengurangan stok).'
+                    'error': 'Tipe produk invoice-only (mis. Roasted Beans, Argopuro Walida Collective) tidak memerlukan pemilihan batch produksi (tanpa pengurangan stok).'
                 }), 400
             jumlah_pesanan = float(it0['jumlahPesananKg'])
             tipe_produk_selected = (it0.get('tipeProduk') or tipe_produk_selected).strip()
@@ -6003,7 +6014,7 @@ def proses_ordering():
             stock_lines_needed = _line_items_stock_lines(line_items)
             if stock_lines_needed and not inserted_hasil_ids:
                 raise ValueError(
-                    'Tidak ada stok yang dapat dialokasikan untuk barang selain Roasted Beans. '
+                    'Tidak ada stok yang dapat dialokasikan untuk barang yang terikat stok. '
                     'Periksa ketersediaan stok di Kelola Stok.'
                 )
 

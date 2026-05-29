@@ -15,11 +15,20 @@ let masterProsesNames = [];
 let masterJenisKopiNames = [];
 let masterProdukNames = [];
 
-/** Tipe produk yang hanya untuk invoice (tanpa pengurangan stok). */
+/**
+ * Tipe produk yang hanya untuk invoice (tanpa pengurangan stok).
+ * Saat ini: Roasted Beans dan Argopuro Walida Collective.
+ * Dicocokkan case-insensitive setelah trim.
+ */
+const INVOICE_ONLY_TIPE_PRODUK = new Set([
+  "roasted beans",
+  "argopuro walida collective",
+]);
+
 function isTipeProdukInvoiceOnly(tipe) {
-  return String(tipe || "")
-    .trim()
-    .toLowerCase() === "roasted beans";
+  return INVOICE_ONLY_TIPE_PRODUK.has(
+    String(tipe || "").trim().toLowerCase(),
+  );
 }
 
 function pemesananIsInvoiceOnly(doc) {
@@ -149,7 +158,7 @@ function showAggregatedStokForPemesanan(p) {
       displayProduksiJenisKopi.textContent = p.jenisKopi || "-";
     if (hintEl) {
       hintEl.textContent =
-        "Roasted Beans: hanya untuk invoice — tidak memotong stok. Pemesanan bisa langsung Complete (pembayaran Lunas).";
+        "Tipe invoice-only (Roasted Beans / Argopuro Walida Collective): tidak terikat stok. Pemesanan bisa langsung Complete (pembayaran Lunas).";
       hintEl.className = "small text-muted mb-0";
     }
     if (stokInfoDisplay) stokInfoDisplay.style.display = "block";
@@ -708,7 +717,8 @@ function syncPembayaranKloterColumnsVisibility() {
 }
 
 /**
- * Tampilkan opsi Complete & petunjuk jika semua kloter Roasted Beans + pembayaran Lunas.
+ * Tampilkan opsi Complete & petunjuk jika semua kloter bertipe invoice-only
+ * (Roasted Beans / Argopuro Walida Collective) dengan pembayaran Lunas.
  */
 function syncStatusPemesananInvoiceOnlyForm() {
   const statusField = document.getElementById("statusPemesanan");
@@ -733,7 +743,7 @@ function syncStatusPemesananInvoiceOnlyForm() {
     if (hint) {
       hint.style.display = "block";
       hint.innerHTML =
-        "<strong>Roasted Beans (invoice):</strong> pilih <strong>Complete</strong> untuk menyelesaikan tanpa mengurangi stok (pembayaran <strong>Lunas</strong>).";
+        "<strong>Invoice-only (Roasted Beans / Argopuro Walida Collective):</strong> pilih <strong>Complete</strong> untuk menyelesaikan tanpa mengurangi stok (pembayaran <strong>Lunas</strong>).";
     }
   } else if (!pemesananId && !currentEditPreservesComplete) {
     if (optComplete) optComplete.remove();
@@ -742,7 +752,7 @@ function syncStatusPemesananInvoiceOnlyForm() {
   } else if (pemesananId && allInv && !currentEditPreservesComplete && hint) {
     hint.style.display = "block";
     hint.innerHTML =
-      "<strong>Roasted Beans (invoice):</strong> pilih <strong>Complete</strong> untuk menyelesaikan tanpa stok, atau gunakan <strong>Proses Ordering</strong> (sama, tanpa potong stok).";
+      "<strong>Invoice-only (Roasted Beans / Argopuro Walida Collective):</strong> pilih <strong>Complete</strong> untuk menyelesaikan tanpa stok, atau gunakan <strong>Proses Ordering</strong> (sama, tanpa potong stok).";
   }
 
   const wPem = document.getElementById("wrapSelectIdProduksiPemesanan");
@@ -1783,7 +1793,7 @@ async function savePemesanan(cetakInvoice) {
         if (pemesananIsInvoiceOnly(pFromApi)) {
           if (statusPembayaran !== "Lunas") {
             alert(
-              "Pemesanan Roasted Beans (invoice) hanya bisa Complete jika pembayaran sudah Lunas.",
+              "Pemesanan invoice-only (Roasted Beans / Argopuro Walida Collective) hanya bisa Complete jika pembayaran sudah Lunas.",
             );
             return;
           }
@@ -1797,11 +1807,11 @@ async function savePemesanan(cetakInvoice) {
               "update",
               "Pemesanan",
               "success",
-              "Pemesanan Roasted Beans Complete (invoice, tanpa pengurangan stok).",
+              "Pemesanan invoice-only diselesaikan (Complete, tanpa pengurangan stok).",
             );
           } else {
             alert(
-              "Pemesanan Roasted Beans diselesaikan (invoice only, stok tidak dikurangi).",
+              "Pemesanan invoice-only diselesaikan (tanpa pengurangan stok).",
             );
           }
           await loadPemesanan();
@@ -1891,13 +1901,13 @@ async function savePemesanan(cetakInvoice) {
       if (statusPemesanan === "Complete") {
         if (!kloterRowsAllInvoiceOnly(kloterRaw)) {
           alert(
-            "Pemesanan baru tidak bisa langsung **Complete** (kecuali semua kloter **Roasted Beans** dengan pembayaran **Lunas**). Simpan sebagai **Ordering** dulu, lalu selesaikan lewat **Edit → Complete** atau **Proses Ordering**.",
+            "Pemesanan baru tidak bisa langsung **Complete** (kecuali semua kloter bertipe invoice-only — **Roasted Beans** atau **Argopuro Walida Collective** — dengan pembayaran **Lunas**). Simpan sebagai **Ordering** dulu, lalu selesaikan lewat **Edit → Complete** atau **Proses Ordering**.",
           );
           return;
         }
         if (statusPembayaran !== "Lunas") {
           alert(
-            "Pemesanan Roasted Beans (invoice) hanya bisa langsung Complete jika pembayaran **Lunas**.",
+            "Pemesanan invoice-only (Roasted Beans / Argopuro Walida Collective) hanya bisa langsung Complete jika pembayaran **Lunas**.",
           );
           return;
         }
@@ -2410,7 +2420,7 @@ async function fillSelectIdProduksiUntukPemesanan(
     wrap.style.display = "none";
     if (hint) {
       hint.textContent =
-        "Roasted Beans: tidak perlu pilih batch — stok tidak dikurangi.";
+        "Tipe invoice-only (Roasted Beans / Argopuro Walida Collective): tidak perlu pilih batch — stok tidak dikurangi.";
       hint.classList.remove("d-none");
     }
     return;
@@ -2614,7 +2624,7 @@ async function saveOrdering() {
       } else if (result.invoiceOnly) {
         alert(
           result.message ||
-            "Pemesanan Roasted Beans diselesaikan (invoice only, stok tidak dikurangi).",
+            "Pemesanan invoice-only diselesaikan (tanpa pengurangan stok).",
         );
       } else if (
         result.stokSebelum != null &&
