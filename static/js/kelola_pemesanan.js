@@ -18,17 +18,36 @@ let masterProdukNames = [];
 /**
  * Tipe produk yang hanya untuk invoice (tanpa pengurangan stok).
  * Saat ini: Roasted Beans dan Argopuro Walida Collective.
- * Dicocokkan case-insensitive setelah trim.
+ * Dicocokkan case-insensitive setelah trim + normalisasi whitespace
+ * (mis. non-breaking space, tab, spasi ganda) agar tahan typo ejaan ringan.
  */
 const INVOICE_ONLY_TIPE_PRODUK = new Set([
   "roasted beans",
   "argopuro walida collective",
 ]);
 
+function normalizeTipeProdukForMatch(tipe) {
+  return String(tipe || "")
+    .replace(/[\s\u00A0]+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 function isTipeProdukInvoiceOnly(tipe) {
-  return INVOICE_ONLY_TIPE_PRODUK.has(
-    String(tipe || "").trim().toLowerCase(),
-  );
+  const norm = normalizeTipeProdukForMatch(tipe);
+  if (!norm) return false;
+  if (INVOICE_ONLY_TIPE_PRODUK.has(norm)) return true;
+  // Toleransi variasi ejaan untuk "Argopuro Walida Collective" (mis. "Colective",
+  // "Collection", trailing word, dst). Tetap aman: hanya nama yang mengandung
+  // tiga kata kunci ini yang dianggap invoice-only.
+  if (
+    norm.includes("argopuro") &&
+    norm.includes("walida") &&
+    /\bcol[a-z]*/.test(norm)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function pemesananIsInvoiceOnly(doc) {
@@ -1517,6 +1536,11 @@ async function editPemesanan(id) {
       alert("Data pemesanan tidak ditemukan!");
       return;
     }
+
+    const modalLabel = document.getElementById("modalPemesananLabel");
+    if (modalLabel) modalLabel.textContent = "Edit Pemesanan";
+    const btnCetak = document.getElementById("btnSimpanCetakInvoice");
+    if (btnCetak) btnCetak.style.display = "none";
 
     currentEditPreservesComplete = p.statusPemesanan === "Complete";
     currentEditId = id;

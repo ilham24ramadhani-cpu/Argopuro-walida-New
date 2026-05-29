@@ -4865,19 +4865,37 @@ def _tipe_produk_valid(tp):
 
 
 # Tipe produk yang hanya untuk invoice (tidak terikat stok hasil produksi).
-# Dicocokkan case-insensitive setelah strip.
+# Dicocokkan case-insensitive setelah normalisasi whitespace.
 _INVOICE_ONLY_TIPE_PRODUK = {
     'roasted beans',
     'argopuro walida collective',
 }
+
+_TIPE_PRODUK_WS_RE = re.compile(r'[\s\u00A0]+')
+
+
+def _normalize_tipe_produk_for_match(tp):
+    return _TIPE_PRODUK_WS_RE.sub(' ', str(tp or '')).strip().lower()
+
+
+_TIPE_PRODUK_COL_RE = re.compile(r'\bcol[a-z]*')
 
 
 def _is_tipe_produk_invoice_only(tp):
     """Tipe produk hanya-invoice (tidak memotong stok hasil produksi).
 
     Saat ini mencakup `Roasted Beans` dan `Argopuro Walida Collective`.
+    Pencocokan toleran terhadap variasi whitespace/case dan ejaan ringan
+    untuk produk Argopuro Walida (mis. "Colective", "Collection").
     """
-    return (tp or '').strip().lower() in _INVOICE_ONLY_TIPE_PRODUK
+    norm = _normalize_tipe_produk_for_match(tp)
+    if not norm:
+        return False
+    if norm in _INVOICE_ONLY_TIPE_PRODUK:
+        return True
+    if 'argopuro' in norm and 'walida' in norm and _TIPE_PRODUK_COL_RE.search(norm):
+        return True
+    return False
 
 
 def _line_items_all_invoice_only(line_items):
