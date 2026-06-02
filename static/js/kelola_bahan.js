@@ -695,10 +695,26 @@ async function displayBahan() {
     ? String(filterTglEl.value || "").trim()
     : "";
 
+  const searchBahanListEl = document.getElementById("searchBahanList");
+  const searchBahanListTerm = searchBahanListEl
+    ? String(searchBahanListEl.value || "").trim().toLowerCase()
+    : "";
+
   // Filter data berdasarkan search
   let filteredBahan = bahan;
+  if (searchBahanListTerm) {
+    filteredBahan = filteredBahan.filter((b) => {
+      const idBahan = b.idBahan ? String(b.idBahan).toLowerCase() : "";
+      const prosesMatch = (b.prosesBahan || []).some(
+        (x) =>
+          x.prosesPengolahan &&
+          String(x.prosesPengolahan).toLowerCase().includes(searchBahanListTerm),
+      );
+      return idBahan.includes(searchBahanListTerm) || prosesMatch;
+    });
+  }
   if (searchTerm) {
-    filteredBahan = bahan.filter((b) => {
+    filteredBahan = filteredBahan.filter((b) => {
       const tglNorm = toInputDateValue(b.tanggalMasuk);
       const tglLabel =
         tglNorm && !Number.isNaN(new Date(`${tglNorm}T12:00:00`).getTime())
@@ -1554,6 +1570,31 @@ document.addEventListener("DOMContentLoaded", () => {
   );
   if (filterTanggalMasukBahan) {
     filterTanggalMasukBahan.addEventListener("change", displayBahan);
+  }
+
+  const searchBahanListInput = document.getElementById("searchBahanList");
+  if (searchBahanListInput) {
+    let _searchBahanListTimer = null;
+    const triggerSearchBahanList = () => {
+      if (_searchBahanListTimer) clearTimeout(_searchBahanListTimer);
+      _searchBahanListTimer = setTimeout(displayBahan, 150);
+    };
+    searchBahanListInput.addEventListener("input", triggerSearchBahanList);
+    searchBahanListInput.addEventListener("search", triggerSearchBahanList);
+    searchBahanListInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        triggerSearchBahanList();
+      }
+    });
+  }
+  const searchBahanListClear = document.getElementById("searchBahanListClear");
+  if (searchBahanListClear && searchBahanListInput) {
+    searchBahanListClear.addEventListener("click", () => {
+      searchBahanListInput.value = "";
+      searchBahanListInput.focus();
+      displayBahan();
+    });
   }
 
   // Event listener untuk form search
