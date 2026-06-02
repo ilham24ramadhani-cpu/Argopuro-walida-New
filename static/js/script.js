@@ -84,3 +84,32 @@ function handleLogout(event) {
   // Redirect ke welcome page (Flask route /)
   window.location.href = "/";
 }
+
+/*
+ * Cegah perubahan nilai pada <input type="number"> saat user men-scroll mouse wheel.
+ *
+ * Default browser: ketika sebuah number input dalam keadaan focus, wheel event
+ * akan menambah/mengurangi nilai sebesar atribut `step` (mis. 0.01, 0.1, 1000).
+ * Akibatnya user yang baru saja mengetik (mis. kadar air 12 atau berat 12 kg)
+ * lalu scroll halaman ke tombol Simpan bisa melihat nilainya berubah diam-diam
+ * (12 → 11,59 untuk step 0.01, 12 → 11,6 untuk step 0.1, dst.) tanpa sadar.
+ *
+ * Solusi: saat user scroll, blur input number-nya. Halaman tetap bisa discroll
+ * normal, dan nilai yang sudah diketik tidak berubah. User hanya perlu klik lagi
+ * di input bila ingin mengedit nilainya.
+ */
+document.addEventListener(
+  "wheel",
+  function (e) {
+    const el = document.activeElement;
+    if (
+      el &&
+      el.tagName === "INPUT" &&
+      el.type === "number" &&
+      (el === e.target || el.contains(e.target))
+    ) {
+      el.blur();
+    }
+  },
+  { passive: true }
+);

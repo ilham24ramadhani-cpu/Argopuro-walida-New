@@ -2993,7 +2993,7 @@ def get_pembeli_by_id(pembeli_id):
 def create_pembeli():
     try:
         data = request.json or {}
-        required = ['nama', 'kontak', 'alamat', 'tipePembeli']
+        required = ['nama', 'kontak', 'alamat', 'tipePembeli', 'region']
         for f in required:
             if not str(data.get(f, '')).strip():
                 return jsonify({'error': f'Missing or empty field: {f}'}), 400
@@ -3016,6 +3016,7 @@ def create_pembeli():
             'kontak': str(data['kontak']).strip(),
             'alamat': str(data['alamat']).strip(),
             'tipePembeli': tipe,
+            'region': str(data['region']).strip(),
             'createdAt': datetime.now(),
             'updatedAt': datetime.now(),
         }
@@ -3053,12 +3054,16 @@ def update_pembeli(pembeli_id):
                 return jsonify({'error': 'ID Pembeli sudah dipakai'}), 400
 
         update_data = {}
-        for field in ['idPembeli', 'nama', 'kontak', 'alamat', 'tipePembeli']:
+        for field in ['idPembeli', 'nama', 'kontak', 'alamat', 'tipePembeli', 'region']:
             if field in data:
                 update_data[field] = data[field]
         if 'tipePembeli' in update_data:
             if update_data['tipePembeli'] not in ('Lokal', 'International', 'ecommerce'):
                 return jsonify({'error': 'tipePembeli tidak valid'}), 400
+        if 'region' in update_data:
+            if not str(update_data['region'] or '').strip():
+                return jsonify({'error': 'region tidak boleh kosong'}), 400
+            update_data['region'] = str(update_data['region']).strip()
         update_data['updatedAt'] = datetime.now()
         db.pembeli.update_one({'_id': doc['_id']}, {'$set': update_data})
         updated = db.pembeli.find_one({'_id': doc['_id']})

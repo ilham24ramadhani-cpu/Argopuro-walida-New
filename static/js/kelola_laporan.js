@@ -7,6 +7,7 @@ let sanitasi = [];
 let pemasok = [];
 let keuangan = [];
 let pemesanan = []; // TAMBAHAN: Data pemesanan untuk laporan
+let pembeli = []; // Master data pembeli untuk laporan
 
 function unwrapArrayResponseLaporan(res) {
   if (Array.isArray(res)) return res;
@@ -871,6 +872,24 @@ async function loadAllReportData() {
       pemesanan = [];
     }
 
+    if (window.API.Pembeli) {
+      loadPromises.push(
+        window.API.Pembeli.getAll()
+          .then((data) => {
+            pembeli = Array.isArray(data) ? data : [];
+            console.log(
+              `✅ Loaded ${pembeli.length} pembeli records from MongoDB`,
+            );
+          })
+          .catch((err) => {
+            console.warn("⚠️ Error loading pembeli:", err);
+            pembeli = [];
+          }),
+      );
+    } else {
+      pembeli = [];
+    }
+
     // Execute all API calls in parallel
     await Promise.all(loadPromises);
 
@@ -882,10 +901,12 @@ async function loadAllReportData() {
     if (!Array.isArray(pemasok)) pemasok = [];
     if (!Array.isArray(keuangan)) keuangan = [];
     if (!Array.isArray(pemesanan)) pemesanan = [];
+    if (!Array.isArray(pembeli)) pembeli = [];
 
     refreshBahanPemasokFilterOptions();
     refreshLaporanProsesTahapanFilterOptions();
     refreshPemesananProsesFilterOptions();
+    refreshPembeliRegionFilterOptions();
 
     const endTime = performance.now();
     const loadTime = ((endTime - startTime) / 1000).toFixed(2);
@@ -902,6 +923,7 @@ async function loadAllReportData() {
     pemasok = [];
     keuangan = [];
     pemesanan = [];
+    pembeli = [];
     throw error;
   }
 }
@@ -915,6 +937,7 @@ let dataHashes = {
   pemasok: null,
   keuangan: null,
   pemesanan: null,
+  pembeli: null,
 };
 
 // Fungsi untuk generate hash dari data
@@ -932,6 +955,7 @@ async function checkDataChanges() {
     "pemasok",
     "keuangan",
     "pemesanan",
+    "pembeli",
   ];
   let hasChanges = false;
 
@@ -962,6 +986,9 @@ async function checkDataChanges() {
       case "pemesanan":
         currentData = pemesanan;
         break;
+      case "pembeli":
+        currentData = pembeli;
+        break;
     }
 
     const currentHash = generateHash(currentData);
@@ -990,6 +1017,7 @@ async function refreshAllTables() {
     displayKeuangan();
     displayStok();
     displayPemesananLaporan(); // TAMBAHAN: Display pemesanan
+    displayPembeliLaporan();
     renderBahanPriceStats();
 
     console.log("✅ All tables refreshed successfully");
@@ -1008,6 +1036,7 @@ async function initializeHashes() {
   dataHashes.pemasok = generateHash(pemasok);
   dataHashes.keuangan = generateHash(keuangan);
   dataHashes.pemesanan = generateHash(pemesanan);
+  dataHashes.pembeli = generateHash(pembeli);
 }
 
 // Tipe sanitasi names
@@ -2113,6 +2142,69 @@ const LAPORAN_REKAP_CONFIG = {
       ];
     },
   },
+  pembeli: {
+    title: "Laporan Rekap Data Pembeli",
+    columns: [
+      { label: "ID Pembeli", value: (item) => item.idPembeli || "-" },
+      { label: "Nama", value: (item) => item.nama || "-" },
+      { label: "Kontak", value: (item) => item.kontak || "-" },
+      { label: "Alamat", value: (item) => item.alamat || "-" },
+      {
+        label: "Region (Kabupaten/Kota)",
+        value: (item) => (item.region && String(item.region).trim()) || "-",
+      },
+      {
+        label: "Provinsi",
+        value: (item) => {
+          const r = (item.region || "").trim();
+          if (!r) return "-";
+          const RI = window.RegionsIndonesia;
+          return RI ? RI.getProvinsiOfRegion(r) || "-" : "-";
+        },
+      },
+      {
+        label: "Tipe pembeli",
+        align: "center",
+        value: (item) => labelTipePembeliLaporan(item.tipePembeli),
+      },
+    ],
+    filterKey: "pembeli",
+    dataset: () => pembeli,
+    dateGetter: () => null,
+    extraSummary: (items) => {
+      if (!items.length) return [];
+      const byRegion = {};
+      const byTipe = {};
+      items.forEach((b) => {
+        const reg = (b.region || "").trim() || "(Tanpa region)";
+        byRegion[reg] = (byRegion[reg] || 0) + 1;
+        const t = labelTipePembeliLaporan(b.tipePembeli);
+        byTipe[t] = (byTipe[t] || 0) + 1;
+      });
+      const topRegion = Object.entries(byRegion).sort((a, b) => b[1] - a[1])[0];
+      const lines = [
+        { label: "Jumlah pembeli", value: String(items.length) },
+        {
+          label: "Jumlah region unik",
+          value: String(
+            Object.keys(byRegion).filter((k) => k !== "(Tanpa region)").length,
+          ),
+        },
+      ];
+      if (topRegion) {
+        lines.push({
+          label: "Region dengan pembeli terbanyak",
+          value: `${topRegion[0]} (${topRegion[1]} pembeli)`,
+        });
+      }
+      Object.entries(byTipe)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([tipe, n]) => {
+          lines.push({ label: `Tipe: ${tipe}`, value: String(n) });
+        });
+      return lines;
+    },
+  },
 };
 
 // Fungsi aggregateStok dihapus karena sekarang menggunakan API Stok.getAll()
@@ -2572,6 +2664,8 @@ function getFilteredDataForCategory(category) {
       return getPemesananFilteredForLaporan();
     case "pemasok":
       return Array.isArray(pemasok) ? [...pemasok] : [];
+    case "pembeli":
+      return getPembeliFilteredForLaporan();
     default:
       return [];
   }
@@ -2808,6 +2902,19 @@ function getFilterDescription(category) {
   if (category === "pemasok") {
     return "Data: semua pemasok terdaftar";
   }
+  if (category === "pembeli") {
+    const parts = [];
+    const elR = document.getElementById("pembeliFilterRegion");
+    const elT = document.getElementById("pembeliFilterTipe");
+    const elQ = document.getElementById("pembeliFilterSearch");
+    const fr = elR && elR.value;
+    const ft = elT && elT.value;
+    const fq = elQ && elQ.value.trim();
+    if (fr) parts.push(`Region: ${fr}`);
+    if (ft) parts.push(`Tipe: ${labelTipePembeliLaporan(ft)}`);
+    if (fq) parts.push(`Pencarian: "${fq}"`);
+    return parts.length ? parts.join(" | ") : "Filter: semua data pembeli";
+  }
   const filter = tableFilters[category];
   let timePart = "Periode: Semua";
   if (filter && filter.mode !== "all" && filter.value) {
@@ -2853,11 +2960,12 @@ const REKAP_CATEGORY_FILE_SLUG = {
   stok: "stok",
   pemesanan: "pemesanan",
   pemasok: "pemasok",
+  pembeli: "data_pembeli",
 };
 
 /** Muat data rekap sesuai filter. error: 'no_config' | 'no_data' jika gagal. */
 async function loadRekapExportContext(category) {
-  if (category === "pemesanan" || category === "pemasok") {
+  if (category === "pemesanan" || category === "pemasok" || category === "pembeli") {
     await loadAllReportData();
   }
   const config = LAPORAN_REKAP_CONFIG[category];
@@ -7357,6 +7465,129 @@ async function generateInvoicePDFFromLaporan(idPembelian) {
   }
 }
 
+// ==================== LAPORAN DATA PEMBELI ====================
+
+function labelTipePembeliLaporan(t) {
+  if (t === "ecommerce") return "E-commerce";
+  return t || "-";
+}
+
+/** Isi dropdown filter region pada tab Laporan Data Pembeli. */
+function refreshPembeliRegionFilterOptions() {
+  const sel = document.getElementById("pembeliFilterRegion");
+  if (!sel) return;
+  const prev = sel.value || "";
+  const set = new Set();
+  (pembeli || []).forEach((b) => {
+    const r = (b.region || "").trim();
+    if (r) set.add(r);
+  });
+  const list = [...set].sort((a, b) => a.localeCompare(b, "id"));
+  sel.innerHTML = "";
+  const o0 = document.createElement("option");
+  o0.value = "";
+  o0.textContent = "Semua region";
+  sel.appendChild(o0);
+  list.forEach((v) => {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = v;
+    sel.appendChild(o);
+  });
+  sel.value = list.includes(prev) ? prev : "";
+}
+
+/** Filter pembeli dari kontrol tab laporan (sama untuk tabel & rekap). */
+function getPembeliFilteredForLaporan() {
+  if (!Array.isArray(pembeli)) return [];
+  const filterRegion = document.getElementById("pembeliFilterRegion")
+    ? document.getElementById("pembeliFilterRegion").value.trim()
+    : "";
+  const filterTipe = document.getElementById("pembeliFilterTipe")
+    ? document.getElementById("pembeliFilterTipe").value
+    : "";
+  const q = document.getElementById("pembeliFilterSearch")
+    ? document.getElementById("pembeliFilterSearch").value.toLowerCase().trim()
+    : "";
+  return pembeli.filter((b) => {
+    const matchRegion =
+      !filterRegion || (b.region || "").trim() === filterRegion;
+    const matchTipe =
+      !filterTipe || (b.tipePembeli || "") === filterTipe;
+    let matchQ = true;
+    if (q) {
+      matchQ =
+        (b.idPembeli && String(b.idPembeli).toLowerCase().includes(q)) ||
+        (b.nama && String(b.nama).toLowerCase().includes(q)) ||
+        (b.kontak && String(b.kontak).toLowerCase().includes(q)) ||
+        (b.alamat && String(b.alamat).toLowerCase().includes(q)) ||
+        (b.region && String(b.region).toLowerCase().includes(q));
+    }
+    return matchRegion && matchTipe && matchQ;
+  });
+}
+
+function displayPembeliLaporan() {
+  const tableBody = document.getElementById("tablePembeliLaporan");
+  if (!tableBody) return;
+  try {
+    const filtered = getPembeliFilteredForLaporan();
+    if (filtered.length === 0) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="8" class="text-center py-4 text-muted">
+            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+            Tidak ada data pembeli
+          </td>
+        </tr>`;
+      return;
+    }
+    const RI = window.RegionsIndonesia;
+    tableBody.innerHTML = filtered
+      .map((b, index) => {
+        const reg = (b.region || "").trim();
+        const prov = RI && reg ? RI.getProvinsiOfRegion(reg) : "";
+        return `
+      <tr class="align-middle">
+        <td>${index + 1}</td>
+        <td><strong>${escapeHtmlLaporan(b.idPembeli || "—")}</strong></td>
+        <td>${escapeHtmlLaporan(b.nama || "—")}</td>
+        <td>${escapeHtmlLaporan(b.kontak || "—")}</td>
+        <td>${escapeHtmlLaporan(b.alamat || "—")}</td>
+        <td>${
+          reg
+            ? `<span class="badge bg-info text-dark">${escapeHtmlLaporan(reg)}</span>`
+            : '<span class="text-muted">—</span>'
+        }</td>
+        <td>${escapeHtmlLaporan(prov || "—")}</td>
+        <td><span class="badge bg-secondary">${escapeHtmlLaporan(labelTipePembeliLaporan(b.tipePembeli))}</span></td>
+      </tr>`;
+      })
+      .join("");
+  } catch (error) {
+    console.error("❌ Error displaying pembeli laporan:", error);
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="8" class="text-center py-4 text-danger">
+          Error menampilkan data: ${escapeHtmlLaporan(error.message)}
+        </td>
+      </tr>`;
+  }
+}
+
+async function loadPembeliLaporan() {
+  try {
+    if (!window.API?.Pembeli) {
+      console.warn("⚠️ API.Pembeli not available");
+      return;
+    }
+    await loadAllReportData();
+    displayPembeliLaporan();
+  } catch (error) {
+    console.error("❌ Error loading pembeli for laporan:", error);
+  }
+}
+
 // Format date helper (if not exists)
 if (typeof formatDate === "undefined") {
   function formatDate(dateString) {
@@ -7413,5 +7644,24 @@ document.addEventListener("DOMContentLoaded", function () {
   );
   if (pemesananFilterProses) {
     pemesananFilterProses.addEventListener("change", displayPemesananLaporan);
+  }
+
+  const pembeliTab = document.getElementById("pembeli-tab");
+  if (pembeliTab) {
+    pembeliTab.addEventListener("shown.bs.tab", function () {
+      loadPembeliLaporan();
+    });
+  }
+  const pembeliFilterRegion = document.getElementById("pembeliFilterRegion");
+  if (pembeliFilterRegion) {
+    pembeliFilterRegion.addEventListener("change", displayPembeliLaporan);
+  }
+  const pembeliFilterTipe = document.getElementById("pembeliFilterTipe");
+  if (pembeliFilterTipe) {
+    pembeliFilterTipe.addEventListener("change", displayPembeliLaporan);
+  }
+  const pembeliFilterSearch = document.getElementById("pembeliFilterSearch");
+  if (pembeliFilterSearch) {
+    pembeliFilterSearch.addEventListener("keyup", displayPembeliLaporan);
   }
 });

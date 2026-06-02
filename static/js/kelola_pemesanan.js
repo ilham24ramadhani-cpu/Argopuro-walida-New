@@ -862,12 +862,99 @@ function labelTipePembeli(t) {
   return t || "-";
 }
 
+/**
+ * Isi datalist autocomplete region pada modal Pembeli (sekali saja per buka
+ * halaman). Datalist akan tetap valid selamanya karena dataset region statis.
+ */
+function ensureRegionPembeliDatalist() {
+  const dl = document.getElementById("regionPembeliDatalist");
+  if (!dl || dl.dataset.populated === "1") return;
+  if (!window.RegionsIndonesia) return;
+  const grouped = window.RegionsIndonesia.getRegionsByProvinsi();
+  const frag = document.createDocumentFragment();
+  Object.keys(grouped).forEach((prov) => {
+    grouped[prov].forEach((canon) => {
+      const opt = document.createElement("option");
+      opt.value = canon;
+      frag.appendChild(opt);
+    });
+  });
+  dl.appendChild(frag);
+  dl.dataset.populated = "1";
+}
+
+/**
+ * Validasi input region pada modal Pembeli. Jika `commit` true (event
+ * change), nilai akan dibakukan ke string kanonik dari RegionsIndonesia.
+ */
+function onRegionPembeliInput(commit) {
+  const inp = document.getElementById("regionPembeliMaster");
+  const fb = document.getElementById("regionPembeliMasterFeedback");
+  if (!inp) return;
+  const RI = window.RegionsIndonesia;
+  if (!RI) return;
+  const v = (inp.value || "").trim();
+  if (!v) {
+    inp.classList.remove("is-invalid");
+    inp.classList.remove("is-valid");
+    if (fb) fb.style.display = "none";
+    return;
+  }
+  if (RI.isValidRegion(v)) {
+    inp.classList.remove("is-invalid");
+    inp.classList.add("is-valid");
+    if (fb) fb.style.display = "none";
+    return;
+  }
+  if (commit) {
+    const canon = RI.normalizeRegion(v);
+    if (canon) {
+      inp.value = canon;
+      inp.classList.remove("is-invalid");
+      inp.classList.add("is-valid");
+      if (fb) fb.style.display = "none";
+      return;
+    }
+  }
+  inp.classList.add("is-invalid");
+  inp.classList.remove("is-valid");
+  if (fb) fb.style.display = "block";
+}
+
+/** Refresh dropdown filter region pada tab Data Pembeli sesuai data terbaru. */
+function refreshFilterRegionPembeliMasterOptions() {
+  const sel = document.getElementById("filterRegionPembeliMaster");
+  if (!sel) return;
+  const prev = sel.value || "";
+  const set = new Set();
+  (pembeliMasterList || []).forEach((b) => {
+    const r = (b.region || "").trim();
+    if (r) set.add(r);
+  });
+  const list = [...set].sort((a, b) => a.localeCompare(b, "id"));
+  sel.innerHTML = "";
+  const o0 = document.createElement("option");
+  o0.value = "";
+  o0.textContent = "Semua region";
+  sel.appendChild(o0);
+  list.forEach((v) => {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = v;
+    sel.appendChild(o);
+  });
+  sel.value = list.includes(prev) ? prev : "";
+}
+
 function applyFilterPembeliMaster() {
   const tbody = document.getElementById("tablePembeliMaster");
   if (!tbody) return;
   const q = (document.getElementById("searchPembeliMaster")?.value || "")
     .toLowerCase()
     .trim();
+  const region = (
+    document.getElementById("filterRegionPembeliMaster")?.value || ""
+  ).trim();
   let rows = pembeliMasterList;
   if (q) {
     rows = rows.filter(
@@ -875,12 +962,16 @@ function applyFilterPembeliMaster() {
         (b.idPembeli && String(b.idPembeli).toLowerCase().includes(q)) ||
         (b.nama && String(b.nama).toLowerCase().includes(q)) ||
         (b.kontak && String(b.kontak).toLowerCase().includes(q)) ||
-        (b.alamat && String(b.alamat).toLowerCase().includes(q)),
+        (b.alamat && String(b.alamat).toLowerCase().includes(q)) ||
+        (b.region && String(b.region).toLowerCase().includes(q)),
     );
+  }
+  if (region) {
+    rows = rows.filter((b) => (b.region || "").trim() === region);
   }
   if (!rows.length) {
     tbody.innerHTML =
-      '<tr><td colspan="7" class="text-center py-4 text-muted">Tidak ada data pembeli</td></tr>';
+      '<tr><td colspan="8" class="text-center py-4 text-muted">Tidak ada data pembeli</td></tr>';
     return;
   }
   tbody.innerHTML = rows
@@ -892,6 +983,7 @@ function applyFilterPembeliMaster() {
       <td>${escapeHtmlAttr(b.nama)}</td>
       <td>${escapeHtmlAttr(b.kontak)}</td>
       <td>${escapeHtmlAttr(b.alamat)}</td>
+      <td>${b.region ? `<span class="badge bg-info text-dark">${escapeHtmlAttr(b.region)}</span>` : '<span class="text-muted small">—</span>'}</td>
       <td><span class="badge bg-secondary">${escapeHtmlAttr(labelTipePembeli(b.tipePembeli))}</span></td>
       <td class="text-center">
         <button type="button" class="btn btn-sm btn-warning me-1" data-pembeli-edit="${escapeHtmlAttr(b._id)}" title="Edit"><i class="bi bi-pencil"></i></button>
@@ -915,17 +1007,19 @@ function applyFilterPembeliMaster() {
 async function loadPembeliMasterTable() {
   try {
     await loadPembeliMasterList();
+    refreshFilterRegionPembeliMasterOptions();
     applyFilterPembeliMaster();
   } catch (e) {
     console.error(e);
     const tbody = document.getElementById("tablePembeliMaster");
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-4">Gagal memuat: ${escapeHtmlAttr(e.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">Gagal memuat: ${escapeHtmlAttr(e.message)}</td></tr>`;
     }
   }
 }
 
 function openModalPembeli(mode) {
+  ensureRegionPembeliDatalist();
   const label = document.getElementById("modalPembeliLabel");
   const form = document.getElementById("formPembeli");
   if (mode === "add") {
@@ -938,6 +1032,13 @@ function openModalPembeli(mode) {
       idf.value = "";
       idf.readOnly = false;
     }
+    const regInp = document.getElementById("regionPembeliMaster");
+    if (regInp) {
+      regInp.value = "";
+      regInp.classList.remove("is-valid", "is-invalid");
+    }
+    const fb = document.getElementById("regionPembeliMasterFeedback");
+    if (fb) fb.style.display = "none";
     currentPembeliEditId = null;
   }
 }
@@ -961,6 +1062,11 @@ async function editPembeliMaster(mongoId) {
   document.getElementById("kontakPembeliMaster").value = b.kontak || "";
   document.getElementById("alamatPembeliMaster").value = b.alamat || "";
   document.getElementById("tipePembeliMaster").value = b.tipePembeli || "";
+  const regInp = document.getElementById("regionPembeliMaster");
+  if (regInp) {
+    regInp.value = b.region || "";
+    onRegionPembeliInput(true);
+  }
   const m = new bootstrap.Modal(document.getElementById("modalPembeli"));
   m.show();
 }
@@ -971,11 +1077,31 @@ async function savePembeliMaster() {
     form.reportValidity();
     return;
   }
+  const RI = window.RegionsIndonesia;
+  const regionRaw = document.getElementById("regionPembeliMaster").value.trim();
+  let regionCanon = regionRaw;
+  if (RI) {
+    regionCanon = RI.normalizeRegion(regionRaw) || (RI.isValidRegion(regionRaw) ? regionRaw : "");
+    if (!regionCanon) {
+      onRegionPembeliInput(true);
+      regionCanon = document.getElementById("regionPembeliMaster").value.trim();
+    }
+    if (!regionCanon) {
+      alert("Region tidak valid. Pilih kabupaten/kota dari daftar suggestion.");
+      document.getElementById("regionPembeliMaster").focus();
+      return;
+    }
+    document.getElementById("regionPembeliMaster").value = regionCanon;
+  } else if (!regionRaw) {
+    alert("Region wajib diisi.");
+    return;
+  }
   const payload = {
     nama: document.getElementById("namaPembeliMaster").value.trim(),
     kontak: document.getElementById("kontakPembeliMaster").value.trim(),
     alamat: document.getElementById("alamatPembeliMaster").value.trim(),
     tipePembeli: document.getElementById("tipePembeliMaster").value,
+    region: regionCanon,
   };
   const idManual = document.getElementById("idPembeliMaster").value.trim();
   if (idManual) payload.idPembeli = idManual;
@@ -3028,6 +3154,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   window.openModalPembeli = openModalPembeli;
   window.savePembeliMaster = savePembeliMaster;
   window.onSelectMasterPembeliChange = onSelectMasterPembeliChange;
+  window.onRegionPembeliInput = onRegionPembeliInput;
 
   window.addEventListener("dataMasterUpdated", async (event) => {
     const t = event?.detail?.type;

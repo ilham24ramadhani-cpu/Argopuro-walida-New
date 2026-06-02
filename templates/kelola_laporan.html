@@ -36,6 +36,7 @@
     <!-- JS - api-service.js HARUS di-load SEBELUM kelola_laporan.js -->
     <!-- IMPORTANT: api-service.js WITHOUT defer untuk memastikan dieksekusi lebih dulu -->
     <script src="{{ url_for('static', filename='js/api-service.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/regions-indonesia.js') }}"></script>
     <script src="{{ url_for('static', filename='js/produksi-rendemen.js') }}"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
@@ -459,6 +460,20 @@
                 aria-selected="false"
               >
                 <i class="bi bi-cart me-2"></i>Laporan Pemesanan
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="pembeli-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#pembeli"
+                type="button"
+                role="tab"
+                aria-controls="pembeli"
+                aria-selected="false"
+              >
+                <i class="bi bi-people me-2"></i>Laporan Data Pembeli
               </button>
             </li>
           </ul>
@@ -1630,6 +1645,151 @@
                       </thead>
                       <tbody id="tablePemesananLaporan">
                         <!-- Data akan diisi oleh JavaScript -->
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab Data Pembeli -->
+            <div
+              class="tab-pane fade"
+              id="pembeli"
+              role="tabpanel"
+              aria-labelledby="pembeli-tab"
+            >
+              <div class="row gy-3 gx-3 align-items-end mb-3 filter-bar">
+                <div class="col-12 col-md-6 col-lg-4">
+                  <label
+                    for="pembeliFilterRegion"
+                    class="form-label small text-muted mb-1"
+                    >Filter region (kabupaten/kota)</label
+                  >
+                  <select
+                    id="pembeliFilterRegion"
+                    class="form-select form-select-sm"
+                    aria-label="Filter region data pembeli"
+                  >
+                    <option value="">Semua region</option>
+                  </select>
+                </div>
+                <div class="col-12 col-md-6 col-lg-4">
+                  <label
+                    for="pembeliFilterTipe"
+                    class="form-label small text-muted mb-1"
+                    >Filter tipe pembeli</label
+                  >
+                  <select
+                    id="pembeliFilterTipe"
+                    class="form-select form-select-sm"
+                    aria-label="Filter tipe pembeli"
+                  >
+                    <option value="">Semua tipe</option>
+                    <option value="Lokal">Lokal</option>
+                    <option value="International">International</option>
+                    <option value="ecommerce">E-commerce</option>
+                  </select>
+                </div>
+                <div class="col-12 col-md-6 col-lg-4">
+                  <label
+                    for="pembeliFilterSearch"
+                    class="form-label small text-muted mb-1"
+                    >Cari nama / ID / kontak</label
+                  >
+                  <input
+                    type="text"
+                    id="pembeliFilterSearch"
+                    class="form-control form-control-sm"
+                    placeholder="Ketik untuk mencari..."
+                    aria-label="Cari data pembeli"
+                  />
+                </div>
+                <div class="col-12 col-md-6 col-lg-4">
+                  <label class="form-label small text-muted mb-1 invisible"
+                    >Export rekap</label
+                  >
+                  <div class="btn-group w-100">
+                    <button
+                      class="btn btn-primary btn-sm dropdown-toggle w-100"
+                      type="button"
+                      data-bs-toggle="dropdown"
+                      aria-expanded="false"
+                      aria-label="Export rekap data pembeli"
+                    >
+                      <i class="bi bi-download me-1"></i>Export
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapView('pembeli')"
+                        >
+                          <i class="bi bi-eye text-primary me-2"></i>
+                          Lihat rekap
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapPdf('pembeli')"
+                        >
+                          <i class="bi bi-file-earmark-pdf text-danger me-2"></i
+                          >PDF (cetak / simpan)
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          class="dropdown-item"
+                          onclick="exportRekapExcel('pembeli')"
+                        >
+                          <i
+                            class="bi bi-file-earmark-spreadsheet text-success me-2"
+                          ></i
+                          >Excel (.xlsx)
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              <div
+                class="alert alert-secondary d-flex align-items-start mb-3 shadow-sm py-2"
+                role="alert"
+              >
+                <i class="bi bi-geo-alt me-2 mt-1"></i>
+                <p class="mb-0 small">
+                  Data pembeli dari master <strong>Kelola Pemesanan → Data
+                  Pembeli</strong>. Kolom <strong>Region</strong> berisi
+                  kabupaten/kota unik (format kanonik) untuk agregasi dan filter
+                  laporan per daerah.
+                </p>
+              </div>
+              <div class="card shadow-sm">
+                <div class="card-body">
+                  <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                      <thead class="table-light">
+                        <tr>
+                          <th scope="col" style="width: 2.5rem">No</th>
+                          <th scope="col">ID Pembeli</th>
+                          <th scope="col">Nama</th>
+                          <th scope="col">Kontak</th>
+                          <th scope="col">Alamat</th>
+                          <th scope="col">Region</th>
+                          <th scope="col">Provinsi</th>
+                          <th scope="col">Tipe</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tablePembeliLaporan">
+                        <tr>
+                          <td colspan="8" class="text-center text-muted py-4">
+                            Memuat data...
+                          </td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>

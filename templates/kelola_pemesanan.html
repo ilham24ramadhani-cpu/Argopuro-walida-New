@@ -42,6 +42,7 @@
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <!-- JS - api-service.js HARUS di-load SEBELUM kelola_pemesanan.js -->
     <script src="{{ url_for('static', filename='js/api-service.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/regions-indonesia.js') }}"></script>
     <script src="{{ url_for('static', filename='js/pemesanan-invoice-pdf.js') }}"></script>
     <script
       src="{{ url_for('static', filename='js/kelola_pemesanan.js') }}"
@@ -534,26 +535,51 @@
                   </p>
                 </div>
               </div>
-              <div class="d-flex justify-content-between align-items-center mb-3">
-                <div class="input-group" style="max-width: 320px">
-                  <span class="input-group-text"><i class="bi bi-search"></i></span>
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="searchPembeliMaster"
-                    placeholder="Cari nama, ID, kontak..."
-                    onkeyup="applyFilterPembeliMaster()"
-                  />
+              <div class="row g-2 align-items-end mb-3">
+                <div class="col-md-4">
+                  <label
+                    for="searchPembeliMaster"
+                    class="form-label small text-muted mb-1"
+                    >Cari pembeli</label
+                  >
+                  <div class="input-group">
+                    <span class="input-group-text"
+                      ><i class="bi bi-search"></i
+                    ></span>
+                    <input
+                      type="text"
+                      class="form-control"
+                      id="searchPembeliMaster"
+                      placeholder="Cari nama, ID, kontak, alamat, region..."
+                      onkeyup="applyFilterPembeliMaster()"
+                    />
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  class="btn btn-primary"
-                  data-bs-toggle="modal"
-                  data-bs-target="#modalPembeli"
-                  onclick="openModalPembeli('add')"
-                >
-                  <i class="bi bi-plus-circle me-2"></i>Tambah Pembeli
-                </button>
+                <div class="col-md-4">
+                  <label
+                    for="filterRegionPembeliMaster"
+                    class="form-label small text-muted mb-1"
+                    >Filter region (kabupaten/kota)</label
+                  >
+                  <select
+                    class="form-select"
+                    id="filterRegionPembeliMaster"
+                    onchange="applyFilterPembeliMaster()"
+                  >
+                    <option value="">Semua region</option>
+                  </select>
+                </div>
+                <div class="col-md-4 text-md-end">
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modalPembeli"
+                    onclick="openModalPembeli('add')"
+                  >
+                    <i class="bi bi-plus-circle me-2"></i>Tambah Pembeli
+                  </button>
+                </div>
               </div>
               <div class="card shadow-sm">
                 <div class="card-body">
@@ -566,13 +592,14 @@
                           <th>Nama</th>
                           <th>Kontak</th>
                           <th>Alamat</th>
+                          <th>Region (Kabupaten/Kota)</th>
                           <th>Tipe</th>
                           <th class="text-center">Aksi</th>
                         </tr>
                       </thead>
                       <tbody id="tablePembeliMaster">
                         <tr>
-                          <td colspan="7" class="text-center text-muted py-4">
+                          <td colspan="8" class="text-center text-muted py-4">
                             Memuat data...
                           </td>
                         </tr>
@@ -657,6 +684,37 @@
                   required
                   placeholder="Alamat lengkap"
                 ></textarea>
+              </div>
+              <div class="mb-3">
+                <label for="regionPembeliMaster" class="form-label"
+                  >Region (Kabupaten / Kota)
+                  <span class="text-danger">*</span></label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="regionPembeliMaster"
+                  list="regionPembeliDatalist"
+                  required
+                  autocomplete="off"
+                  placeholder="Ketik nama kota/kabupaten — mis. 'Kota Surabaya, Jawa Timur'"
+                  oninput="onRegionPembeliInput()"
+                  onchange="onRegionPembeliInput(true)"
+                />
+                <datalist id="regionPembeliDatalist"></datalist>
+                <small class="text-muted d-block">
+                  Pilih dari daftar suggestion (38 provinsi seluruh Indonesia).
+                  Format kanonik: <code>Kab. ...</code> atau
+                  <code>Kota ...</code> diikuti nama provinsi. Region dipakai
+                  sebagai pengenal unik untuk filter laporan pembeli.
+                </small>
+                <div
+                  class="invalid-feedback small"
+                  id="regionPembeliMasterFeedback"
+                  style="display: none"
+                >
+                  Region tidak valid — pilih salah satu dari daftar.
+                </div>
               </div>
               <div class="mb-3">
                 <label for="tipePembeliMaster" class="form-label"
