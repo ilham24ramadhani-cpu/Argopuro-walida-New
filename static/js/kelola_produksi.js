@@ -1715,7 +1715,13 @@ async function displayProduksi(options = {}) {
     ? String(filterTahapanEl.value || "").trim()
     : "";
 
-  // Filter: proses pengolahan + tahapan + teks pencarian
+  const searchProduksiListEl = document.getElementById("searchProduksiList");
+  const searchProduksiListTerm = searchProduksiListEl
+    ? String(searchProduksiListEl.value || "").trim().toLowerCase()
+    : "";
+
+  // Filter: proses pengolahan + tahapan + pencarian dedicated (kode produksi / proses pengolahan)
+  // + teks pencarian dari navbar (global)
   let filteredProduksi = produksi;
   if (filterProses) {
     filteredProduksi = filteredProduksi.filter(
@@ -1727,6 +1733,24 @@ async function displayProduksi(options = {}) {
       (p) =>
         (p.statusTahapan && String(p.statusTahapan).trim()) === filterTahapan,
     );
+  }
+  if (searchProduksiListTerm) {
+    filteredProduksi = filteredProduksi.filter((p) => {
+      const idProd = p.idProduksi
+        ? String(p.idProduksi).toLowerCase()
+        : "";
+      const prosesRaw = p.prosesPengolahan
+        ? String(p.prosesPengolahan).toLowerCase()
+        : "";
+      const prosesLabel = String(
+        getProsesPengolahanTampilan(p, bahanById) || "",
+      ).toLowerCase();
+      return (
+        idProd.includes(searchProduksiListTerm) ||
+        prosesRaw.includes(searchProduksiListTerm) ||
+        prosesLabel.includes(searchProduksiListTerm)
+      );
+    });
   }
   if (searchTerm) {
     filteredProduksi = filteredProduksi.filter(
@@ -3815,6 +3839,35 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   if (filterTahapanList) {
     filterTahapanList.addEventListener("change", async () => {
+      await displayProduksi({ reload: false });
+    });
+  }
+
+  const searchProduksiListInput = document.getElementById("searchProduksiList");
+  if (searchProduksiListInput) {
+    let _searchProduksiListTimer = null;
+    const triggerSearchProduksiList = () => {
+      if (_searchProduksiListTimer) clearTimeout(_searchProduksiListTimer);
+      _searchProduksiListTimer = setTimeout(async () => {
+        await displayProduksi({ reload: false });
+      }, 150);
+    };
+    searchProduksiListInput.addEventListener("input", triggerSearchProduksiList);
+    searchProduksiListInput.addEventListener("search", triggerSearchProduksiList);
+    searchProduksiListInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        triggerSearchProduksiList();
+      }
+    });
+  }
+  const searchProduksiListClear = document.getElementById(
+    "searchProduksiListClear",
+  );
+  if (searchProduksiListClear && searchProduksiListInput) {
+    searchProduksiListClear.addEventListener("click", async () => {
+      searchProduksiListInput.value = "";
+      searchProduksiListInput.focus();
       await displayProduksi({ reload: false });
     });
   }

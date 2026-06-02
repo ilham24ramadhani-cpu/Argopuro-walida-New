@@ -353,7 +353,7 @@
           <div class="card shadow-sm">
             <div class="card-body">
               <div class="row g-2 mb-3 align-items-end">
-                <div class="col-md-5 col-lg-4">
+                <div class="col-md-4 col-lg-3">
                   <label
                     for="filterProsesPengolahanProduksiList"
                     class="form-label small text-muted mb-0"
@@ -367,7 +367,7 @@
                     <option value="">Semua proses</option>
                   </select>
                 </div>
-                <div class="col-md-5 col-lg-4">
+                <div class="col-md-4 col-lg-3">
                   <label
                     for="filterStatusTahapanProduksiList"
                     class="form-label small text-muted mb-0"
@@ -380,6 +380,35 @@
                   >
                     <option value="">Semua tahapan</option>
                   </select>
+                </div>
+                <div class="col-md-4 col-lg-6">
+                  <label
+                    for="searchProduksiList"
+                    class="form-label small text-muted mb-0"
+                    >Cari kode produksi / proses pengolahan</label
+                  >
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text">
+                      <i class="bi bi-search"></i>
+                    </span>
+                    <input
+                      type="search"
+                      class="form-control form-control-sm"
+                      id="searchProduksiList"
+                      placeholder="Cari kode produksi (mis. PRD-202506-0001) atau proses pengolahan (mis. Honey, Natural, Washed)..."
+                      aria-label="Cari kode produksi atau proses pengolahan"
+                      autocomplete="off"
+                    />
+                    <button
+                      type="button"
+                      class="btn btn-outline-secondary"
+                      id="searchProduksiListClear"
+                      title="Bersihkan pencarian"
+                      aria-label="Bersihkan pencarian"
+                    >
+                      <i class="bi bi-x-lg"></i>
+                    </button>
+                  </div>
                 </div>
               </div>
               <div class="table-responsive">
