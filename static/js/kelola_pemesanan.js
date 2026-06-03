@@ -805,7 +805,24 @@ function escapeHtmlAttr(s) {
 
 async function loadPembeliMasterList() {
   if (!window.API?.Pembeli?.getAll) return [];
-  pembeliMasterList = await window.API.Pembeli.getAll();
+  const t0 =
+    typeof performance !== "undefined" && performance.now
+      ? performance.now()
+      : Date.now();
+  try {
+    pembeliMasterList = await window.API.Pembeli.getAll();
+  } finally {
+    const t1 =
+      typeof performance !== "undefined" && performance.now
+        ? performance.now()
+        : Date.now();
+    const dt = (t1 - t0).toFixed(0);
+    if (t1 - t0 > 1500) {
+      console.warn(`⚠️ [Pembeli.getAll] respons lambat: ${dt} ms`);
+    } else {
+      console.log(`📊 [Pembeli.getAll] ${dt} ms`);
+    }
+  }
   if (!Array.isArray(pembeliMasterList)) pembeliMasterList = [];
   return pembeliMasterList;
 }
@@ -1005,15 +1022,30 @@ function applyFilterPembeliMaster() {
 }
 
 async function loadPembeliMasterTable() {
+  const tbody = document.getElementById("tablePembeliMaster");
+  // Tampilkan cache lebih dulu kalau sudah pernah di-load di session ini, supaya
+  // UI tidak terlihat hang pada koneksi/server lambat. Refresh data tetap
+  // dijalankan di background.
+  if (tbody && Array.isArray(pembeliMasterList) && pembeliMasterList.length > 0) {
+    refreshFilterRegionPembeliMasterOptions();
+    applyFilterPembeliMaster();
+  } else if (tbody) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8" class="text-center text-muted py-4">
+          <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
+          Memuat data pembeli dari server...
+        </td>
+      </tr>`;
+  }
   try {
     await loadPembeliMasterList();
     refreshFilterRegionPembeliMasterOptions();
     applyFilterPembeliMaster();
   } catch (e) {
     console.error(e);
-    const tbody = document.getElementById("tablePembeliMaster");
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">Gagal memuat: ${escapeHtmlAttr(e.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-4">Gagal memuat: ${escapeHtmlAttr(e.message || "Unknown error")}<br><small class="text-muted">Coba refresh halaman atau cek koneksi server.</small></td></tr>`;
     }
   }
 }

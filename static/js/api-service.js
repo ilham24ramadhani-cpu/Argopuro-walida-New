@@ -289,9 +289,27 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
   })();
 
   // Generic API call function
-  async function apiCall(endpoint, method = "GET", data = null) {
+  // Default timeout 25 detik supaya request tidak hang tanpa feedback (mis.
+  // Railway cold start). Bisa dinaikkan via opsi 4: `apiCall(endpoint, method,
+  // data, { timeoutMs })`.
+  async function apiCall(endpoint, method = "GET", data = null, opts = {}) {
     // Always try API first, even if backendAvailable is false
     // This allows recovery if backend comes online later
+
+    const timeoutMs = Number.isFinite(opts && opts.timeoutMs)
+      ? Math.max(1000, opts.timeoutMs)
+      : 25000;
+    const controller =
+      typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timeoutId = controller
+      ? setTimeout(() => {
+          try {
+            controller.abort();
+          } catch (_) {
+            /* ignore */
+          }
+        }, timeoutMs)
+      : null;
 
     const options = {
       method: method,
@@ -299,24 +317,41 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
         "Content-Type": "application/json",
       },
       credentials: "include", // Important for cookies
+      signal: controller ? controller.signal : undefined,
     };
 
     if (data && (method === "POST" || method === "PUT")) {
       options.body = JSON.stringify(data);
     }
 
+    const tStart =
+      typeof performance !== "undefined" && performance.now
+        ? performance.now()
+        : Date.now();
     try {
       console.log(
         `🔵 API Call: ${method} ${API_BASE_URL}${endpoint}`,
         data ? "(with data)" : "",
       );
       const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+      if (timeoutId) clearTimeout(timeoutId);
 
       if (response.ok) {
         // Mark backend as available on successful response
         backendAvailable = true;
         const result = await response.json();
-        console.log(`✅ API Success: ${method} ${endpoint}`);
+        const dt = (
+          (typeof performance !== "undefined" && performance.now
+            ? performance.now()
+            : Date.now()) - tStart
+        ).toFixed(0);
+        if (dt > 1500) {
+          console.warn(
+            `⏱️ API Slow: ${method} ${endpoint} (${dt} ms) — kemungkinan server cold-start / koneksi lambat`,
+          );
+        } else {
+          console.log(`✅ API Success: ${method} ${endpoint} (${dt} ms)`);
+        }
         return result;
       } else {
         // Try to parse error as JSON first
@@ -344,6 +379,24 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
         throw error;
       }
     } catch (error) {
+      if (timeoutId) clearTimeout(timeoutId);
+      // Aborted karena timeout → kasih pesan yang jelas
+      if (error && (error.name === "AbortError" || error.code === 20)) {
+        const dt = (
+          (typeof performance !== "undefined" && performance.now
+            ? performance.now()
+            : Date.now()) - tStart
+        ).toFixed(0);
+        console.error(
+          `⏱️ API Timeout: ${method} ${endpoint} (>${timeoutMs} ms, real ${dt} ms) — server tidak merespons.`,
+        );
+        const tErr = new Error(
+          `Server lambat / tidak merespons dalam ${(timeoutMs / 1000).toFixed(0)} detik. Cek koneksi atau coba lagi.`,
+        );
+        tErr.code = "TIMEOUT";
+        backendAvailable = false;
+        throw tErr;
+      }
       console.error(`❌ API Call Failed: ${method} ${endpoint}`, error);
       // Mark backend as unavailable on network error
       if (
