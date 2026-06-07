@@ -136,12 +136,15 @@ async function loadUsersData() {
 }
 
 // Fungsi untuk menampilkan data pengguna
-async function displayUsers() {
-  try {
-    await loadUsersData();
-  } catch (error) {
-    console.error("Error loading users:", error);
-    users = [];
+async function displayUsers(options = {}) {
+  const reloadData = options.reload !== false;
+  if (reloadData) {
+    try {
+      await loadUsersData();
+    } catch (error) {
+      console.error("Error loading users:", error);
+      users = [];
+    }
   }
 
   const tableBody = document.getElementById("tableBody");
@@ -351,27 +354,19 @@ async function saveUser() {
     }
 
     await loadUsersData();
-    await displayUsers();
+    await displayUsers({ reload: false });
 
-    // Trigger event untuk update dashboard
     window.dispatchEvent(
       new CustomEvent("dataUpdated", { detail: { type: "users" } })
     );
 
-    // Tutup modal
     const modal = bootstrap.Modal.getInstance(
       document.getElementById("modalPengguna")
     );
     modal.hide();
 
-    // Reset form
     form.reset();
     currentEditId = null;
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving user:", error);
     // Tampilkan notifikasi error
@@ -428,7 +423,7 @@ async function confirmDelete() {
       }
 
       await loadUsersData();
-      await displayUsers();
+      await displayUsers({ reload: false });
 
       // Trigger event untuk update dashboard
       window.dispatchEvent(

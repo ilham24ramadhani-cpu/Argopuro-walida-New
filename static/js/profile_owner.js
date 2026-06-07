@@ -221,10 +221,6 @@ async function saveProfile(event) {
       alert("Profile berhasil disimpan!");
     }
     
-    // Auto refresh setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving profile:", error);
     // Tampilkan notifikasi error jika tersedia

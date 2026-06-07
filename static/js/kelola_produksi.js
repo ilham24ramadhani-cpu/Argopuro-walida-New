@@ -3640,13 +3640,9 @@ window.saveProduksi = async function saveProduksi() {
 
     console.log("✅ Save operation completed successfully");
 
-    // Reload data setelah save
     await loadProduksiData();
-
-    // Reload dropdown bahan untuk update info sisa bahan
     await loadBahanOptionsProduksi();
-
-    await displayProduksi();
+    await displayProduksi({ reload: false });
 
     window.dispatchEvent(
       new CustomEvent("dataUpdated", { detail: { type: "produksi" } }),
@@ -3662,14 +3658,6 @@ window.saveProduksi = async function saveProduksi() {
     form.reset();
     currentEditId = null;
     window._produksiEditSnapshot = null;
-
-    // Show success message via notification (not alert)
-    // Alert sudah ditangani di bagian create/update di atas
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("❌ Error saving produksi:", error);
     console.error("Error stack:", error.stack);
@@ -3757,12 +3745,11 @@ window.confirmDelete = async function confirmDelete() {
       // Reload data setelah delete
       await loadProduksiData();
 
-      // Reload dropdown bahan untuk update info sisa (karena produksi dihapus, sisa bahan bertambah)
       if (produksiDihapus && produksiDihapus.idBahan) {
         await loadBahanOptionsProduksi();
       }
 
-      await displayProduksi();
+      await displayProduksi({ reload: false });
 
       window.dispatchEvent(
         new CustomEvent("dataUpdated", { detail: { type: "produksi" } }),

@@ -667,13 +667,15 @@ function syncPemasokFilterOptions() {
 }
 
 // Fungsi untuk menampilkan data bahan
-async function displayBahan() {
-  // Reload data bahan dari MongoDB untuk memastikan data terbaru
-  try {
-    await loadBahanData();
-  } catch (e) {
-    console.error("Error loading bahan:", e);
-    bahan = [];
+async function displayBahan(options = {}) {
+  const reloadData = options.reload !== false;
+  if (reloadData) {
+    try {
+      await loadBahanData();
+    } catch (e) {
+      console.error("Error loading bahan:", e);
+      bahan = [];
+    }
   }
 
   const tableBody = document.getElementById("tableBody");
@@ -1317,7 +1319,7 @@ async function saveBahan() {
     }
 
     await loadBahanData();
-    await displayBahan();
+    await displayBahan({ reload: false });
 
     try {
       await updateKeuanganFromBahan(savedIdBahan, totalHarga, tanggalMasuk);
@@ -1332,11 +1334,6 @@ async function saveBahan() {
 
     form.reset();
     currentEditId = null;
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving bahan:", error);
     // Tampilkan notifikasi error
@@ -1468,7 +1465,7 @@ async function confirmDelete() {
 
       // Reload data setelah delete
       await loadBahanData();
-      await displayBahan();
+      await displayBahan({ reload: false });
 
       // Hapus record keuangan yang terkait dengan bahan ini
       if (deletedBahan && deletedBahan.idBahan) {
@@ -1540,7 +1537,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await loadBahanData();
       console.log(`Bahan data loaded: ${bahan.length} items`);
 
-      await displayBahan();
+      await displayBahan({ reload: false });
       await loadPemasokOptions();
       await loadJenisKopiOptions();
       await loadVarietasOptions();

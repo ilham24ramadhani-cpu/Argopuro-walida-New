@@ -2871,11 +2871,6 @@ async function saveOrdering() {
       document.getElementById("modalOrdering"),
     );
     modal.hide();
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving ordering:", error);
     console.error("Error object:", JSON.stringify(error, null, 2));

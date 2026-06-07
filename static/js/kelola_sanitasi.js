@@ -487,10 +487,11 @@ function resetForm() {
 // Close modal and refresh page - Make available globally
 window.closeModalAndRefresh = function () {
   resetForm();
-  // Refresh halaman setelah modal ditutup
-  setTimeout(() => {
-    window.location.reload();
-  }, 200);
+  const modalElement = document.getElementById("modalSanitasi");
+  if (modalElement) {
+    const inst = bootstrap.Modal.getInstance(modalElement);
+    if (inst) inst.hide();
+  }
 };
 const closeModalAndRefresh = window.closeModalAndRefresh;
 
@@ -877,10 +878,9 @@ async function saveData(foto, fotos) {
       }
     }
 
-    await loadSanitasiData(true); // Force reload setelah save
+    await loadSanitasiData(true);
     await loadTables();
 
-    // Trigger event untuk update dashboard
     window.dispatchEvent(
       new CustomEvent("dataUpdated", { detail: { type: "sanitasi" } })
     );
@@ -891,11 +891,6 @@ async function saveData(foto, fotos) {
     modal.hide();
 
     resetForm();
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving sanitasi:", error);
     // Tampilkan notifikasi error

@@ -45,12 +45,15 @@ async function loadPemasokData() {
 }
 
 // Fungsi untuk menampilkan data pemasok
-async function displayPemasok() {
-  try {
-    await loadPemasokData();
-  } catch (error) {
-    console.error("Error loading pemasok:", error);
-    pemasok = [];
+async function displayPemasok(options = {}) {
+  const reloadData = options.reload !== false;
+  if (reloadData) {
+    try {
+      await loadPemasokData();
+    } catch (error) {
+      console.error("Error loading pemasok:", error);
+      pemasok = [];
+    }
   }
   const tableBody = document.getElementById("tableBody");
   const searchInput = document.getElementById("searchInput");
@@ -226,27 +229,19 @@ async function savePemasok() {
     }
 
     await loadPemasokData();
-    await displayPemasok();
+    await displayPemasok({ reload: false });
 
-    // Trigger event untuk update dashboard dan laporan
     window.dispatchEvent(
       new CustomEvent("dataUpdated", { detail: { type: "pemasok" } })
     );
 
-    // Tutup modal
     const modal = bootstrap.Modal.getInstance(
       document.getElementById("modalPemasok")
     );
     modal.hide();
 
-    // Reset form
     form.reset();
     currentEditId = null;
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving pemasok:", error);
     alert("Error menyimpan data: " + (error.message || "Unknown error"));
@@ -294,7 +289,7 @@ async function confirmDelete() {
       console.log("✅ Pemasok deleted from MongoDB");
 
       await loadPemasokData();
-      await displayPemasok();
+      await displayPemasok({ reload: false });
 
       // Trigger event untuk update dashboard dan laporan
       window.dispatchEvent(

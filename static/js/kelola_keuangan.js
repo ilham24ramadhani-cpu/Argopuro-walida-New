@@ -349,12 +349,15 @@ function syncKeuanganJenisFilterOptions() {
 }
 
 // Fungsi untuk menampilkan data keuangan
-async function displayKeuangan() {
-  try {
-    await loadKeuanganData();
-  } catch (error) {
-    console.error("Error loading keuangan:", error);
-    keuangan = [];
+async function displayKeuangan(options = {}) {
+  const reloadData = options.reload !== false;
+  if (reloadData) {
+    try {
+      await loadKeuanganData();
+    } catch (error) {
+      console.error("Error loading keuangan:", error);
+      keuangan = [];
+    }
   }
 
   const tableBody = document.getElementById("tableBodyPengeluaran");
@@ -675,27 +678,19 @@ window.saveKeuangan = async function saveKeuangan() {
     }
 
     await loadKeuanganData();
-    await displayKeuangan();
+    await displayKeuangan({ reload: false });
 
-    // Trigger event untuk update dashboard
     window.dispatchEvent(
       new CustomEvent("dataUpdated", { detail: { type: "keuangan" } })
     );
 
-    // Tutup modal
     const modal = bootstrap.Modal.getInstance(
       document.getElementById("modalKeuangan")
     );
     modal.hide();
 
-    // Reset form
     form.reset();
     currentEditId = null;
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving keuangan:", error);
     alert("Error menyimpan data: " + (error.message || "Unknown error"));
@@ -736,7 +731,7 @@ async function deleteKeuangan(id) {
       console.log("✅ Keuangan deleted from MongoDB");
 
       await loadKeuanganData();
-      await displayKeuangan();
+      await displayKeuangan({ reload: false });
 
       // Trigger event untuk update dashboard
       window.dispatchEvent(

@@ -149,13 +149,15 @@ async function loadAllMasterData() {
 }
 
 // ==================== PRODUK ====================
-async function displayProduk() {
-  // Load data dari MongoDB (API ONLY - NO localStorage)
-  try {
-    dataProduk = await loadMasterData("produk");
-  } catch (e) {
-    console.error("Error loading dataProduk:", e);
-    dataProduk = [];
+async function displayProduk(options = {}) {
+  const reloadData = options.reload !== false;
+  if (reloadData) {
+    try {
+      dataProduk = await loadMasterData("produk");
+    } catch (e) {
+      console.error("Error loading dataProduk:", e);
+      dataProduk = [];
+    }
   }
 
   const tableBody = document.getElementById("tableProduk");
@@ -283,18 +285,12 @@ async function saveProduk() {
       console.log("✅ Produk created in MongoDB");
     }
 
-    dataProduk = await loadMasterData("produk");
     await displayProduk();
     bootstrap.Modal.getInstance(document.getElementById("modalProduk")).hide();
     form.reset();
     window.dispatchEvent(
       new CustomEvent("dataMasterUpdated", { detail: { type: "produk" } }),
     );
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving produk:", error);
     alert("Error menyimpan data: " + (error.message || "Unknown error"));
@@ -321,13 +317,15 @@ async function deleteProduk(id) {
 }
 
 // ==================== PROSES PENGOLAHAN ====================
-async function displayProses() {
-  // Reload data dari MongoDB untuk memastikan data terbaru
-  try {
-    dataProses = await loadMasterData("proses");
-  } catch (e) {
-    console.error("Error loading dataProses from MongoDB:", e);
-    dataProses = [];
+async function displayProses(options = {}) {
+  const reloadData = options.reload !== false;
+  if (reloadData) {
+    try {
+      dataProses = await loadMasterData("proses");
+    } catch (e) {
+      console.error("Error loading dataProses from MongoDB:", e);
+      dataProses = [];
+    }
   }
 
   const tableBody = document.getElementById("tableProses");
@@ -535,7 +533,6 @@ async function saveProses() {
     }
 
     // Reload data dari MongoDB sebelum display
-    dataProses = await loadMasterData("proses");
     await displayProses();
     bootstrap.Modal.getInstance(document.getElementById("modalProses")).hide();
     form.reset();
@@ -543,11 +540,6 @@ async function saveProses() {
     window.dispatchEvent(
       new CustomEvent("dataMasterUpdated", { detail: { type: "proses" } }),
     );
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving proses:", error);
     alert("Error menyimpan data: " + (error.message || "Unknown error"));
@@ -569,13 +561,15 @@ async function deleteProses(id) {
 }
 
 // ==================== JENIS KOPI ====================
-async function displayJenisKopi() {
-  // Load data dari MongoDB (API ONLY - NO localStorage)
-  try {
-    dataJenisKopi = await loadMasterData("jenisKopi");
-  } catch (e) {
-    console.error("Error loading dataJenisKopi:", e);
-    dataJenisKopi = [];
+async function displayJenisKopi(options = {}) {
+  const reloadData = options.reload !== false;
+  if (reloadData) {
+    try {
+      dataJenisKopi = await loadMasterData("jenisKopi");
+    } catch (e) {
+      console.error("Error loading dataJenisKopi:", e);
+      dataJenisKopi = [];
+    }
   }
 
   const tableBody = document.getElementById("tableJenisKopi");
@@ -707,7 +701,6 @@ async function saveJenisKopi() {
       console.log("✅ JenisKopi created in MongoDB");
     }
 
-    dataJenisKopi = await loadMasterData("jenisKopi");
     await displayJenisKopi();
     bootstrap.Modal.getInstance(
       document.getElementById("modalJenisKopi"),
@@ -716,11 +709,6 @@ async function saveJenisKopi() {
     window.dispatchEvent(
       new CustomEvent("dataMasterUpdated", { detail: { type: "jenisKopi" } }),
     );
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving jenisKopi:", error);
     alert("Error menyimpan data: " + (error.message || "Unknown error"));
@@ -742,13 +730,15 @@ async function deleteJenisKopi(id) {
 }
 
 // ==================== VARIETAS ====================
-async function displayVarietas() {
-  // Load data dari MongoDB (API ONLY - NO localStorage)
-  try {
-    dataVarietas = await loadMasterData("varietas");
-  } catch (e) {
-    console.error("Error loading dataVarietas:", e);
-    dataVarietas = [];
+async function displayVarietas(options = {}) {
+  const reloadData = options.reload !== false;
+  if (reloadData) {
+    try {
+      dataVarietas = await loadMasterData("varietas");
+    } catch (e) {
+      console.error("Error loading dataVarietas:", e);
+      dataVarietas = [];
+    }
   }
 
   const tableBody = document.getElementById("tableVarietas");
@@ -880,7 +870,6 @@ async function saveVarietas() {
       console.log("✅ Varietas created in MongoDB");
     }
 
-    dataVarietas = await loadMasterData("varietas");
     await displayVarietas();
     bootstrap.Modal.getInstance(
       document.getElementById("modalVarietas"),
@@ -889,11 +878,6 @@ async function saveVarietas() {
     window.dispatchEvent(
       new CustomEvent("dataMasterUpdated", { detail: { type: "varietas" } }),
     );
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving varietas:", error);
     alert("Error menyimpan data: " + (error.message || "Unknown error"));
@@ -915,13 +899,15 @@ async function deleteVarietas(id) {
 }
 
 // ==================== LEVEL ROASTING ====================
-async function displayRoasting() {
-  // Load data dari MongoDB (API ONLY - NO localStorage)
-  try {
-    dataRoasting = await loadMasterData("roasting");
-  } catch (e) {
-    console.error("Error loading dataRoasting:", e);
-    dataRoasting = [];
+async function displayRoasting(options = {}) {
+  const reloadData = options.reload !== false;
+  if (reloadData) {
+    try {
+      dataRoasting = await loadMasterData("roasting");
+    } catch (e) {
+      console.error("Error loading dataRoasting:", e);
+      dataRoasting = [];
+    }
   }
 
   const tableBody = document.getElementById("tableRoasting");
@@ -1053,7 +1039,6 @@ async function saveRoasting() {
       console.log("✅ Roasting created in MongoDB");
     }
 
-    dataRoasting = await loadMasterData("roasting");
     await displayRoasting();
     bootstrap.Modal.getInstance(
       document.getElementById("modalRoasting"),
@@ -1062,11 +1047,6 @@ async function saveRoasting() {
     window.dispatchEvent(
       new CustomEvent("dataMasterUpdated", { detail: { type: "roasting" } }),
     );
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving roasting:", error);
     alert("Error menyimpan data: " + (error.message || "Unknown error"));
@@ -1088,13 +1068,15 @@ async function deleteRoasting(id) {
 }
 
 // ==================== KEMASAN ====================
-async function displayKemasan() {
-  // Load data dari MongoDB (API ONLY - NO localStorage)
-  try {
-    dataKemasan = await loadMasterData("kemasan");
-  } catch (e) {
-    console.error("Error loading dataKemasan:", e);
-    dataKemasan = [];
+async function displayKemasan(options = {}) {
+  const reloadData = options.reload !== false;
+  if (reloadData) {
+    try {
+      dataKemasan = await loadMasterData("kemasan");
+    } catch (e) {
+      console.error("Error loading dataKemasan:", e);
+      dataKemasan = [];
+    }
   }
 
   const tableBody = document.getElementById("tableKemasan");
@@ -1263,18 +1245,12 @@ async function saveKemasan() {
       console.log("✅ Kemasan created in MongoDB");
     }
 
-    dataKemasan = await loadMasterData("kemasan");
     await displayKemasan();
     bootstrap.Modal.getInstance(document.getElementById("modalKemasan")).hide();
     form.reset();
     window.dispatchEvent(
       new CustomEvent("dataMasterUpdated", { detail: { type: "kemasan" } }),
     );
-    
-    // Auto refresh halaman setelah save berhasil
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
   } catch (error) {
     console.error("Error saving kemasan:", error);
     alert("Error menyimpan data: " + (error.message || "Unknown error"));
@@ -1328,27 +1304,21 @@ async function confirmDelete() {
     // Reload and display
     switch (currentDeleteType) {
       case "produk":
-        dataProduk = await loadMasterData("produk");
         await displayProduk();
         break;
       case "proses":
-        dataProses = await loadMasterData("proses");
         await displayProses();
         break;
       case "jenisKopi":
-        dataJenisKopi = await loadMasterData("jenisKopi");
         await displayJenisKopi();
         break;
       case "varietas":
-        dataVarietas = await loadMasterData("varietas");
         await displayVarietas();
         break;
       case "roasting":
-        dataRoasting = await loadMasterData("roasting");
         await displayRoasting();
         break;
       case "kemasan":
-        dataKemasan = await loadMasterData("kemasan");
         await displayKemasan();
         break;
     }
@@ -1375,31 +1345,27 @@ document.addEventListener("DOMContentLoaded", () => {
   setTimeout(async () => {
     try {
       await loadAllMasterData();
-      // Note: Tidak ada lagi initializeDefaultData karena semua data harus dari MongoDB
 
-      // Display all tables
-      displayProduk();
-      await displayProduk();
-      await displayProses();
-      await displayJenisKopi();
-      await displayVarietas();
-      await displayRoasting();
-      await displayKemasan();
+      const renderAll = { reload: false };
+      await displayProduk(renderAll);
+      await displayProses(renderAll);
+      await displayJenisKopi(renderAll);
+      await displayVarietas(renderAll);
+      await displayRoasting(renderAll);
+      await displayKemasan(renderAll);
 
-      // Event listener untuk tab change
       const tabButtons = document.querySelectorAll(
         '#dataTabs button[data-bs-toggle="tab"]',
       );
       tabButtons.forEach((button) => {
         button.addEventListener("shown.bs.tab", async function (event) {
-          // Refresh display saat tab berubah
-          await loadAllMasterData();
-          await displayProduk();
-          await displayProses();
-          await displayJenisKopi();
-          await displayVarietas();
-          await displayRoasting();
-          await displayKemasan();
+          const target = event.target.getAttribute("data-bs-target") || "";
+          if (target.includes("produk")) await displayProduk();
+          else if (target.includes("proses")) await displayProses();
+          else if (target.includes("jenis")) await displayJenisKopi();
+          else if (target.includes("varietas")) await displayVarietas();
+          else if (target.includes("roasting")) await displayRoasting();
+          else if (target.includes("kemasan")) await displayKemasan();
         });
       });
     } catch (error) {

@@ -1437,13 +1437,15 @@ async function toggleRoastingField() {
 // Fungsi untuk menampilkan data hasil produksi
 // [CRUD → READ] Menampilkan seluruh data hasil produksi dalam tabel interaktif
 // termasuk pencarian, badge status, dan tombol aksi.
-async function displayHasilProduksi() {
-  // Reload data hasil produksi dari API atau localStorage untuk memastikan data terbaru
-  try {
-    await loadHasilProduksiData();
-  } catch (e) {
-    console.error("Error loading hasilProduksi:", e);
-    hasilProduksi = [];
+async function displayHasilProduksi(options = {}) {
+  const reloadData = options.reload !== false;
+  if (reloadData) {
+    try {
+      await loadHasilProduksiData();
+    } catch (e) {
+      console.error("Error loading hasilProduksi:", e);
+      hasilProduksi = [];
+    }
   }
 
   const tableBody = document.getElementById("tableBody");
@@ -2018,10 +2020,8 @@ async function saveHasilProduksi() {
       console.log("✅ Hasil Produksi created in MongoDB:", result);
     }
 
-    // Reload data setelah save
     await loadHasilProduksiData();
-
-    await displayHasilProduksi();
+    await displayHasilProduksi({ reload: false });
 
     // Trigger update stok jika halaman stok terbuka
     try {
@@ -2111,9 +2111,8 @@ async function confirmDelete() {
       await window.API.HasilProduksi.delete(currentDeleteId);
       console.log("✅ Hasil Produksi deleted from MongoDB");
 
-      // Reload data setelah delete
       await loadHasilProduksiData();
-      await displayHasilProduksi();
+      await displayHasilProduksi({ reload: false });
 
       // Trigger update stok jika halaman stok terbuka
       window.dispatchEvent(new Event("hasilProduksiUpdated"));
@@ -2146,8 +2145,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await loadHasilProduksiData();
       console.log(`Hasil produksi data loaded: ${hasilProduksi.length} items`);
 
-      // Panggil displayHasilProduksi
-      await displayHasilProduksi();
+      await displayHasilProduksi({ reload: false });
 
       // Load produksi options untuk dropdown
       await loadProduksiOptions();
