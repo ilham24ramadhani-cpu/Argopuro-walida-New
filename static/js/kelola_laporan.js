@@ -1227,22 +1227,55 @@ function averageNumber(items, getter) {
   return total / count;
 }
 
-/** Rata-rata rendemen keseluruhan (mean dari rendemen per ID, bukan tertimbang). */
-function computeAverageRendemenOverall(items) {
+/**
+ * Ringkasan berat & rendemen agregat batch pengemasan (selaras rekap rendemen per proses).
+ * Penyebut rendemen = berat green beans; fallback berat akhir untuk data lama.
+ */
+function computeProduksiRendemenRingkasan(items) {
   const PR = typeof window !== "undefined" && window.ProduksiRendemen;
-  if (!PR || typeof PR.computeRendemenPerId !== "function") return null;
-  if (!Array.isArray(items) || items.length === 0) return null;
-  let sum = 0;
-  let n = 0;
+  if (!PR || !Array.isArray(items)) {
+    return {
+      totalBeratAkhirPengemasan: 0,
+      totalGbRendemen: 0,
+      totalBeratAwalPengemasan: 0,
+      batchCount: 0,
+      totalRatio: null,
+    };
+  }
+  let totalBeratAkhirPengemasan = 0;
+  let totalGbRendemen = 0;
+  let totalBeratAwalPengemasan = 0;
+  let batchCount = 0;
+
   items.forEach((p) => {
-    const r = PR.computeRendemenPerId(p);
-    if (Number.isFinite(r) && r > 0) {
-      sum += r;
-      n += 1;
-    }
+    if (!PR.isPengemasanUntukRendemen(p)) return;
+    const b = PR.safeNum(p.beratAwal);
+    const gb = PR.getDenominatorHasilRendemenFromDoc(p);
+    const ba = PR.safeNum(p.beratAkhir);
+    if (b <= 0 || gb <= 0) return;
+    totalBeratAwalPengemasan += b;
+    totalGbRendemen += gb;
+    totalBeratAkhirPengemasan += ba;
+    batchCount += 1;
   });
-  if (n === 0) return null;
-  return { avgRatio: sum / n, counted: n };
+
+  const totalRatio =
+    totalGbRendemen > 0 ? totalBeratAwalPengemasan / totalGbRendemen : null;
+
+  return {
+    totalBeratAkhirPengemasan,
+    totalGbRendemen,
+    totalBeratAwalPengemasan,
+    batchCount,
+    totalRatio,
+  };
+}
+
+/** @deprecated Gunakan computeProduksiRendemenRingkasan — tetap ada untuk kompatibilitas. */
+function computeAverageRendemenOverall(items) {
+  const ring = computeProduksiRendemenRingkasan(items);
+  if (!ring.batchCount || ring.totalRatio == null) return null;
+  return { avgRatio: ring.totalRatio, counted: ring.batchCount };
 }
 
 function formatMonthYear(date) {
@@ -1544,6 +1577,23 @@ const LAPORAN_REKAP_CONFIG = {
         excelNumFmt: "#,##0.00",
       },
       {
+        label: "Berat GB (rendemen) (kg)",
+        align: "right",
+        value: (item) => {
+          const PR = window.ProduksiRendemen;
+          if (!PR) return "—";
+          const gb = PR.getDenominatorHasilRendemenFromDoc(item);
+          return gb > 0 ? `${gb.toLocaleString("id-ID")} kg` : "—";
+        },
+        excelValue: (item) => {
+          const PR = window.ProduksiRendemen;
+          if (!PR) return null;
+          const gb = PR.getDenominatorHasilRendemenFromDoc(item);
+          return gb > 0 ? gb : null;
+        },
+        excelNumFmt: "#,##0.00",
+      },
+      {
         label: "Rendemen ID (N banding 1, 2 desimal)",
         align: "right",
         value: (item) =>
@@ -1626,11 +1676,7 @@ const LAPORAN_REKAP_CONFIG = {
         0
       );
 
-      // Total Berat Akhir
-      const totalBeratAkhir = items.reduce(
-        (sum, entry) => sum + safeNumber(entry.beratAkhir),
-        0
-      );
+      const rndRing = computeProduksiRendemenRingkasan(items);
 
       // Agregat Σ berat awal per proses (= bahan masuk ke produksi per baris rekap)
       const prosesBeratAwal = {};
@@ -1659,7 +1705,7 @@ const LAPORAN_REKAP_CONFIG = {
         }
       });
 
-      const avgRnd = computeAverageRendemenOverall(items);
+      const PR = window.ProduksiRendemen;
 
       return [
         {
@@ -1667,15 +1713,26 @@ const LAPORAN_REKAP_CONFIG = {
           value: formatKgValue(totalBeratAwal),
         },
         {
-          label: "Total Berat Akhir",
-          value: formatKgValue(totalBeratAkhir),
+          label: "Total Berat Akhir (batch pengemasan)",
+          value:
+            rndRing.batchCount > 0
+              ? `${formatKgValue(rndRing.totalBeratAkhirPengemasan)} — timbangan total (GB + pixel)`
+              : "—",
         },
         {
-          label: "Rata-rata rendemen keseluruhan",
+          label: "Total Berat GB (penyebut rendemen)",
+          value:
+            rndRing.batchCount > 0
+              ? `${formatKgValue(rndRing.totalGbRendemen)} — selaras kolom rekap rendemen`
+              : "—",
+        },
+        {
+          label: "Rendemen agregat keseluruhan",
           value: (() => {
-            const PR = window.ProduksiRendemen;
-            if (!avgRnd || !PR) return "—";
-            return `${PR.formatRendemenBanding1(avgRnd.avgRatio)} (dari ${avgRnd.counted} batch pengemasan)`;
+            if (!PR || rndRing.batchCount === 0 || rndRing.totalRatio == null) {
+              return "—";
+            }
+            return `${PR.formatRendemenBanding1(rndRing.totalRatio)} (Σ berat awal ÷ Σ GB, ${rndRing.batchCount} batch pengemasan)`;
           })(),
         },
         {
@@ -4225,16 +4282,16 @@ function renderProduksiTimeline() {
     return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
   });
 
-  const avgRnd = computeAverageRendemenOverall(sortedProduksi);
+  const rndRing = computeProduksiRendemenRingkasan(sortedProduksi);
   const avgBanner = (() => {
     const PR = window.ProduksiRendemen;
-    if (!avgRnd || !PR) return "";
+    if (!rndRing.batchCount || rndRing.totalRatio == null || !PR) return "";
     return `<div class="alert alert-light border small mb-3 py-2">
-      <strong>Rata-rata rendemen keseluruhan</strong>:
+      <strong>Rendemen agregat keseluruhan</strong>:
       <span class="fw-semibold">${escapeHtmlLaporan(
-        PR.formatRendemenBanding1(avgRnd.avgRatio)
+        PR.formatRendemenBanding1(rndRing.totalRatio)
       )}</span>
-      <span class="text-muted">— mean dari ${avgRnd.counted} batch pengemasan (sesuai filter)</span>
+      <span class="text-muted">— Σ berat awal ÷ Σ GB, ${rndRing.batchCount} batch pengemasan (sesuai filter)</span>
     </div>`;
   })();
 
