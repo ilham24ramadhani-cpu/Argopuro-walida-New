@@ -1238,7 +1238,7 @@ async function createPemesananBuyerChart() {
   });
 }
 
-// Grafik pemesanan Complete: proses pengolahan (X) vs jumlah pemesanan & kg (Y)
+// Grafik pemesanan Complete: proses pengolahan (X) vs total kg dipesan (Y)
 async function createPemesananProsesChart() {
   let pemesanan = [];
   try {
@@ -1301,25 +1301,13 @@ async function createPemesananProsesChart() {
 
   const rawTotals = {};
   filtered.forEach((p) => {
-    const lines = dashboardPemesananProsesLinesFromDoc(p);
-    const seenProses = new Set();
-    lines.forEach(({ proses, kg }) => {
-      if (!rawTotals[proses]) {
-        rawTotals[proses] = { kg: 0, orders: 0 };
-      }
-      rawTotals[proses].kg += kg;
-      if (!seenProses.has(proses)) {
-        rawTotals[proses].orders += 1;
-        seenProses.add(proses);
-      }
+    dashboardPemesananProsesLinesFromDoc(p).forEach(({ proses, kg }) => {
+      rawTotals[proses] = (rawTotals[proses] || 0) + kg;
     });
   });
 
-  const desc = Object.entries(rawTotals).sort((a, b) => b[1].orders - a[1].orders);
-  const rowsTrim = dashboardTrimCategories(
-    desc.map(([name, v]) => [name, v.orders]),
-    DASHBOARD_BAR_MAX_CATEGORIES
-  );
+  const desc = Object.entries(rawTotals).sort((a, b) => b[1] - a[1]);
+  const rowsTrim = dashboardTrimCategories(desc, DASHBOARD_BAR_MAX_CATEGORIES);
 
   if (rowsTrim.length === 0) {
     if (pemesananProsesChart) {
@@ -1338,13 +1326,6 @@ async function createPemesananProsesChart() {
 
   const labels = rowsTrim.map(([name]) => name);
   const values = rowsTrim.map(([, v]) => v);
-  const kgValues = rowsTrim.map(([name]) =>
-    name === "Lainnya"
-      ? desc
-          .slice(DASHBOARD_BAR_MAX_CATEGORIES - 1)
-          .reduce((s, [, v]) => s + v.kg, 0)
-      : rawTotals[name]?.kg || 0
-  );
   const barColors = labels.map(
     (_, i) =>
       DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
@@ -1371,7 +1352,7 @@ async function createPemesananProsesChart() {
       labels,
       datasets: [
         {
-          label: "Jumlah pemesanan selesai",
+          label: "Total kg dipesan",
           data: values,
           backgroundColor: barColors,
           borderColor: borderColors,
@@ -1395,13 +1376,8 @@ async function createPemesananProsesChart() {
               return items.length ? items[0].label : "";
             },
             label: function (context) {
-              const idx = context.dataIndex;
-              const orders = Number(context.parsed.y) || 0;
-              const kg = kgValues[idx] || 0;
-              return [
-                `Pemesanan selesai: ${orders.toLocaleString("id-ID")} transaksi`,
-                `Total volume: ${kg.toLocaleString("id-ID")} kg`,
-              ];
+              const kg = Number(context.parsed.y) || 0;
+              return `Total dipesan: ${kg.toLocaleString("id-ID")} kg`;
             },
           },
         },
@@ -1425,14 +1401,13 @@ async function createPemesananProsesChart() {
           beginAtZero: true,
           title: {
             display: true,
-            text: "Jumlah pemesanan selesai",
+            text: "Total kg dipesan",
             font: { size: 11, weight: "bold" },
           },
           ticks: {
-            stepSize: 1,
             callback: (value) =>
-              typeof value === "number" && Number.isInteger(value)
-                ? value.toLocaleString("id-ID")
+              typeof value === "number"
+                ? value.toLocaleString("id-ID") + " kg"
                 : value,
             font: { size: 10 },
           },
