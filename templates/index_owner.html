@@ -435,9 +435,9 @@
             </div>
           </div>
 
-          <!-- Grafik pemesanan per pembeli -->
+          <!-- Grafik pemesanan -->
           <div class="row g-4 mb-4">
-            <div class="col-lg-12">
+            <div class="col-lg-6">
               <div class="card shadow-sm">
                 <div class="card-header bg-white">
                   <div
@@ -475,6 +475,48 @@
                   style="height: 350px; position: relative"
                 >
                   <canvas id="pemesananBuyerChart"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-lg-6">
+              <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                  <div
+                    class="d-flex flex-column flex-lg-row gap-2 justify-content-between align-items-start align-items-lg-center"
+                  >
+                    <h5 class="mb-0 fw-bold">
+                      <i class="bi bi-funnel me-2"></i>Popularitas Proses Pengolahan
+                    </h5>
+                    <div class="d-flex align-items-center gap-2 w-100 w-lg-auto">
+                      <label
+                        class="small text-muted mb-0 text-nowrap"
+                        for="dashboardPemesananProsesPeriodeFilter"
+                        >Periode</label
+                      >
+                      <select
+                        id="dashboardPemesananProsesPeriodeFilter"
+                        class="form-select form-select-sm ms-auto"
+                        style="max-width: 11rem"
+                        aria-label="Filter periode popularitas proses pengolahan"
+                      >
+                        <option value="all">Semua waktu</option>
+                        <option value="7d">7 hari terakhir</option>
+                        <option value="30d">30 hari terakhir</option>
+                        <option value="90d">3 bulan terakhir</option>
+                        <option value="180d">6 bulan terakhir</option>
+                        <option value="365d">1 tahun terakhir</option>
+                      </select>
+                    </div>
+                  </div>
+                  <small class="text-muted d-block mt-2 mb-0">Hanya pemesanan status Complete · Sumbu X = proses pengolahan · Sumbu Y = jumlah transaksi selesai. Tooltip menampilkan total kg per proses.</small>
+                </div>
+                <div
+                  id="dashboardPemesananProsesChartContainer"
+                  class="card-body"
+                  style="height: 350px; position: relative"
+                >
+                  <canvas id="pemesananProsesChart"></canvas>
                 </div>
               </div>
             </div>

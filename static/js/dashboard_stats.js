@@ -9,6 +9,7 @@ let updateInterval = null;
 let bahanChart = null;
 let produksiChart = null;
 let pemesananBuyerChart = null;
+let pemesananProsesChart = null;
 
 /** Warna batang bergantian per kategori. */
 const DASHBOARD_CHART_SERIES_COLORS = [
@@ -103,13 +104,38 @@ function dashboardPemesananMillis(p) {
   return Number.isFinite(t) ? t : NaN;
 }
 
+/** Baris proses + kg dari satu dokumen pemesanan (kloter/items atau legacy). */
+function dashboardPemesananProsesLinesFromDoc(p) {
+  if (!p) return [];
+  const rows = p.kloter || p.items;
+  if (Array.isArray(rows) && rows.length > 0) {
+    return rows.map((r) => {
+      const proses =
+        (r.prosesPengolahan && String(r.prosesPengolahan).trim()) ||
+        (p.prosesPengolahan && String(p.prosesPengolahan).trim()) ||
+        "Tidak dicatat";
+      const w = parseFloat(r.beratKg ?? r.jumlahPesananKg ?? r.berat ?? 0);
+      return { proses, kg: Number.isFinite(w) ? w : 0 };
+    });
+  }
+  const proses =
+    (p.prosesPengolahan && String(p.prosesPengolahan).trim()) || "Tidak dicatat";
+  return [{ proses, kg: dashboardPemesananBeratKgFromDoc(p) }];
+}
+
+function dashboardPemesananIsComplete(p) {
+  return String(p?.statusPemesanan || "").trim() === "Complete";
+}
+
 function bindDashboardChartPeriodFilters() {
   const bahanSel = document.getElementById("dashboardBahanPeriodeFilter");
   const prodSel = document.getElementById("dashboardProduksiPeriodeFilter");
   const pemSel = document.getElementById("dashboardPemesananPeriodeFilter");
+  const pemProsesSel = document.getElementById("dashboardPemesananProsesPeriodeFilter");
   const savedB = sessionStorage.getItem("dashboardBahanPeriod");
   const savedP = sessionStorage.getItem("dashboardProduksiPeriod");
   const savedPe = sessionStorage.getItem("dashboardPemesananPeriod");
+  const savedPePr = sessionStorage.getItem("dashboardPemesananProsesPeriod");
   if (bahanSel && savedB && [...bahanSel.options].some((o) => o.value === savedB)) {
     bahanSel.value = savedB;
   }
@@ -118,6 +144,13 @@ function bindDashboardChartPeriodFilters() {
   }
   if (pemSel && savedPe && [...pemSel.options].some((o) => o.value === savedPe)) {
     pemSel.value = savedPe;
+  }
+  if (
+    pemProsesSel &&
+    savedPePr &&
+    [...pemProsesSel.options].some((o) => o.value === savedPePr)
+  ) {
+    pemProsesSel.value = savedPePr;
   }
   if (bahanSel && !bahanSel.dataset.dashboardPeriodBound) {
     bahanSel.dataset.dashboardPeriodBound = "1";
@@ -138,6 +171,13 @@ function bindDashboardChartPeriodFilters() {
     pemSel.addEventListener("change", () => {
       sessionStorage.setItem("dashboardPemesananPeriod", pemSel.value);
       createPemesananBuyerChart();
+    });
+  }
+  if (pemProsesSel && !pemProsesSel.dataset.dashboardPeriodBound) {
+    pemProsesSel.dataset.dashboardPeriodBound = "1";
+    pemProsesSel.addEventListener("change", () => {
+      sessionStorage.setItem("dashboardPemesananProsesPeriod", pemProsesSel.value);
+      createPemesananProsesChart();
     });
   }
 }
@@ -1198,6 +1238,211 @@ async function createPemesananBuyerChart() {
   });
 }
 
+// Grafik pemesanan Complete: proses pengolahan (X) vs jumlah pemesanan & kg (Y)
+async function createPemesananProsesChart() {
+  let pemesanan = [];
+  try {
+    if (window.API && window.API.Pemesanan) {
+      pemesanan = await window.API.Pemesanan.getAll();
+    }
+  } catch (error) {
+    console.error("Error loading pemesanan for proses chart:", error);
+    pemesanan = [];
+  }
+  const chartContainer = document.getElementById(
+    "dashboardPemesananProsesChartContainer"
+  );
+
+  if (!chartContainer) return;
+
+  const completeOnly = (Array.isArray(pemesanan) ? pemesanan : []).filter(
+    dashboardPemesananIsComplete
+  );
+
+  if (completeOnly.length === 0) {
+    if (pemesananProsesChart) {
+      pemesananProsesChart.destroy();
+      pemesananProsesChart = null;
+    }
+    chartContainer.innerHTML = `
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-check2-circle fs-1 d-block mb-2"></i>
+        <p class="mb-0">Belum ada pemesanan dengan status Complete</p>
+        <small>Data akan muncul setelah pemesanan diselesaikan di Kelola Pemesanan</small>
+      </div>
+    `;
+    return;
+  }
+
+  const preset = dashboardChartPreset("dashboardPemesananProsesPeriodeFilter");
+  const startMs = dashboardChartPeriodStartMs(preset);
+
+  const filtered = completeOnly.filter((p) => {
+    if (startMs == null) return true;
+    const t = dashboardPemesananMillis(p);
+    if (!Number.isFinite(t)) return false;
+    return t >= startMs;
+  });
+
+  if (filtered.length === 0) {
+    if (pemesananProsesChart) {
+      pemesananProsesChart.destroy();
+      pemesananProsesChart = null;
+    }
+    chartContainer.innerHTML = `
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-calendar-x fs-1 d-block mb-2"></i>
+        <p class="mb-0">Tidak ada pemesanan Complete pada periode ini</p>
+        <small>Ubah filter waktu atau tunggu data baru</small>
+      </div>
+    `;
+    return;
+  }
+
+  const rawTotals = {};
+  filtered.forEach((p) => {
+    const lines = dashboardPemesananProsesLinesFromDoc(p);
+    const seenProses = new Set();
+    lines.forEach(({ proses, kg }) => {
+      if (!rawTotals[proses]) {
+        rawTotals[proses] = { kg: 0, orders: 0 };
+      }
+      rawTotals[proses].kg += kg;
+      if (!seenProses.has(proses)) {
+        rawTotals[proses].orders += 1;
+        seenProses.add(proses);
+      }
+    });
+  });
+
+  const desc = Object.entries(rawTotals).sort((a, b) => b[1].orders - a[1].orders);
+  const rowsTrim = dashboardTrimCategories(
+    desc.map(([name, v]) => [name, v.orders]),
+    DASHBOARD_BAR_MAX_CATEGORIES
+  );
+
+  if (rowsTrim.length === 0) {
+    if (pemesananProsesChart) {
+      pemesananProsesChart.destroy();
+      pemesananProsesChart = null;
+    }
+    chartContainer.innerHTML = `
+      <div class="text-center text-muted py-5">
+        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+        <p class="mb-0">Belum ada data proses pengolahan</p>
+        <small>Periksa isian proses pada kloter pemesanan Complete</small>
+      </div>
+    `;
+    return;
+  }
+
+  const labels = rowsTrim.map(([name]) => name);
+  const values = rowsTrim.map(([, v]) => v);
+  const kgValues = rowsTrim.map(([name]) =>
+    name === "Lainnya"
+      ? desc
+          .slice(DASHBOARD_BAR_MAX_CATEGORIES - 1)
+          .reduce((s, [, v]) => s + v.kg, 0)
+      : rawTotals[name]?.kg || 0
+  );
+  const barColors = labels.map(
+    (_, i) =>
+      DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
+        .replace("rgb(", "rgba(")
+        .replace(")", ", 0.88)")
+  );
+  const borderColors = labels.map(
+    (_, i) => DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
+  );
+
+  if (pemesananProsesChart) {
+    pemesananProsesChart.destroy();
+    pemesananProsesChart = null;
+  }
+  if (!chartContainer.querySelector("canvas")) {
+    chartContainer.innerHTML = '<canvas id="pemesananProsesChart"></canvas>';
+  }
+  const chartCtx = document.getElementById("pemesananProsesChart");
+  if (!chartCtx) return;
+
+  pemesananProsesChart = new Chart(chartCtx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: "Jumlah pemesanan selesai",
+          data: values,
+          backgroundColor: barColors,
+          borderColor: borderColors,
+          borderWidth: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "nearest", intersect: false },
+      elements: {
+        bar: { borderRadius: 4, borderSkipped: false },
+      },
+      datasets: { bar: { maxBarThickness: 48 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: function (items) {
+              return items.length ? items[0].label : "";
+            },
+            label: function (context) {
+              const idx = context.dataIndex;
+              const orders = Number(context.parsed.y) || 0;
+              const kg = kgValues[idx] || 0;
+              return [
+                `Pemesanan selesai: ${orders.toLocaleString("id-ID")} transaksi`,
+                `Total volume: ${kg.toLocaleString("id-ID")} kg`,
+              ];
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: "Proses pengolahan",
+            font: { size: 11, weight: "bold" },
+          },
+          ticks: {
+            autoSkip: false,
+            font: { size: 10 },
+            maxRotation: 55,
+            minRotation: 35,
+          },
+          grid: { display: false },
+        },
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: "Jumlah pemesanan selesai",
+            font: { size: 11, weight: "bold" },
+          },
+          ticks: {
+            stepSize: 1,
+            callback: (value) =>
+              typeof value === "number" && Number.isInteger(value)
+                ? value.toLocaleString("id-ID")
+                : value,
+            font: { size: 10 },
+          },
+          grid: { color: "rgba(0, 0, 0, 0.06)" },
+        },
+      },
+    },
+  });
+}
+
 // Fungsi untuk refresh semua statistik dengan animasi
 async function refreshAllStatistics(animate = true) {
   // Disable button dan show loading
@@ -1217,6 +1462,7 @@ async function refreshAllStatistics(animate = true) {
   await createBahanChart();
   await createProduksiChart();
   await createPemesananBuyerChart();
+  await createPemesananProsesChart();
 
   // Tampilkan notifikasi update
   if (animate) {
@@ -1311,6 +1557,7 @@ document.addEventListener("DOMContentLoaded", function () {
       await createBahanChart();
       await createProduksiChart();
       await createPemesananBuyerChart();
+      await createPemesananProsesChart();
 
       // Initialize data hashes
       const keys = [
