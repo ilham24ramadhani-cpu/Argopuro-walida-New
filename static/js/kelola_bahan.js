@@ -1178,8 +1178,13 @@ function cetakInvoiceBahan(idBahan) {
   yPos += 3;
 
   doc.setFont("helvetica", "normal");
+  const ketMaxW = PAGE_W - MARGIN * 2;
   validKloter.forEach((row) => {
-    if (yPos > PAGE_H - 18) {
+    const ket = String(row.keterangan || "").trim();
+    const hasKet = ket && ket !== "-";
+    const ketLines = hasKet ? doc.splitTextToSize(`Ket: ${ket}`, ketMaxW) : [];
+    const rowBlockH = 3 + (hasKet ? ketLines.length * 2.5 + 0.5 : 0);
+    if (yPos + rowBlockH > PAGE_H - 18) {
       doc.addPage([PAGE_W, PAGE_H]);
       yPos = 8;
     }
@@ -1190,6 +1195,15 @@ function cetakInvoiceBahan(idBahan) {
     doc.text(fmtRp(hargaPerKg), MARGIN + 18, yPos);
     doc.text(fmtRp(row.hargaKloter), MARGIN + 30, yPos);
     yPos += 3;
+    if (hasKet) {
+      doc.setFontSize(4);
+      doc.setTextColor(60, 60, 60);
+      ketLines.forEach((line) => {
+        doc.text(line, MARGIN, yPos);
+        yPos += 2.5;
+      });
+      doc.setTextColor(0, 0, 0);
+    }
   });
 
   yPos += 2;
