@@ -108,6 +108,50 @@ async function waitForAPI() {
   });
 }
 
+function pemesananMatchesId(item, id) {
+  const sid = String(id ?? "").trim();
+  if (!sid || !item) return false;
+  return (
+    String(item.idPembelian ?? "").trim() === sid ||
+    String(item._id ?? "").trim() === sid ||
+    String(item.id ?? "").trim() === sid ||
+    (!Number.isNaN(Number(sid)) && Number(item.id) === Number(sid))
+  );
+}
+
+function findPemesananInCache(id) {
+  return (
+    (pemesananData || []).find((item) => pemesananMatchesId(item, id)) ||
+    (pemesanan || []).find((item) => pemesananMatchesId(item, id)) ||
+    null
+  );
+}
+
+/** Gabungkan dokumen hasil PUT/POST ke cache lokal — hindari GET /api/pemesanan penuh. */
+function upsertPemesananInCache(doc) {
+  const p = unwrapPemesananResponse(doc);
+  if (!p || (!p.idPembelian && !p._id && p.id == null)) return;
+  const keys = [
+    p._id != null ? String(p._id) : "",
+    p.idPembelian != null ? String(p.idPembelian) : "",
+    p.id != null ? String(p.id) : "",
+  ].filter(Boolean);
+  const idx = (pemesananData || []).findIndex((item) =>
+    keys.some((k) => pemesananMatchesId(item, k)),
+  );
+  if (idx >= 0) {
+    pemesananData[idx] = p;
+  } else {
+    pemesananData.push(p);
+  }
+  pemesanan = pemesananData;
+}
+
+function refreshPemesananTableFromCache() {
+  refreshFilterProsesPemesananOptions();
+  applyFilterPemesanan();
+}
+
 // Load data pemesanan dari MongoDB (API ONLY - NO fallback)
 // Backward compatibility function - now uses loadPemesanan()
 async function loadPemesananData() {
@@ -1676,20 +1720,11 @@ async function openModal(mode = "add") {
 // Edit pemesanan
 async function editPemesanan(id) {
   try {
-    await loadPemesanan();
-    const p =
-      pemesananData.find(
-        (item) =>
-          item.id === parseInt(id) ||
-          item._id === id ||
-          item.idPembelian === id,
-      ) ||
-      pemesanan.find(
-        (item) =>
-          item.id === parseInt(id) ||
-          item._id === id ||
-          item.idPembelian === id,
-      );
+    let p = findPemesananInCache(id);
+    if (!p) {
+      await loadPemesanan();
+      p = findPemesananInCache(id);
+    }
     if (!p) {
       alert("Data pemesanan tidak ditemukan!");
       return;
@@ -1923,8 +1958,18 @@ async function savePemesanan(cetakInvoice) {
     return;
   }
 
+  const saveBtns = document.querySelectorAll(
+    '#modalPemesanan button[onclick^="savePemesanan"]',
+  );
+  saveBtns.forEach((b) => {
+    b.disabled = true;
+    b.dataset.prevHtml = b.innerHTML;
+    b.innerHTML =
+      '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Menyimpan...';
+  });
+
   try {
-    const pemesananData = {
+    const pemesananPayload = {
       idPembelian,
       namaPembeli,
       tipePemesanan,
@@ -1939,20 +1984,24 @@ async function savePemesanan(cetakInvoice) {
       catatanPemesanan,
       tanggalPemesanan,
     };
-    if (idMasterPembeli) pemesananData.idMasterPembeli = idMasterPembeli;
-    if (kontakPembeli) pemesananData.kontakPembeli = kontakPembeli;
-    if (alamatPembeli) pemesananData.alamatPembeli = alamatPembeli;
-    pemesananData.pembayaranBertahapBaris =
+    if (idMasterPembeli) pemesananPayload.idMasterPembeli = idMasterPembeli;
+    if (kontakPembeli) pemesananPayload.kontakPembeli = kontakPembeli;
+    if (alamatPembeli) pemesananPayload.alamatPembeli = alamatPembeli;
+    pemesananPayload.pembayaranBertahapBaris =
       statusPembayaran === "Pembayaran Bertahap"
         ? collectPembayaranBertahapBarisFromForm()
         : [];
 
     if (pemesananId) {
       if (currentEditPreservesComplete) {
-        pemesananData.statusPemesanan = "Complete";
-        pemesananData.statusPembayaran = "Lunas";
+        pemesananPayload.statusPemesanan = "Complete";
+        pemesananPayload.statusPembayaran = "Lunas";
         console.log(`🔄 Updating pemesanan ID: ${pemesananId}`);
-        await window.API.Pemesanan.update(pemesananId, pemesananData);
+        const updated = await window.API.Pemesanan.update(
+          pemesananId,
+          pemesananPayload,
+        );
+        upsertPemesananInCache(updated);
         if (window.showNotification) {
           window.showNotification("update", "Pemesanan", "success");
         } else {
@@ -1962,12 +2011,15 @@ async function savePemesanan(cetakInvoice) {
         const idProdForm = (
           document.getElementById("selectIdProduksiPemesanan")?.value || ""
         ).trim();
-        const beforeProses = { ...pemesananData, statusPemesanan: "Ordering" };
+        const beforeProses = { ...pemesananPayload, statusPemesanan: "Ordering" };
         console.log(`🔄 Simpan sebagai Ordering lalu proses stok → Complete: ${pemesananId}`);
-        await window.API.Pemesanan.update(pemesananId, beforeProses);
+        const orderingSaved = await window.API.Pemesanan.update(
+          pemesananId,
+          beforeProses,
+        );
+        upsertPemesananInCache(orderingSaved);
 
-        let pFromApi = await window.API.Pemesanan.getById(pemesananId);
-        pFromApi = unwrapPemesananResponse(pFromApi);
+        let pFromApi = unwrapPemesananResponse(orderingSaved);
         if (!pFromApi || !pFromApi.idPembelian) {
           throw new Error("Gagal memuat data pemesanan setelah simpan");
         }
@@ -1979,11 +2031,12 @@ async function savePemesanan(cetakInvoice) {
             );
             return;
           }
-          await window.API.Pemesanan.update(pemesananId, {
-            ...pemesananData,
+          const invDone = await window.API.Pemesanan.update(pemesananId, {
+            ...pemesananPayload,
             statusPemesanan: "Complete",
             statusPembayaran: "Lunas",
           });
+          upsertPemesananInCache(invDone);
           if (window.showNotification) {
             window.showNotification(
               "update",
@@ -1996,7 +2049,7 @@ async function savePemesanan(cetakInvoice) {
               "Pemesanan invoice-only diselesaikan (tanpa pengurangan stok).",
             );
           }
-          await loadPemesanan();
+          refreshPemesananTableFromCache();
           const modalInv = bootstrap.Modal.getInstance(
             document.getElementById("modalPemesanan"),
           );
@@ -2018,7 +2071,7 @@ async function savePemesanan(cetakInvoice) {
               "Disimpan sebagai Ordering — stok belum mencukupi untuk Complete.",
             );
           }
-          await loadPemesanan();
+          refreshPemesananTableFromCache();
           const modal = bootstrap.Modal.getInstance(
             document.getElementById("modalPemesanan"),
           );
@@ -2036,11 +2089,12 @@ async function savePemesanan(cetakInvoice) {
         );
         await window.API.Ordering.proses(orderingPayload);
 
-        await window.API.Pemesanan.update(pemesananId, {
-          ...pemesananData,
+        const completeSaved = await window.API.Pemesanan.update(pemesananId, {
+          ...pemesananPayload,
           statusPemesanan: "Complete",
           statusPembayaran: "Lunas",
         });
+        upsertPemesananInCache(completeSaved);
 
         if (window.showNotification) {
           window.showNotification(
@@ -2053,9 +2107,8 @@ async function savePemesanan(cetakInvoice) {
           alert("Pemesanan diselesaikan (Complete) dan stok telah dikurangi.");
         }
 
-        await loadPemesanan();
+        refreshPemesananTableFromCache();
         await loadStokProduksi();
-        await loadStokData();
         await loadOrderingData();
         window.dispatchEvent(new CustomEvent("hasilProduksiUpdated"));
         window.dispatchEvent(
@@ -2070,9 +2123,13 @@ async function savePemesanan(cetakInvoice) {
         modal?.hide();
         return;
       } else {
-        pemesananData.statusPemesanan = "Ordering";
+        pemesananPayload.statusPemesanan = "Ordering";
         console.log(`🔄 Updating pemesanan ID: ${pemesananId}`);
-        await window.API.Pemesanan.update(pemesananId, pemesananData);
+        const updated = await window.API.Pemesanan.update(
+          pemesananId,
+          pemesananPayload,
+        );
+        upsertPemesananInCache(updated);
         if (window.showNotification) {
           window.showNotification("update", "Pemesanan", "success");
         } else {
@@ -2096,7 +2153,8 @@ async function savePemesanan(cetakInvoice) {
       }
       // Add mode - Create via API
       console.log("🔄 Creating new pemesanan");
-      const created = await window.API.Pemesanan.create(pemesananData);
+      const created = await window.API.Pemesanan.create(pemesananPayload);
+      upsertPemesananInCache(created);
       const newId =
         created?.idPembelian || idPembelian;
 
@@ -2111,7 +2169,7 @@ async function savePemesanan(cetakInvoice) {
       );
       modal?.hide();
 
-      await loadPemesanan();
+      refreshPemesananTableFromCache();
 
       if (cetakInvoice && newId) {
         await generateInvoicePDF(newId);
@@ -2119,17 +2177,14 @@ async function savePemesanan(cetakInvoice) {
       return;
     }
 
-    // Reload data (edit)
-    await loadPemesanan();
+    refreshPemesananTableFromCache();
 
-    // Close modal
     const modal = bootstrap.Modal.getInstance(
       document.getElementById("modalPemesanan"),
     );
     modal.hide();
   } catch (error) {
     console.error("Error saving pemesanan:", error);
-    // Tampilkan notifikasi error
     if (window.showNotification) {
       window.showNotification(pemesananId ? 'update' : 'create', 'Pemesanan', 'error', 'Gagal menyimpan data: ' + (error.message || "Unknown error"));
     } else {
@@ -2137,6 +2192,14 @@ async function savePemesanan(cetakInvoice) {
         `Error menyimpan data pemesanan: ${error.message || "Unknown error"}`,
       );
     }
+  } finally {
+    saveBtns.forEach((b) => {
+      b.disabled = false;
+      if (b.dataset.prevHtml) {
+        b.innerHTML = b.dataset.prevHtml;
+        delete b.dataset.prevHtml;
+      }
+    });
   }
 }
 

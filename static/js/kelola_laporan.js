@@ -1177,6 +1177,36 @@ function parseValidDate(value) {
   return isNaN(date) ? null : date;
 }
 
+/** Senin–Minggu untuk tanggal dalam minggu kalender yang sama. */
+function getWeekBoundaries(date) {
+  const start = new Date(date);
+  const day = start.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  start.setDate(start.getDate() + diff);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+/** Ubah nilai input type="week" (YYYY-Www) menjadi tanggal Senin minggu tersebut. */
+function dateFromWeekInput(value) {
+  const m = /^(\d{4})-W(\d{2})$/.exec(String(value || "").trim());
+  if (!m) return null;
+  const year = parseInt(m[1], 10);
+  const week = parseInt(m[2], 10);
+  if (!Number.isFinite(year) || !Number.isFinite(week) || week < 1) return null;
+  const jan4 = new Date(year, 0, 4);
+  const dayOfWeek = jan4.getDay() || 7;
+  const mondayOfWeek1 = new Date(jan4);
+  mondayOfWeek1.setDate(jan4.getDate() - dayOfWeek + 1);
+  mondayOfWeek1.setHours(0, 0, 0, 0);
+  const result = new Date(mondayOfWeek1);
+  result.setDate(mondayOfWeek1.getDate() + (week - 1) * 7);
+  return result;
+}
+
 function safeNumber(value) {
   if (value === null || value === undefined) return 0;
   if (typeof value === "number") {
@@ -2278,6 +2308,11 @@ function updateFilterInputAppearance(input, mode) {
     input.placeholder = "";
     input.disabled = false;
     input.value = tableFilters[input.dataset.category]?.value || "";
+  } else if (mode === "weekly") {
+    input.type = "week";
+    input.placeholder = "";
+    input.disabled = false;
+    input.value = tableFilters[input.dataset.category]?.value || "";
   } else if (mode === "monthly") {
     input.type = "month";
     input.placeholder = "";
@@ -2392,6 +2427,12 @@ function matchesDateFilter(dateValue, filter) {
   if (filter.mode === "daily") {
     const iso = date.toISOString().split("T")[0];
     return iso === filter.value;
+  }
+  if (filter.mode === "weekly") {
+    const weekStart = dateFromWeekInput(filter.value);
+    if (!weekStart) return true;
+    const { start, end } = getWeekBoundaries(weekStart);
+    return date >= start && date <= end;
   }
   if (filter.mode === "monthly") {
     const monthValue = `${date.getFullYear()}-${(date.getMonth() + 1)
@@ -2977,6 +3018,14 @@ function getFilterDescription(category) {
   if (filter && filter.mode !== "all" && filter.value) {
     if (filter.mode === "daily") {
       timePart = `Periode: Harian (${formatDate(filter.value)})`;
+    } else if (filter.mode === "weekly") {
+      const weekStart = dateFromWeekInput(filter.value);
+      if (weekStart) {
+        const { start, end } = getWeekBoundaries(weekStart);
+        timePart = `Periode: Mingguan (${formatShortDate(start)} – ${formatShortDate(end, true)})`;
+      } else {
+        timePart = "Periode: Mingguan";
+      }
     } else if (filter.mode === "monthly") {
       const date = new Date(`${filter.value}-01`);
       timePart = `Periode: Bulanan (${formatMonthYear(date)})`;
