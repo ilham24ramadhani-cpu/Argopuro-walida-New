@@ -270,6 +270,10 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
 
   let backendAvailable = false;
 
+  /** Timeout default semua request API: 2 menit (120.000 ms). */
+  const API_DEFAULT_TIMEOUT_MS = 120000;
+  window.API_DEFAULT_TIMEOUT_MS = API_DEFAULT_TIMEOUT_MS;
+
   // Check backend availability on load
   (async function checkBackend() {
     try {
@@ -289,16 +293,16 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
   })();
 
   // Generic API call function
-  // Default timeout 25 detik supaya request tidak hang tanpa feedback (mis.
-  // Railway cold start). Bisa dinaikkan via opsi 4: `apiCall(endpoint, method,
-  // data, { timeoutMs })`.
+  // Default timeout 2 menit supaya request tidak hang tanpa feedback (mis.
+  // Railway cold start / koneksi lambat). Bisa diubah per-call:
+  // `apiCall(endpoint, method, data, { timeoutMs })`.
   async function apiCall(endpoint, method = "GET", data = null, opts = {}) {
     // Always try API first, even if backendAvailable is false
     // This allows recovery if backend comes online later
 
     const timeoutMs = Number.isFinite(opts && opts.timeoutMs)
       ? Math.max(1000, opts.timeoutMs)
-      : 25000;
+      : API_DEFAULT_TIMEOUT_MS;
     const controller =
       typeof AbortController !== "undefined" ? new AbortController() : null;
     const timeoutId = controller

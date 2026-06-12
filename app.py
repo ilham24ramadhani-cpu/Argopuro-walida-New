@@ -555,11 +555,12 @@ def _alokasi_map_from_produksi(doc):
     return {}
 
 
-def _total_digunakan_bahan_proses(id_bahan, id_proses=None, nama_proses=None):
+def _total_digunakan_bahan_proses(id_bahan, id_proses=None, nama_proses=None, produksi_docs=None):
     """
     Total berat terpakai untuk satu id_bahan.
     Jika id_proses atau nama_proses diisi: filter produksi ke jalur proses tersebut.
     Tanpa filter: pool legacy semua produksi yang memakai id_bahan.
+    produksi_docs: daftar dokumen produksi yang sudah di-load (hindari N+1 query).
     """
     total = 0.0
     id_bahan = str(id_bahan or '').strip()
@@ -568,7 +569,8 @@ def _total_digunakan_bahan_proses(id_bahan, id_proses=None, nama_proses=None):
     ip = _int_proses_id(id_proses)
     nq = (nama_proses or '').strip() if nama_proses else ''
     restrict = ip is not None or bool(nq)
-    for p in db.produksi.find({}):
+    docs = produksi_docs if produksi_docs is not None else db.produksi.find({})
+    for p in docs:
         if restrict and not _produksi_same_jalur(p, ip, nq):
             continue
         m = _alokasi_map_from_produksi(p)
@@ -576,11 +578,16 @@ def _total_digunakan_bahan_proses(id_bahan, id_proses=None, nama_proses=None):
     return total
 
 
-def _all_id_bahan_terpakai_produksi(exclude_id_produksi_str=None):
+def _all_id_bahan_terpakai_produksi(exclude_id_produksi_str=None, produksi_docs=None):
     """Kumpulan id bahan yang sudah muncul di dokumen produksi (untuk bahan legacy tanpa prosesBahan: satu id hanya satu produksi)."""
     used = set()
     ex = (exclude_id_produksi_str or '').strip() or None
-    for p in db.produksi.find({}, {'idBahan': 1, 'idBahanList': 1, 'idProduksi': 1}):
+    docs = (
+        produksi_docs
+        if produksi_docs is not None
+        else db.produksi.find({}, {'idBahan': 1, 'idBahanList': 1, 'idProduksi': 1})
+    )
+    for p in docs:
         if ex and (p.get('idProduksi') or '') == ex:
             continue
         used.update(_id_bahan_list_from_produksi(p))
@@ -2777,8 +2784,10 @@ def get_bahan_untuk_produksi():
         _, rp_id, pname_res, err_r = _resolve_proses_query_param_proses(proses)
         if err_r:
             return jsonify({'error': err_r}), 400
-        
-        terpakai = _all_id_bahan_terpakai_produksi(exclude_id_produksi)
+
+        # Satu kali load produksi — hindari db.produksi.find({}) per baris bahan (N+1).
+        all_produksi = list(db.produksi.find({}))
+        terpakai = _all_id_bahan_terpakai_produksi(exclude_id_produksi, all_produksi)
         out = []
         for bahan in db.bahan.find().sort('id', 1):
             bid = bahan.get('idBahan')
@@ -2809,7 +2818,12 @@ def get_bahan_untuk_produksi():
             cap = float(line.get('jumlahBeratProses', 0) or 0)
             lid = _int_proses_id(line.get('idProses'))
             ln = (line.get('prosesPengolahan') or '').strip()
-            td = _total_digunakan_bahan_proses(bid, id_proses=lid or rp_id, nama_proses=ln or pname_res)
+            td = _total_digunakan_bahan_proses(
+                bid,
+                id_proses=lid or rp_id,
+                nama_proses=ln or pname_res,
+                produksi_docs=all_produksi,
+            )
             sisa = max(0.0, cap - td)
             if sisa <= 0:
                 continue
@@ -2822,6 +2836,7 @@ def get_bahan_untuk_produksi():
                 'varietas': bahan.get('varietas'),
                 'tanggalMasuk': bahan.get('tanggalMasuk'),
             })
+        print(f"✅ [BAHAN UNTUK PRODUKSI] proses={proses!r} → {len(out)} baris (produksi={len(all_produksi)})")
         return jsonify(json_serialize(out)), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -187,7 +187,10 @@ window.onProsesPengolahanProduksiChange = async function onProsesPengolahanProdu
     return;
   }
 
-  if (ph) ph.classList.add("d-none");
+  if (ph) {
+    ph.classList.remove("d-none");
+    ph.textContent = "Memuat daftar bahan…";
+  }
 
   // Tahapan master harus mengikuti proses yang dipilih (sebelumnya hanya
   // di-refresh saat user centang ID Bahan, sehingga terlihat "tidak sesuai proses")
@@ -232,6 +235,7 @@ window.onProsesPengolahanProduksiChange = async function onProsesPengolahanProdu
       const cb = wrap.querySelector('input[type="checkbox"]');
       cb.addEventListener("change", () => syncProduksiBahanDariCheckbox());
     });
+    if (ph) ph.classList.add("d-none");
   } catch (e) {
     console.error("getUntukProduksi:", e);
     if (ph) {
@@ -696,6 +700,29 @@ function getBeratTerkiniDetailKloterPayload() {
     if (berat > 0) out.push({ kloter: idx + 1, berat, keterangan });
   });
   return out.length ? out : null;
+}
+
+/** Hindari fetch ganda saat openModal + show.bs.modal dipanggil bersamaan. */
+let _produksiModalOptionsPromise = null;
+
+async function loadProduksiModalOptionsOnce() {
+  if (_produksiModalOptionsPromise) {
+    return _produksiModalOptionsPromise;
+  }
+  _produksiModalOptionsPromise = Promise.all([
+    loadProsesPengolahanOptions(),
+    loadVarietasOptionsProduksi(),
+    loadBahanOptionsProduksi(),
+    loadTipeProdukOptionsProduksi(),
+  ]).catch((err) => {
+    _produksiModalOptionsPromise = null;
+    throw err;
+  });
+  return _produksiModalOptionsPromise;
+}
+
+function resetProduksiModalOptionsCache() {
+  _produksiModalOptionsPromise = null;
 }
 
 // Reset / siapkan area pilih bahan (checkbox — pilih proses dulu)
@@ -2145,14 +2172,8 @@ window.openModal = async function openModal(mode = "add") {
     return;
   }
 
-  // Load options dengan await untuk memastikan data ready sebelum modal muncul
   try {
-    await Promise.all([
-      loadProsesPengolahanOptions(),
-      loadVarietasOptionsProduksi(),
-      loadBahanOptionsProduksi(),
-      loadTipeProdukOptionsProduksi(),
-    ]);
+    await loadProduksiModalOptionsOnce();
     console.log("✅ All dropdown options loaded for produksi modal");
   } catch (error) {
     console.error("⚠️ Error loading some dropdown options:", error);
@@ -3861,18 +3882,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const modalProduksi = document.getElementById("modalProduksi");
   if (modalProduksi) {
+    modalProduksi.addEventListener("hidden.bs.modal", () => {
+      resetProduksiModalOptionsCache();
+    });
     modalProduksi.addEventListener("show.bs.modal", async () => {
       try {
-        await Promise.all([
-          loadProsesPengolahanOptions(),
-          loadVarietasOptionsProduksi(),
-          loadBahanOptionsProduksi(),
-          loadTipeProdukOptionsProduksi(),
-        ]);
-        console.log(
-          "✅ All dropdown options loaded for produksi modal (show.bs.modal event)",
-        );
-
         // Reset dropdown tahapan jika tidak ada proses yang dipilih
         const prosesSelect = document.getElementById("prosesPengolahan");
         const statusSelect = document.getElementById("statusTahapan");
