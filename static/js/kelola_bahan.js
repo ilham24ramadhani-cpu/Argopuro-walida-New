@@ -1113,19 +1113,23 @@ function cetakInvoiceBahan(idBahan) {
   const rataRata = totalBerat > 0 ? totalHarga / totalBerat : 0;
 
   const { jsPDF } = window.jspdf;
-  const PAGE_W = 48;
-  const PAGE_H = 102;
+  const PAGE_W = 58;
   const MARGIN = 2;
   const CENTER = PAGE_W / 2;
-  const CONTENT_W = PAGE_W - MARGIN * 2;
-  const FOOTER_RESERVE = 16;
-  const COL = {
-    no: MARGIN,
-    berat: MARGIN + 14,
-    harga: MARGIN + 26,
-    total: PAGE_W - MARGIN,
-  };
-  const doc = new jsPDF({ orientation: "p", unit: "mm", format: [PAGE_W, PAGE_H] });
+  const TABLE_X = MARGIN;
+  const TABLE_W = PAGE_W - MARGIN * 2;
+  const COL_W = [7, 14, 17, TABLE_W - 7 - 14 - 17];
+  const COL_X = [
+    TABLE_X,
+    TABLE_X + COL_W[0],
+    TABLE_X + COL_W[0] + COL_W[1],
+    TABLE_X + COL_W[0] + COL_W[1] + COL_W[2],
+  ];
+  const ROW_PAD = 1.6;
+  const LINE_H = 2.6;
+  const FONT_BODY = 5;
+  const FONT_HEAD = 5.5;
+
   const tglMasuk = b.tanggalMasuk ? new Date(b.tanggalMasuk) : new Date();
   const tanggal = tglMasuk.toLocaleDateString("id-ID", {
     day: "2-digit",
@@ -1133,6 +1137,7 @@ function cetakInvoiceBahan(idBahan) {
     year: "numeric",
   });
   const fmtRp = (v) => "Rp" + Math.round(v).toLocaleString("id-ID");
+  const fmtRpNum = (v) => Math.round(v).toLocaleString("id-ID");
   const fmtKg2 = (v) => {
     const n = Number(v) || 0;
     return n.toLocaleString("id-ID", {
@@ -1141,157 +1146,180 @@ function cetakInvoiceBahan(idBahan) {
     });
   };
 
-  const ensureSpace = (y, need) => {
-    if (y + need <= PAGE_H - FOOTER_RESERVE) return y;
-    doc.addPage([PAGE_W, PAGE_H]);
-    return 8;
+  const estPageH = () => {
+    const infoRows = 3 + (b.lunas ? 1 : 0);
+    const dataRows = validKloter.length + 2;
+    return Math.max(110, 24 + infoRows * 6 + dataRows * 7 + 14);
   };
 
-  const drawTableHeader = (y) => {
-    doc.setFillColor(236, 240, 241);
-    doc.rect(MARGIN, y - 2.2, CONTENT_W, 4.2, "F");
-    doc.setDrawColor(200, 200, 200);
-    doc.line(MARGIN, y - 2.2, PAGE_W - MARGIN, y - 2.2);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(4.5);
-    doc.setTextColor(50, 50, 50);
-    doc.text("No", COL.no, y);
-    doc.text("Kg", COL.berat, y, { align: "right" });
-    doc.text("/Kg", COL.harga, y, { align: "right" });
-    doc.text("Jumlah", COL.total, y, { align: "right" });
+  const doc = new jsPDF({
+    orientation: "p",
+    unit: "mm",
+    format: [PAGE_W, estPageH()],
+  });
+  let PAGE_H = estPageH();
+
+  const ensureSpace = (y, need) => {
+    if (y + need <= PAGE_H - 6) return y;
+    const extra = need + 10;
+    PAGE_H += extra;
+    doc.addPage([PAGE_W, PAGE_H]);
+    return 6;
+  };
+
+  const wrapCell = (text, colIdx, fontSize) => {
+    doc.setFontSize(fontSize);
+    const w = COL_W[colIdx] - 1.2;
+    const raw = String(text ?? "—");
+    return w > 2 ? doc.splitTextToSize(raw, w) : [raw];
+  };
+
+  const measureRow = (cells, fontSize) => {
+    let maxLines = 1;
+    cells.forEach((cell, i) => {
+      maxLines = Math.max(maxLines, wrapCell(cell, i, fontSize).length);
+    });
+    return Math.max(5, maxLines * LINE_H + ROW_PAD * 2);
+  };
+
+  const drawTableRow = (y, cells, opts = {}) => {
+    const {
+      bold = false,
+      header = false,
+      footer = false,
+      fontSize = FONT_BODY,
+      aligns = ["center", "right", "right", "left"],
+    } = opts;
+    const rowH = measureRow(cells, fontSize);
+    y = ensureSpace(y, rowH);
+
+    if (header) {
+      doc.setFillColor(0, 102, 93);
+    } else if (footer) {
+      doc.setFillColor(236, 240, 241);
+    } else {
+      doc.setFillColor(255, 255, 255);
+    }
+    doc.rect(TABLE_X, y, TABLE_W, rowH, "FD");
+
+    let cx = TABLE_X;
+    for (let i = 0; i < COL_W.length; i++) {
+      if (i > 0) {
+        doc.setDrawColor(190, 190, 190);
+        doc.line(cx, y, cx, y + rowH);
+      }
+      cx += COL_W[i];
+    }
+
+    doc.setFont("helvetica", bold || header || footer ? "bold" : "normal");
+    if (header) doc.setTextColor(255, 255, 255);
+    else doc.setTextColor(0, 0, 0);
+
+    cells.forEach((cell, i) => {
+      const lines = wrapCell(cell, i, fontSize);
+      const blockH = lines.length * LINE_H;
+      let ty = y + ROW_PAD + (rowH - ROW_PAD * 2 - blockH) / 2 + LINE_H * 0.75;
+      const pad = 0.6;
+      let tx;
+      if (aligns[i] === "right") tx = COL_X[i] + COL_W[i] - pad;
+      else if (aligns[i] === "center") tx = COL_X[i] + COL_W[i] / 2;
+      else tx = COL_X[i] + pad;
+      lines.forEach((line) => {
+        doc.text(line, tx, ty, { align: aligns[i] });
+        ty += LINE_H;
+      });
+    });
+
     doc.setTextColor(0, 0, 0);
-    return y + 3.5;
+    doc.setFont("helvetica", "normal");
+    return y + rowH;
+  };
+
+  const drawInfoRow = (y, label, value, opts = {}) => {
+    const labelW = 18;
+    const valW = TABLE_W - labelW;
+    const valLines = doc.splitTextToSize(String(value ?? "—"), valW - 1.2);
+    const rowH = Math.max(5, valLines.length * LINE_H + ROW_PAD * 2);
+    y = ensureSpace(y, rowH);
+
+    doc.setFillColor(opts.fill ? opts.fill[0] : 255, opts.fill ? opts.fill[1] : 255, opts.fill ? opts.fill[2] : 255);
+    doc.rect(TABLE_X, y, TABLE_W, rowH, "FD");
+    doc.line(TABLE_X + labelW, y, TABLE_X + labelW, y + rowH);
+
+    doc.setFontSize(FONT_BODY);
+    doc.setFont("helvetica", "bold");
+    doc.text(label, TABLE_X + 0.8, y + ROW_PAD + LINE_H * 0.75);
+    doc.setFont("helvetica", opts.boldValue ? "bold" : "normal");
+    let vy = y + ROW_PAD + (rowH - ROW_PAD * 2 - valLines.length * LINE_H) / 2 + LINE_H * 0.75;
+    valLines.forEach((line) => {
+      doc.text(line, TABLE_X + labelW + 0.8, vy);
+      vy += LINE_H;
+    });
+    doc.setFont("helvetica", "normal");
+    return y + rowH;
   };
 
   doc.setFillColor(0, 102, 93);
-  doc.rect(0, 0, PAGE_W, 18, "F");
+  doc.rect(0, 0, PAGE_W, 16, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
   doc.text("INVOICE BAHAN", CENTER, 6, { align: "center" });
-  doc.setFontSize(6);
+  doc.setFontSize(5.5);
   doc.setFont("helvetica", "normal");
-  doc.text("Argopuro Walida", CENTER, 11, { align: "center" });
-  doc.text(`Tgl Masuk: ${tanggal}`, CENTER, 15, { align: "center" });
+  doc.text("Argopuro Walida", CENTER, 12, { align: "center" });
   doc.setTextColor(0, 0, 0);
 
-  let yPos = 21;
-  doc.setFontSize(5.5);
-  doc.setFont("helvetica", "bold");
-  doc.text(`ID: ${b.idBahan}`, MARGIN, yPos);
-  yPos += 3;
-  doc.setFont("helvetica", "normal");
-  const pemasokLines = doc.splitTextToSize(`Pemasok: ${b.pemasok || "-"}`, CONTENT_W);
-  pemasokLines.forEach((line) => {
-    doc.text(line, MARGIN, yPos);
-    yPos += 2.8;
-  });
-  yPos += 1;
-
+  let yPos = 19;
+  yPos = drawInfoRow(yPos, "Tanggal", tanggal);
+  yPos = drawInfoRow(yPos, "Pemasok", b.pemasok || "—");
+  yPos = drawInfoRow(yPos, "Harga/kg", fmtRp(b.hargaPerKg || rataRata));
   if (b.lunas) {
-    doc.setFillColor(220, 248, 235);
-    doc.roundedRect(MARGIN, yPos - 2, CONTENT_W, 4.5, 0.8, 0.8, "F");
-    doc.setTextColor(25, 135, 84);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(5.5);
-    doc.text("LUNAS", CENTER, yPos + 0.8, { align: "center" });
-    doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "normal");
-    yPos += 5.5;
+    yPos = drawInfoRow(yPos, "Status", "LUNAS", {
+      boldValue: true,
+      fill: [220, 248, 235],
+    });
   }
+  yPos += 2;
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(5.5);
-  doc.text("Detail Kloter", MARGIN, yPos);
-  yPos += 2.5;
-  yPos = drawTableHeader(yPos);
+  yPos = drawTableRow(
+    yPos,
+    ["No", "Berat (kg)", "Harga (Rp)", "Keterangan"],
+    { header: true, fontSize: FONT_HEAD, aligns: ["center", "center", "center", "center"] }
+  );
 
-  doc.setFont("helvetica", "normal");
-  validKloter.forEach((row, idx) => {
-    const ket = String(row.keterangan || "").trim();
-    const hasKet = ket && ket !== "-";
-    const kloterLabel = String(row.kloter || "").trim();
-    const showKloterLabel = kloterLabel && !kloterLabel.startsWith("Kloter ");
-    const ketIndent = MARGIN + 3;
-    const ketMaxW = CONTENT_W - 3;
-    const ketLines = hasKet ? doc.splitTextToSize(ket, ketMaxW) : [];
-    const kloterLines = showKloterLabel ? doc.splitTextToSize(kloterLabel, ketMaxW) : [];
-    const metaLines = kloterLines.length + ketLines.length;
-    const ketBlockH = metaLines > 0 ? 1.5 + metaLines * 2.4 + 1.2 : 0;
-    const rowBlockH = 3.2 + ketBlockH + (idx < validKloter.length - 1 ? 1 : 0);
-
-    yPos = ensureSpace(yPos, rowBlockH);
-
+  validKloter.forEach((row) => {
     const hargaPerKg = row.hargaPerKg > 0 ? row.hargaPerKg : (b.hargaPerKg || 0);
-    doc.setFontSize(5);
-    doc.text(String(row.no), COL.no, yPos);
-    doc.text(fmtKg2(row.berat), COL.berat, yPos, { align: "right" });
-    doc.text(fmtRp(hargaPerKg), COL.harga, yPos, { align: "right" });
-    doc.text(fmtRp(row.hargaKloter), COL.total, yPos, { align: "right" });
-    yPos += 3.2;
-
-    if (metaLines > 0) {
-      const boxH = 1.2 + metaLines * 2.4;
-      doc.setFillColor(248, 249, 250);
-      doc.roundedRect(MARGIN, yPos - 0.8, CONTENT_W, boxH, 0.6, 0.6, "F");
-      doc.setFontSize(4);
-      doc.setTextColor(90, 90, 90);
-      if (showKloterLabel) {
-        doc.setFont("helvetica", "bold");
-        kloterLines.forEach((line) => {
-          doc.text(line, ketIndent, yPos);
-          yPos += 2.4;
-        });
-      }
-      if (hasKet) {
-        doc.setFont("helvetica", "italic");
-        doc.setTextColor(70, 70, 70);
-        ketLines.forEach((line) => {
-          doc.text(line, ketIndent, yPos);
-          yPos += 2.4;
-        });
-      }
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(0, 0, 0);
-      yPos += 1.2;
-    }
-
-    if (idx < validKloter.length - 1) {
-      doc.setDrawColor(225, 225, 225);
-      doc.setLineDashPattern([0.8, 0.8], 0);
-      doc.line(MARGIN, yPos, PAGE_W - MARGIN, yPos);
-      doc.setLineDashPattern([], 0);
-      yPos += 1;
-    }
+    const ket = String(row.keterangan || "").trim();
+    yPos = drawTableRow(
+      yPos,
+      [
+        String(row.no),
+        fmtKg2(row.berat),
+        fmtRpNum(row.hargaKloter),
+        ket && ket !== "-" ? ket : "—",
+      ],
+      { aligns: ["center", "right", "right", "left"] }
+    );
   });
 
-  yPos = ensureSpace(yPos, 18);
-  yPos += 1.5;
-  doc.setDrawColor(180, 180, 180);
-  doc.line(MARGIN, yPos, PAGE_W - MARGIN, yPos);
+  yPos = drawTableRow(
+    yPos,
+    ["", "Total Berat", `${fmtKg2(totalBerat)} kg`, ""],
+    { footer: true, aligns: ["center", "left", "right", "left"] }
+  );
+  yPos = drawTableRow(
+    yPos,
+    ["", "Total Harga", fmtRpNum(totalHarga), ""],
+    { footer: true, aligns: ["center", "left", "right", "left"] }
+  );
+
   yPos += 3;
-  doc.setFillColor(245, 247, 248);
-  const summaryH = 13;
-  doc.roundedRect(MARGIN, yPos - 1.5, CONTENT_W, summaryH, 0.8, 0.8, "F");
-  doc.setFontSize(5.5);
-  doc.setFont("helvetica", "bold");
-  doc.text("Total Berat", MARGIN + 1.5, yPos + 1);
-  doc.text(`${fmtKg2(totalBerat)} kg`, COL.total, yPos + 1, { align: "right" });
-  yPos += 4;
-  doc.text("Total Harga", MARGIN + 1.5, yPos + 1);
-  doc.text(fmtRp(totalHarga), COL.total, yPos + 1, { align: "right" });
-  yPos += 4;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(5);
-  doc.setTextColor(80, 80, 80);
-  doc.text("Rata-rata / kg", MARGIN + 1.5, yPos + 1);
-  doc.text(fmtRp(rataRata), COL.total, yPos + 1, { align: "right" });
-  doc.setTextColor(0, 0, 0);
-  yPos += 6;
   doc.setFontSize(4);
   doc.setTextColor(128, 128, 128);
-  const footerY = Math.min(yPos + 2, PAGE_H - 3);
-  doc.text("Argopuro Walida", CENTER, footerY, { align: "center" });
+  doc.text(`ID: ${b.idBahan}`, CENTER, yPos, { align: "center" });
+  yPos += 3;
+  doc.text("Argopuro Walida", CENTER, yPos, { align: "center" });
 
   const now = new Date();
   const fileName = `Invoice_Bahan_${b.idBahan}_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}.pdf`;
