@@ -1113,13 +1113,19 @@ function cetakInvoiceBahan(idBahan) {
   const rataRata = totalBerat > 0 ? totalHarga / totalBerat : 0;
 
   const { jsPDF } = window.jspdf;
-  // Ukuran kertas: 1.89in x 4in (48mm x 102mm)
-  const PAGE_W = 48; // 1.89 inch = 48mm
-  const PAGE_H = 102; // 4 inch = 102mm
+  const PAGE_W = 48;
+  const PAGE_H = 102;
   const MARGIN = 2;
   const CENTER = PAGE_W / 2;
+  const CONTENT_W = PAGE_W - MARGIN * 2;
+  const FOOTER_RESERVE = 16;
+  const COL = {
+    no: MARGIN,
+    berat: MARGIN + 14,
+    harga: MARGIN + 26,
+    total: PAGE_W - MARGIN,
+  };
   const doc = new jsPDF({ orientation: "p", unit: "mm", format: [PAGE_W, PAGE_H] });
-  // Gunakan tanggal masuk bahan, bukan tanggal saat cetak
   const tglMasuk = b.tanggalMasuk ? new Date(b.tanggalMasuk) : new Date();
   const tanggal = tglMasuk.toLocaleDateString("id-ID", {
     day: "2-digit",
@@ -1135,6 +1141,28 @@ function cetakInvoiceBahan(idBahan) {
     });
   };
 
+  const ensureSpace = (y, need) => {
+    if (y + need <= PAGE_H - FOOTER_RESERVE) return y;
+    doc.addPage([PAGE_W, PAGE_H]);
+    return 8;
+  };
+
+  const drawTableHeader = (y) => {
+    doc.setFillColor(236, 240, 241);
+    doc.rect(MARGIN, y - 2.2, CONTENT_W, 4.2, "F");
+    doc.setDrawColor(200, 200, 200);
+    doc.line(MARGIN, y - 2.2, PAGE_W - MARGIN, y - 2.2);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(4.5);
+    doc.setTextColor(50, 50, 50);
+    doc.text("No", COL.no, y);
+    doc.text("Kg", COL.berat, y, { align: "right" });
+    doc.text("/Kg", COL.harga, y, { align: "right" });
+    doc.text("Jumlah", COL.total, y, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+    return y + 3.5;
+  };
+
   doc.setFillColor(0, 102, 93);
   doc.rect(0, 0, PAGE_W, 18, "F");
   doc.setTextColor(255, 255, 255);
@@ -1148,83 +1176,122 @@ function cetakInvoiceBahan(idBahan) {
   doc.setTextColor(0, 0, 0);
 
   let yPos = 21;
-  doc.setFontSize(6);
+  doc.setFontSize(5.5);
+  doc.setFont("helvetica", "bold");
   doc.text(`ID: ${b.idBahan}`, MARGIN, yPos);
   yPos += 3;
-  doc.text(`Pemasok: ${b.pemasok || "-"}`, MARGIN, yPos);
-  yPos += 4;
+  doc.setFont("helvetica", "normal");
+  const pemasokLines = doc.splitTextToSize(`Pemasok: ${b.pemasok || "-"}`, CONTENT_W);
+  pemasokLines.forEach((line) => {
+    doc.text(line, MARGIN, yPos);
+    yPos += 2.8;
+  });
+  yPos += 1;
 
   if (b.lunas) {
+    doc.setFillColor(220, 248, 235);
+    doc.roundedRect(MARGIN, yPos - 2, CONTENT_W, 4.5, 0.8, 0.8, "F");
     doc.setTextColor(25, 135, 84);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(6);
-    doc.text("LUNAS", CENTER, yPos, { align: "center" });
+    doc.setFontSize(5.5);
+    doc.text("LUNAS", CENTER, yPos + 0.8, { align: "center" });
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "normal");
-    yPos += 4;
+    yPos += 5.5;
   }
 
   doc.setFont("helvetica", "bold");
+  doc.setFontSize(5.5);
   doc.text("Detail Kloter", MARGIN, yPos);
-  yPos += 3;
-  doc.setDrawColor(180, 180, 180);
-  doc.line(MARGIN, yPos, PAGE_W - MARGIN, yPos);
-  yPos += 3;
-  doc.setFontSize(5);
-  doc.text("No", MARGIN, yPos);
-  doc.text("Berat", MARGIN + 6, yPos);
-  doc.text("Harga", MARGIN + 18, yPos);
-  doc.text("Total", MARGIN + 30, yPos);
-  yPos += 3;
+  yPos += 2.5;
+  yPos = drawTableHeader(yPos);
 
   doc.setFont("helvetica", "normal");
-  const ketMaxW = PAGE_W - MARGIN * 2;
-  validKloter.forEach((row) => {
+  validKloter.forEach((row, idx) => {
     const ket = String(row.keterangan || "").trim();
     const hasKet = ket && ket !== "-";
-    const ketLines = hasKet ? doc.splitTextToSize(`Ket: ${ket}`, ketMaxW) : [];
-    const rowBlockH = 3 + (hasKet ? ketLines.length * 2.5 + 0.5 : 0);
-    if (yPos + rowBlockH > PAGE_H - 18) {
-      doc.addPage([PAGE_W, PAGE_H]);
-      yPos = 8;
-    }
+    const kloterLabel = String(row.kloter || "").trim();
+    const showKloterLabel = kloterLabel && !kloterLabel.startsWith("Kloter ");
+    const ketIndent = MARGIN + 3;
+    const ketMaxW = CONTENT_W - 3;
+    const ketLines = hasKet ? doc.splitTextToSize(ket, ketMaxW) : [];
+    const kloterLines = showKloterLabel ? doc.splitTextToSize(kloterLabel, ketMaxW) : [];
+    const metaLines = kloterLines.length + ketLines.length;
+    const ketBlockH = metaLines > 0 ? 1.5 + metaLines * 2.4 + 1.2 : 0;
+    const rowBlockH = 3.2 + ketBlockH + (idx < validKloter.length - 1 ? 1 : 0);
+
+    yPos = ensureSpace(yPos, rowBlockH);
+
     const hargaPerKg = row.hargaPerKg > 0 ? row.hargaPerKg : (b.hargaPerKg || 0);
     doc.setFontSize(5);
-    doc.text(String(row.no), MARGIN, yPos);
-    doc.text(fmtKg2(row.berat), MARGIN + 6, yPos);
-    doc.text(fmtRp(hargaPerKg), MARGIN + 18, yPos);
-    doc.text(fmtRp(row.hargaKloter), MARGIN + 30, yPos);
-    yPos += 3;
-    if (hasKet) {
+    doc.text(String(row.no), COL.no, yPos);
+    doc.text(fmtKg2(row.berat), COL.berat, yPos, { align: "right" });
+    doc.text(fmtRp(hargaPerKg), COL.harga, yPos, { align: "right" });
+    doc.text(fmtRp(row.hargaKloter), COL.total, yPos, { align: "right" });
+    yPos += 3.2;
+
+    if (metaLines > 0) {
+      const boxH = 1.2 + metaLines * 2.4;
+      doc.setFillColor(248, 249, 250);
+      doc.roundedRect(MARGIN, yPos - 0.8, CONTENT_W, boxH, 0.6, 0.6, "F");
       doc.setFontSize(4);
-      doc.setTextColor(60, 60, 60);
-      ketLines.forEach((line) => {
-        doc.text(line, MARGIN, yPos);
-        yPos += 2.5;
-      });
+      doc.setTextColor(90, 90, 90);
+      if (showKloterLabel) {
+        doc.setFont("helvetica", "bold");
+        kloterLines.forEach((line) => {
+          doc.text(line, ketIndent, yPos);
+          yPos += 2.4;
+        });
+      }
+      if (hasKet) {
+        doc.setFont("helvetica", "italic");
+        doc.setTextColor(70, 70, 70);
+        ketLines.forEach((line) => {
+          doc.text(line, ketIndent, yPos);
+          yPos += 2.4;
+        });
+      }
+      doc.setFont("helvetica", "normal");
       doc.setTextColor(0, 0, 0);
+      yPos += 1.2;
+    }
+
+    if (idx < validKloter.length - 1) {
+      doc.setDrawColor(225, 225, 225);
+      doc.setLineDashPattern([0.8, 0.8], 0);
+      doc.line(MARGIN, yPos, PAGE_W - MARGIN, yPos);
+      doc.setLineDashPattern([], 0);
+      yPos += 1;
     }
   });
 
-  yPos += 2;
+  yPos = ensureSpace(yPos, 18);
+  yPos += 1.5;
   doc.setDrawColor(180, 180, 180);
   doc.line(MARGIN, yPos, PAGE_W - MARGIN, yPos);
-  yPos += 4;
-  doc.setFontSize(6);
+  yPos += 3;
+  doc.setFillColor(245, 247, 248);
+  const summaryH = 13;
+  doc.roundedRect(MARGIN, yPos - 1.5, CONTENT_W, summaryH, 0.8, 0.8, "F");
+  doc.setFontSize(5.5);
   doc.setFont("helvetica", "bold");
-  doc.text("Total Berat:", MARGIN, yPos);
-  doc.text(`${fmtKg2(totalBerat)} kg`, PAGE_W - MARGIN, yPos, { align: "right" });
+  doc.text("Total Berat", MARGIN + 1.5, yPos + 1);
+  doc.text(`${fmtKg2(totalBerat)} kg`, COL.total, yPos + 1, { align: "right" });
   yPos += 4;
-  doc.text("Total Harga:", MARGIN, yPos);
-  doc.text(fmtRp(totalHarga), PAGE_W - MARGIN, yPos, { align: "right" });
+  doc.text("Total Harga", MARGIN + 1.5, yPos + 1);
+  doc.text(fmtRp(totalHarga), COL.total, yPos + 1, { align: "right" });
   yPos += 4;
-  doc.text("Rata2/kg:", MARGIN, yPos);
-  doc.text(fmtRp(rataRata), PAGE_W - MARGIN, yPos, { align: "right" });
-  yPos += 5;
-  doc.setFontSize(4);
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(5);
+  doc.setTextColor(80, 80, 80);
+  doc.text("Rata-rata / kg", MARGIN + 1.5, yPos + 1);
+  doc.text(fmtRp(rataRata), COL.total, yPos + 1, { align: "right" });
+  doc.setTextColor(0, 0, 0);
+  yPos += 6;
+  doc.setFontSize(4);
   doc.setTextColor(128, 128, 128);
-  doc.text("Argopuro Walida", CENTER, PAGE_H - 3, { align: "center" });
+  const footerY = Math.min(yPos + 2, PAGE_H - 3);
+  doc.text("Argopuro Walida", CENTER, footerY, { align: "center" });
 
   const now = new Date();
   const fileName = `Invoice_Bahan_${b.idBahan}_${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}.pdf`;
