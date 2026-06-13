@@ -1289,7 +1289,7 @@ async function createPemesananBuyerChart() {
   });
 }
 
-// Grafik pemesanan Complete: proses pengolahan (X) vs total kg dipesan (Y)
+// Grafik trend pemesanan: pemesanan Complete per proses pengolahan (X) vs total kg dipesan (Y)
 async function createPemesananProsesChart() {
   let pemesanan = [];
   try {
