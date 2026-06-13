@@ -927,7 +927,7 @@ async function createBahanChart() {
   });
 }
 
-// Grafik trend produksi: line chart per bulan (total kg batch dalam periode filter)
+// Grafik trend produksi: bar chart per proses pengolahan (total kg dalam periode filter)
 async function createProduksiChart() {
   let produksi = [];
   try {
@@ -944,6 +944,22 @@ async function createProduksiChart() {
       JSON.parse(localStorage.getItem("produksi") || "[]")
     );
   }
+
+  let bahanById = new Map();
+  try {
+    let bahan = [];
+    if (window.API && window.API.Bahan) {
+      bahan = dashboardEnsureArray(await window.API.Bahan.getAll());
+    } else {
+      bahan = dashboardEnsureArray(JSON.parse(localStorage.getItem("bahan") || "[]"));
+    }
+    bahan.forEach((b) => {
+      if (b?.idBahan) bahanById.set(String(b.idBahan).trim(), b);
+    });
+  } catch (error) {
+    console.error("Error loading bahan for produksi chart:", error);
+  }
+
   const chartContainer = document.getElementById("dashboardProduksiChartContainer");
   if (!chartContainer) return;
 
@@ -965,24 +981,24 @@ async function createProduksiChart() {
   const preset = dashboardChartPreset("dashboardProduksiPeriodeFilter");
   const startMs = dashboardChartPeriodStartMs(preset);
 
-  const monthlyData = {};
+  const rawTotals = {};
+  const rawCounts = {};
   produksi.forEach((p) => {
     const t = dashboardProduksiMillis(p);
     if (!Number.isFinite(t)) return;
     if (startMs != null && t < startMs) return;
 
-    const d = new Date(t);
-    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    if (!monthlyData[monthKey]) {
-      monthlyData[monthKey] = { berat: 0, count: 0 };
-    }
-    monthlyData[monthKey].berat += dashboardProduksiBeratKg(p);
-    monthlyData[monthKey].count += 1;
+    let proses = dashboardGetProsesPengolahanTampilan(p, bahanById);
+    if (!proses || proses === "-") proses = "Tidak dicatat";
+
+    rawTotals[proses] = (rawTotals[proses] || 0) + dashboardProduksiBeratKg(p);
+    rawCounts[proses] = (rawCounts[proses] || 0) + 1;
   });
 
-  const sortedMonths = Object.keys(monthlyData).sort();
+  const desc = Object.entries(rawTotals).sort((a, b) => b[1] - a[1]);
+  const rowsTrim = dashboardTrimCategories(desc, DASHBOARD_BAR_MAX_CATEGORIES);
 
-  if (sortedMonths.length === 0) {
+  if (rowsTrim.length === 0) {
     if (produksiChart) {
       produksiChart.destroy();
       produksiChart = null;
@@ -997,26 +1013,18 @@ async function createProduksiChart() {
     return;
   }
 
-  const monthNames = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "Mei",
-    "Jun",
-    "Jul",
-    "Agu",
-    "Sep",
-    "Okt",
-    "Nov",
-    "Des",
-  ];
-  const labels = sortedMonths.map((month) => {
-    const [year, monthNum] = month.split("-");
-    return `${monthNames[parseInt(monthNum, 10) - 1]} ${year}`;
-  });
-  const beratData = sortedMonths.map((month) => monthlyData[month].berat);
-  const countData = sortedMonths.map((month) => monthlyData[month].count);
+  const labels = rowsTrim.map(([name]) => name);
+  const values = rowsTrim.map(([, v]) => v);
+  const countData = rowsTrim.map(([name]) => rawCounts[name] || 0);
+  const barColors = labels.map(
+    (_, i) =>
+      DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
+        .replace("rgb(", "rgba(")
+        .replace(")", ", 0.88)")
+  );
+  const borderColors = labels.map(
+    (_, i) => DASHBOARD_CHART_SERIES_COLORS[i % DASHBOARD_CHART_SERIES_COLORS.length]
+  );
 
   if (produksiChart) {
     produksiChart.destroy();
@@ -1029,19 +1037,16 @@ async function createProduksiChart() {
   if (!chartCtx) return;
 
   produksiChart = new Chart(chartCtx, {
-    type: "line",
+    type: "bar",
     data: {
       labels,
       datasets: [
         {
           label: "Total kg produksi",
-          data: beratData,
-          borderColor: "rgb(13, 110, 253)",
-          backgroundColor: "rgba(13, 110, 253, 0.12)",
-          tension: 0.35,
-          fill: true,
-          pointRadius: 4,
-          pointHoverRadius: 6,
+          data: values,
+          backgroundColor: barColors,
+          borderColor: borderColors,
+          borderWidth: 1,
         },
       ],
     },
@@ -1049,8 +1054,12 @@ async function createProduksiChart() {
       responsive: true,
       maintainAspectRatio: false,
       interaction: { mode: "nearest", intersect: false },
+      elements: {
+        bar: { borderRadius: 4, borderSkipped: false },
+      },
+      datasets: { bar: { maxBarThickness: 48 } },
       plugins: {
-        legend: { display: true, position: "top" },
+        legend: { display: false },
         tooltip: {
           callbacks: {
             title: function (items) {
@@ -1072,10 +1081,15 @@ async function createProduksiChart() {
         x: {
           title: {
             display: true,
-            text: "Bulan",
+            text: "Proses pengolahan",
             font: { size: 11, weight: "bold" },
           },
-          ticks: { font: { size: 10 } },
+          ticks: {
+            autoSkip: false,
+            font: { size: 10 },
+            maxRotation: 55,
+            minRotation: 35,
+          },
           grid: { display: false },
         },
         y: {
