@@ -338,10 +338,23 @@ async function displayStok() {
   }
 }
 
+function filterStokBahanByStatus(stokBahan, statusFilter) {
+  if (!statusFilter) return stokBahan;
+  return stokBahan.filter((b) => {
+    const digunakan = parseFloat(b.totalDigunakan) || 0;
+    if (statusFilter === "belum") return digunakan <= 0;
+    if (statusFilter === "sudah") return digunakan > 0;
+    return true;
+  });
+}
+
 // Fungsi untuk menampilkan stok bahan baku
 async function displayStokBahan() {
   const tableBodyBahan = document.getElementById("tableBodyBahan");
   if (!tableBodyBahan) return;
+
+  const statusFilter =
+    document.getElementById("filterStatusBahan")?.value?.trim() || "";
 
   try {
     let stokBahan = [];
@@ -370,7 +383,28 @@ async function displayStokBahan() {
       return;
     }
 
-    tableBodyBahan.innerHTML = stokBahan
+    const filteredStokBahan = filterStokBahanByStatus(stokBahan, statusFilter);
+
+    if (filteredStokBahan.length === 0) {
+      const filterLabel =
+        statusFilter === "belum"
+          ? "belum terpakai"
+          : statusFilter === "sudah"
+            ? "sudah terpakai"
+            : "sesuai filter";
+      tableBodyBahan.innerHTML = `
+        <tr>
+          <td colspan="10" class="text-center py-5 text-muted">
+            <i class="bi bi-funnel fs-1 d-block mb-3"></i>
+            <p class="mb-0">Tidak ada bahan baku ${filterLabel}</p>
+            <small>Coba ubah filter status pemakaian</small>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tableBodyBahan.innerHTML = filteredStokBahan
       .map((b, index) => {
         const persentase = b.persentaseTersedia || 0;
         let statusBadge = "";
@@ -468,6 +502,20 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnApplyFilter) {
     btnApplyFilter.addEventListener("click", async () => {
       await displayStok();
+    });
+  }
+
+  const btnApplyFilterBahan = document.getElementById("btnApplyFilterBahan");
+  if (btnApplyFilterBahan) {
+    btnApplyFilterBahan.addEventListener("click", async () => {
+      await displayStokBahan();
+    });
+  }
+
+  const filterStatusBahan = document.getElementById("filterStatusBahan");
+  if (filterStatusBahan) {
+    filterStatusBahan.addEventListener("change", async () => {
+      await displayStokBahan();
     });
   }
 

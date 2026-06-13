@@ -485,6 +485,27 @@
                 </div>
               </div>
 
+              <!-- Filter Stok Bahan Baku -->
+              <div class="card shadow-sm mb-3">
+                <div class="card-body py-3">
+                  <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                      <label class="form-label small mb-0">Status Pemakaian</label>
+                      <select class="form-select form-select-sm" id="filterStatusBahan">
+                        <option value="">Semua bahan</option>
+                        <option value="belum">Belum Terpakai</option>
+                        <option value="sudah">Sudah Terpakai</option>
+                      </select>
+                    </div>
+                    <div class="col-md-2">
+                      <button type="button" class="btn btn-primary btn-sm w-100" id="btnApplyFilterBahan">
+                        <i class="bi bi-funnel me-1"></i>Terapkan
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <!-- Table Stok Bahan Baku -->
               <div class="card shadow-sm">
                 <div class="card-body">
