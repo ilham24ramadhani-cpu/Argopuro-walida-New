@@ -51,18 +51,26 @@ async function checkAuth(requiredRole = null, redirectToLogin = null) {
       },
     });
 
-    // If response is 401, user is not logged in
-    if (response.status === 401 || !response.ok) {
+    // Hanya redirect jika benar-benar belum login (401)
+    if (response.status === 401) {
       console.log(
-        "❌ No active session (HTTP " +
-          response.status +
-          ") - redirecting to login"
+        "❌ No active session (HTTP 401) - redirecting to login"
       );
       alert(
         "⚠️ Anda belum login!\n\nSilakan login terlebih dahulu untuk mengakses halaman ini."
       );
       window.location.replace("/");
       return false;
+    }
+
+    if (!response.ok) {
+      console.warn(
+        "⚠️ Auth check gagal (HTTP " + response.status + ") — sesi tidak dihapus"
+      );
+      alert(
+        "⚠️ Server sementara tidak dapat memverifikasi sesi.\n\nCoba refresh halaman. Data form Anda tidak akan hilang jika halaman tidak di-refresh."
+      );
+      return true;
     }
 
     // Response is 200, user is logged in
@@ -116,12 +124,10 @@ async function checkAuth(requiredRole = null, redirectToLogin = null) {
     return true;
   } catch (error) {
     console.error("❌ Error checking session:", error);
-    // On network error, redirect to login
     alert(
-      "⚠️ Terjadi kesalahan saat memvalidasi sesi!\n\nSilakan login kembali."
+      "⚠️ Tidak dapat memverifikasi sesi (koneksi bermasalah).\n\nPeriksa koneksi internet lalu refresh halaman jika perlu. Anda tidak akan dikeluarkan otomatis."
     );
-    window.location.replace("/");
-    return false;
+    return true;
   }
 }
 

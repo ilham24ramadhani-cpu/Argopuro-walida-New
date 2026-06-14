@@ -857,7 +857,7 @@ async function loadAllReportData() {
       loadPromises.push(
         window.API.Pemesanan.getAll()
           .then((data) => {
-            pemesanan = Array.isArray(data) ? data : [];
+            pemesanan = unwrapArrayResponseLaporan(data);
             console.log(
               `✅ Loaded ${pemesanan.length} pemesanan records from MongoDB`
             );
@@ -3072,16 +3072,29 @@ const REKAP_CATEGORY_FILE_SLUG = {
 /** Muat data rekap sesuai filter. error: 'no_config' | 'no_data' jika gagal. */
 async function loadRekapExportContext(category) {
   if (category === "pemesanan" || category === "pemasok" || category === "pembeli") {
-    await loadAllReportData();
+    try {
+      await loadAllReportData();
+    } catch (err) {
+      console.warn(
+        "loadRekapExportContext: gagal muat ulang dari API, pakai data cache",
+        err,
+      );
+    }
   }
   const config = LAPORAN_REKAP_CONFIG[category];
   if (!config) return { error: "no_config" };
 
   let data;
+  let summaryData = null;
   if (typeof config.dataset === "function" && category === "stok") {
     data = await config.dataset();
   } else {
     data = getFilteredDataForCategory(category);
+  }
+
+  if (category === "pemesanan") {
+    summaryData = Array.isArray(data) ? data : [];
+    data = expandPemesananDocsToRekapRows(summaryData);
   }
 
   if (!data || data.length === 0) {
@@ -3092,6 +3105,7 @@ async function loadRekapExportContext(category) {
   return {
     config,
     data,
+    summaryData,
     filterInfo: getFilterDescription(category),
     exportedAt,
     generatedAt: formatRekapExportTimestamp(exportedAt),
@@ -3179,22 +3193,31 @@ function rekapDataCellClassAttr(align) {
 }
 
 /** Fragmen HTML tabel + ringkasan (dipakai Lihat rekap & PDF). */
-function buildRekapReportFragments(config, data) {
+function buildRekapReportFragments(config, data, summarySource) {
+  const summaryItems = summarySource != null ? summarySource : data;
   const columnsHeader = config.columns
     .map((column) => {
       const attr = rekapDataCellClassAttr(column.align);
-      return `<th${attr}>${column.label}</th>`;
+      return `<th${attr}>${escapeHtmlLaporan(column.label)}</th>`;
     })
     .join("");
   const rowsHtml = data
     .map((item, index) => {
       const cells = config.columns
         .map((column) => {
-          const raw = column.value(item);
+          let raw;
+          try {
+            raw = column.value(item);
+          } catch (e) {
+            console.warn("buildRekapReportFragments column.value", e);
+            raw = "-";
+          }
           const cell =
             raw === undefined || raw === null
               ? ""
-              : sanitizeRekapDataCellForExport(String(raw));
+              : escapeHtmlLaporan(
+                  sanitizeRekapDataCellForExport(String(raw)),
+                );
           const attr = rekapDataCellClassAttr(column.align);
           return `<td${attr}>${cell}</td>`;
         })
@@ -3227,7 +3250,7 @@ function buildRekapReportFragments(config, data) {
   const extraSummaryHtml =
     typeof config.extraSummary === "function"
       ? (() => {
-          const rows = config.extraSummary(data);
+          const rows = config.extraSummary(summaryItems);
           if (!rows || !rows.length) return "";
           const wrapClass =
             config.extraSummaryWrapClass ||
@@ -3437,23 +3460,88 @@ function getRekapLaporanSkinCss() {
   `;
 }
 
+/** Buka tab kosong segera (sebelum await) agar tidak diblokir pop-up blocker. */
+function openRekapExportTab(loadingTitle) {
+  let tab = null;
+  try {
+    tab = window.open("about:blank", "_blank");
+  } catch (e) {
+    tab = null;
+  }
+  if (tab && !tab.closed) {
+    try {
+      tab.document.open();
+      tab.document.write(`<!DOCTYPE html>
+<html lang="id"><head><meta charset="utf-8"><title>${escapeHtmlLaporan(loadingTitle || "Memuat rekap…")}</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;color:#475569;background:#f8fafc}</style>
+</head><body><p>${escapeHtmlLaporan(loadingTitle || "Memuat rekap…")}</p></body></html>`);
+      tab.document.close();
+    } catch (e) {
+      console.warn("openRekapExportTab loading", e);
+    }
+  }
+  return tab;
+}
+
+function closeRekapExportTab(tab) {
+  if (tab && !tab.closed) {
+    try {
+      tab.close();
+    } catch (e) {
+      /* ignore */
+    }
+  }
+}
+
+/** Tulis HTML rekap ke tab yang sudah dibuka, atau unduh .html jika pop-up diblokir. */
+function deliverRekapHtmlExport(tab, htmlContent, filenameBase) {
+  if (tab && !tab.closed) {
+    try {
+      tab.document.open();
+      tab.document.write(htmlContent);
+      tab.document.close();
+      return;
+    } catch (e) {
+      console.warn("deliverRekapHtmlExport tab write", e);
+    }
+  }
+  const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const fname = `${filenameBase || "Rekap"}.html`;
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fname;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  alert(
+    `Pop-up diblokir browser. Rekap disimpan sebagai "${fname}" — buka file tersebut untuk melihat laporan.`,
+  );
+}
+
 /**
  * Buka tab baru: hanya tampilan rekap (seperti perilaku awal, tanpa panel cetak PDF).
  */
 async function exportRekapView(category) {
-  const ctx = await loadRekapExportContext(category);
-  if (!ctx || ctx.error) {
-    if (ctx && ctx.error === "no_config") {
-      alert("Konfigurasi rekap tidak ditemukan.");
-    } else {
-      alert("Tidak ada data untuk direkap berdasarkan filter saat ini.");
+  const reportWindow = openRekapExportTab("Memuat rekap…");
+  try {
+    const ctx = await loadRekapExportContext(category);
+    if (!ctx || ctx.error) {
+      closeRekapExportTab(reportWindow);
+      if (ctx && ctx.error === "no_config") {
+        alert("Konfigurasi rekap tidak ditemukan.");
+      } else {
+        alert("Tidak ada data untuk direkap berdasarkan filter saat ini.");
+      }
+      return;
     }
-    return;
-  }
 
-  const { config, data, filterInfo, generatedAt } = ctx;
-  const { columnsHeader, rowsHtml, summaryHtml, extraSummaryHtml } =
-    buildRekapReportFragments(config, data);
+    const { config, data, filterInfo, generatedAt } = ctx;
+    const summarySource = ctx.summaryData || data;
+    const { columnsHeader, rowsHtml, summaryHtml, extraSummaryHtml } =
+      buildRekapReportFragments(config, data, summarySource);
 
   const rekapSkin = getRekapLaporanSkinCss();
 
@@ -3560,7 +3648,7 @@ async function exportRekapView(category) {
           </tbody>
         </table>
         ${category === "produksi" ? htmlRekapRendemenPerProsesPengolahan(data) : ""}
-        ${category === "pemesanan" ? htmlRekapPemesananAggPerProses(data) : ""}
+        ${category === "pemesanan" ? htmlRekapPemesananAggPerProses(summarySource) : ""}
         ${summaryHtml}
         ${extraSummaryHtml}
         <div class="footer">
@@ -3570,13 +3658,16 @@ async function exportRekapView(category) {
     </html>
   `;
 
-  const reportWindow = window.open("", "_blank");
-  if (reportWindow) {
-    reportWindow.document.write(htmlContent);
-    reportWindow.document.close();
-  } else {
+  deliverRekapHtmlExport(
+    reportWindow,
+    htmlContent,
+    rekapExportFilenameBase(category),
+  );
+  } catch (err) {
+    closeRekapExportTab(reportWindow);
+    console.error("exportRekapView:", err);
     alert(
-      "Pop-up diblokir oleh browser. Mohon izinkan pop-up untuk melihat rekap."
+      `Gagal membuka rekap: ${err.message || "Unknown error"}. Coba muat ulang halaman.`,
     );
   }
 }
@@ -3585,19 +3676,23 @@ async function exportRekapView(category) {
  * Rekap untuk dicetak / disimpan sebagai PDF lewat dialog cetak browser.
  */
 async function exportRekapPdf(category) {
-  const ctx = await loadRekapExportContext(category);
-  if (!ctx || ctx.error) {
-    if (ctx && ctx.error === "no_config") {
-      alert("Konfigurasi rekap tidak ditemukan.");
-    } else {
-      alert("Tidak ada data untuk direkap berdasarkan filter saat ini.");
+  const reportWindow = openRekapExportTab("Menyiapkan rekap untuk cetak…");
+  try {
+    const ctx = await loadRekapExportContext(category);
+    if (!ctx || ctx.error) {
+      closeRekapExportTab(reportWindow);
+      if (ctx && ctx.error === "no_config") {
+        alert("Konfigurasi rekap tidak ditemukan.");
+      } else {
+        alert("Tidak ada data untuk direkap berdasarkan filter saat ini.");
+      }
+      return;
     }
-    return;
-  }
 
-  const { config, data, filterInfo, generatedAt } = ctx;
-  const { columnsHeader, rowsHtml, summaryHtml, extraSummaryHtml } =
-    buildRekapReportFragments(config, data);
+    const { config, data, filterInfo, generatedAt } = ctx;
+    const summarySource = ctx.summaryData || data;
+    const { columnsHeader, rowsHtml, summaryHtml, extraSummaryHtml } =
+      buildRekapReportFragments(config, data, summarySource);
 
   const rekapSkinPdf = getRekapLaporanSkinCss();
 
@@ -3753,7 +3848,7 @@ async function exportRekapPdf(category) {
           </tbody>
         </table>
         ${category === "produksi" ? htmlRekapRendemenPerProsesPengolahan(data) : ""}
-        ${category === "pemesanan" ? htmlRekapPemesananAggPerProses(data) : ""}
+        ${category === "pemesanan" ? htmlRekapPemesananAggPerProses(summarySource) : ""}
         ${summaryHtml}
         ${extraSummaryHtml}
         <div class="footer">
@@ -3763,13 +3858,16 @@ async function exportRekapPdf(category) {
     </html>
   `;
 
-  const reportWindow = window.open("", "_blank");
-  if (reportWindow) {
-    reportWindow.document.write(htmlContent);
-    reportWindow.document.close();
-  } else {
+  deliverRekapHtmlExport(
+    reportWindow,
+    htmlContent,
+    `${rekapExportFilenameBase(category)}_cetak`,
+  );
+  } catch (err) {
+    closeRekapExportTab(reportWindow);
+    console.error("exportRekapPdf:", err);
     alert(
-      "Pop-up diblokir oleh browser. Mohon izinkan pop-up untuk membuka rekap PDF."
+      `Gagal membuka rekap PDF: ${err.message || "Unknown error"}. Coba muat ulang halaman.`,
     );
   }
 }
@@ -3797,6 +3895,7 @@ async function exportRekapExcel(category) {
   }
 
   const { config, data, filterInfo, generatedAt, exportedAt } = ctx;
+  const summarySource = ctx.summaryData || data;
   const fillSection = {
     type: "pattern",
     pattern: "solid",
@@ -3870,7 +3969,7 @@ async function exportRekapExcel(category) {
       config.averages.forEach((avg) => kvRing(avg.label, avg.compute(data)));
     }
     if (typeof config.extraSummary === "function") {
-      const extra = config.extraSummary(data);
+      const extra = config.extraSummary(summarySource);
       if (extra && extra.length) {
         r += 1;
         sectionTitle("RINGKASAN TAMBAHAN");
@@ -4094,7 +4193,7 @@ async function exportRekapExcel(category) {
       const wsPp = wb.addWorksheet("Per proses", {
         views: [{ showGridLines: true }],
       });
-      const ppMatrix = buildPemesananPerProsesSheetMatrix(data);
+      const ppMatrix = buildPemesananPerProsesSheetMatrix(summarySource);
       const ppHeader = ppMatrix[0] || [];
       const ppBody = ppMatrix.slice(1);
       const ncPp = 3;
@@ -7110,6 +7209,63 @@ function getPemesananKloterLinesFilteredForLaporan(p) {
   );
 }
 
+/**
+ * Satu baris rekap export per kloter (gabung field dokumen + baris kloter).
+ * Selaras filter proses aktif pada tab laporan.
+ */
+function expandPemesananDocsToRekapRows(docs) {
+  if (!Array.isArray(docs)) return [];
+  const rows = [];
+  docs.forEach((p) => {
+    let lines =
+      typeof getPemesananKloterLinesFilteredForLaporan === "function"
+        ? getPemesananKloterLinesFilteredForLaporan(p)
+        : typeof getPemesananKloterLinesFromDoc === "function"
+          ? getPemesananKloterLinesFromDoc(p)
+          : [];
+    if (!lines.length) {
+      lines = [
+        {
+          tipeProduk: p.tipeProduk || "",
+          jenisKopi: p.jenisKopi || "",
+          prosesPengolahan: p.prosesPengolahan || "",
+          beratKg:
+            p.jumlahPesananKg != null && p.jumlahPesananKg !== ""
+              ? p.jumlahPesananKg
+              : "",
+          hargaPerKg: p.hargaPerKg != null ? p.hargaPerKg : "",
+        },
+      ];
+    }
+    lines.forEach((line) => {
+      const kg =
+        line.beratKg != null && line.beratKg !== ""
+          ? line.beratKg
+          : line.jumlahPesananKg;
+      rows.push({
+        idPembelian: p.idPembelian,
+        tanggalPemesanan: p.tanggalPemesanan,
+        namaPembeli: p.namaPembeli,
+        tipePemesanan: p.tipePemesanan,
+        negara: p.negara,
+        tipeProduk: line.tipeProduk,
+        jenisKopi: line.jenisKopi,
+        prosesPengolahan: line.prosesPengolahan,
+        jumlahPesananKg: kg,
+        hargaPerKg: line.hargaPerKg,
+        tipePajak: p.tipePajak,
+        biayaPajak: p.biayaPajak,
+        biayaPengiriman: p.biayaPengiriman,
+        totalHarga: p.totalHarga,
+        statusPemesanan: p.statusPemesanan,
+        statusPembayaran: p.statusPembayaran,
+        catatanPemesanan: p.catatanPemesanan,
+      });
+    });
+  });
+  return rows;
+}
+
 /** Filter pemesanan dari kontrol tab laporan (sama untuk tabel & rekap). */
 function getPemesananFilteredForLaporan() {
   if (!Array.isArray(pemesanan)) return [];
@@ -7751,6 +7907,11 @@ document.addEventListener("DOMContentLoaded", function () {
   if (pemesananFilterProses) {
     pemesananFilterProses.addEventListener("change", displayPemesananLaporan);
   }
+
+  window.exportRekapView = exportRekapView;
+  window.exportRekapPdf = exportRekapPdf;
+  window.exportRekapExcel = exportRekapExcel;
+  window.exportRekap = exportRekap;
 
   const pembeliTab = document.getElementById("pembeli-tab");
   if (pembeliTab) {

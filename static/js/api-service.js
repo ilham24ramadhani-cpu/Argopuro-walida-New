@@ -1169,3 +1169,37 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
 }
 
 // End of api-service.js execution guard
+
+/**
+ * Cegah double-submit pada tombol Simpan (API lambat / double-click).
+ * @param {string|HTMLElement|null} btnOrId - tombol submit
+ * @param {() => Promise<void>} fn - aksi async yang dijalankan sekali
+ * @param {{ lockKey?: string, loadingHtml?: string }} opts
+ */
+window.guardFormSubmit = async function guardFormSubmit(btnOrId, fn, opts) {
+  const lockKey = (opts && opts.lockKey) || "_formSubmitLock";
+  if (window[lockKey]) return;
+  window[lockKey] = true;
+
+  let btn = null;
+  if (typeof btnOrId === "string") btn = document.getElementById(btnOrId);
+  else if (btnOrId instanceof HTMLElement) btn = btnOrId;
+
+  const origHtml = btn ? btn.innerHTML : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML =
+      (opts && opts.loadingHtml) ||
+      '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Menyimpan...';
+  }
+
+  try {
+    await fn();
+  } finally {
+    window[lockKey] = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  }
+};

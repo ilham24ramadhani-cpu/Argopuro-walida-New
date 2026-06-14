@@ -2,8 +2,16 @@
 let bahan = [];
 let currentEditId = null;
 let currentDeleteId = null;
+/** Cegah double-submit saat API save lambat. */
+let isSavingBahan = false;
+let isDeletingBahan = false;
 /** Cegah show.bs.modal memuat ulang dropdown (menghapus nilai edit); varietas aman karena hanya datalist. */
 let skipModalOptionsReloadOnShow = false;
+
+function isModalBahanOpen() {
+  const modalEl = document.getElementById("modalBahan");
+  return !!(modalEl && modalEl.classList.contains("show"));
+}
 
 // Kloter timbangan (model Kalkulator Timbang)
 const MIN_KLOTER = 1;
@@ -569,6 +577,7 @@ async function loadPemasokOptions() {
     pemasok = await window.API.Pemasok.getAll();
     const select = document.getElementById("pemasok");
     if (select) {
+      const prev = select.value;
       select.innerHTML = '<option value="">Pilih Pemasok</option>';
       pemasok.forEach((p) => {
         const option = document.createElement("option");
@@ -576,6 +585,7 @@ async function loadPemasokOptions() {
         option.textContent = p.nama;
         select.appendChild(option);
       });
+      if (prev) ensureSelectValue(select, prev);
     }
   } catch (error) {
     console.error("Error loading pemasok options:", error);
@@ -599,6 +609,7 @@ async function loadJenisKopiOptions() {
     dataJenisKopi = await window.API.MasterData.jenisKopi.getAll();
     const select = document.getElementById("jenisKopi");
     if (select) {
+      const prev = select.value;
       select.innerHTML = '<option value="">Pilih Jenis Kopi</option>';
       dataJenisKopi.forEach((item) => {
         const option = document.createElement("option");
@@ -606,6 +617,7 @@ async function loadJenisKopiOptions() {
         option.textContent = item.nama;
         select.appendChild(option);
       });
+      if (prev) ensureSelectValue(select, prev);
     }
   } catch (error) {
     console.error("Error loading jenis kopi options:", error);
@@ -937,10 +949,11 @@ async function openModal() {
     }
   }
 
-  loadPemasokOptions();
-  loadJenisKopiOptions();
-  loadVarietasOptions();
+  await loadPemasokOptions();
+  await loadJenisKopiOptions();
+  await loadVarietasOptions();
 
+  skipModalOptionsReloadOnShow = true;
   const modal = new bootstrap.Modal(document.getElementById("modalBahan"));
   modal.show();
 }
@@ -1384,6 +1397,17 @@ async function saveBahan() {
     return;
   }
 
+  if (isSavingBahan) return;
+
+  const saveBtn = document.getElementById("btnSaveBahan");
+  const saveBtnOriginalHtml = saveBtn ? saveBtn.innerHTML : "";
+  isSavingBahan = true;
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML =
+      '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Menyimpan...';
+  }
+
   const haccp = {
     bebasBendaAsing: haccpBendaAsing,
     bebasHamaJamur: haccpHamaJamur,
@@ -1450,6 +1474,12 @@ async function saveBahan() {
       window.showNotification(bahanId ? 'update' : 'create', 'Bahan', 'error', 'Gagal menyimpan data: ' + (error.message || "Unknown error"));
     } else {
       alert("Error menyimpan data: " + (error.message || "Unknown error"));
+    }
+  } finally {
+    isSavingBahan = false;
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = saveBtnOriginalHtml;
     }
   }
 }
@@ -1544,8 +1574,19 @@ async function deleteBahan(id) {
 
 // Fungsi untuk konfirmasi delete (MONGODB ONLY)
 async function confirmDelete() {
-  if (currentDeleteId) {
-    try {
+  if (!currentDeleteId || isDeletingBahan) return;
+
+  const deleteBtn = document.getElementById("btnConfirmDeleteBahan");
+  const deleteBtnOriginalHtml = deleteBtn ? deleteBtn.innerHTML : "";
+  isDeletingBahan = true;
+  if (deleteBtn) {
+    deleteBtn.disabled = true;
+    deleteBtn.innerHTML =
+      '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Menghapus...';
+  }
+
+  try {
+    if (currentDeleteId) {
       // VERIFY API AVAILABILITY - NO FALLBACK
       if (!window.API || !window.API.Bahan) {
         const errorMsg =
@@ -1591,14 +1632,20 @@ async function confirmDelete() {
       );
       modal.hide();
       currentDeleteId = null;
-    } catch (error) {
-      console.error("Error deleting bahan:", error);
-      // Tampilkan notifikasi error
-      if (window.showNotification) {
-        window.showNotification('delete', 'Bahan', 'error', 'Gagal menghapus data: ' + (error.message || "Unknown error"));
-      } else {
-        alert("Error menghapus data: " + (error.message || "Unknown error"));
-      }
+    }
+  } catch (error) {
+    console.error("Error deleting bahan:", error);
+    // Tampilkan notifikasi error
+    if (window.showNotification) {
+      window.showNotification('delete', 'Bahan', 'error', 'Gagal menghapus data: ' + (error.message || "Unknown error"));
+    } else {
+      alert("Error menghapus data: " + (error.message || "Unknown error"));
+    }
+  } finally {
+    isDeletingBahan = false;
+    if (deleteBtn) {
+      deleteBtn.disabled = false;
+      deleteBtn.innerHTML = deleteBtnOriginalHtml;
     }
   }
 }
@@ -1657,6 +1704,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Event listener untuk update ketika data master berubah
   window.addEventListener("dataMasterUpdated", () => {
+    if (isModalBahanOpen()) return;
     loadJenisKopiOptions();
     loadVarietasOptions();
   });

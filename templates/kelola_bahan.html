@@ -456,6 +456,8 @@
       tabindex="-1"
       aria-labelledby="modalBahanLabel"
       aria-hidden="true"
+      data-bs-backdrop="static"
+      data-bs-keyboard="false"
     >
       <div class="modal-dialog modal-xl">
         <div class="modal-content">
@@ -629,7 +631,7 @@
             >
               Batal
             </button>
-            <button type="button" class="btn btn-primary" onclick="saveBahan()">
+            <button type="button" class="btn btn-primary" id="btnSaveBahan" onclick="saveBahan()">
               Simpan
             </button>
           </div>
@@ -671,6 +673,7 @@
             <button
               type="button"
               class="btn btn-danger"
+              id="btnConfirmDeleteBahan"
               onclick="confirmDelete()"
             >
               Hapus
