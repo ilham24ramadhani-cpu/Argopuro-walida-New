@@ -3602,8 +3602,143 @@ get_master_data_endpoints('dataJenisKopi', ['nama'])
 get_master_data_endpoints('dataVarietas', ['nama'])
 # dataProses menggunakan endpoint khusus karena memiliki tahapanStatus
 get_master_data_endpoints('dataRoasting', ['nama'])
+# dataProduk menggunakan endpoint khusus (field mengurangiStok)
 # dataKemasan menggunakan endpoint khusus karena memiliki stok
-get_master_data_endpoints('dataProduk', ['nama'])
+
+# ==================== DATA PRODUK ENDPOINTS (mengurangiStok: pengurangan stok saat ordering) ====================
+
+def _parse_mengurangi_stok_produk(value, default=True):
+    """True = pemesanan/ordering memotong stok; False = invoice-only (mis. Argopuro Walida Collective)."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    s = str(value).strip().lower()
+    if s in ('0', 'false', 'no', 'tidak', 'off'):
+        return False
+    if s in ('1', 'true', 'yes', 'ya', 'on'):
+        return True
+    return default
+
+
+@app.route('/api/dataProduk', methods=['GET'])
+def get_all_dataProduk():
+    try:
+        data = list(db.dataProduk.find().sort('id', 1))
+        return jsonify(json_serialize(data)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/dataProduk/<item_id>', methods=['GET'])
+def get_one_dataProduk(item_id):
+    try:
+        try:
+            item = db.dataProduk.find_one({'_id': ObjectId(item_id)})
+        except Exception:
+            item = db.dataProduk.find_one({'id': int(item_id)}) or \
+                  db.dataProduk.find_one({'nama': item_id})
+
+        if not item:
+            return jsonify({'error': 'dataProduk not found'}), 404
+
+        return jsonify(json_serialize(item)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/dataProduk', methods=['POST'])
+def create_dataProduk():
+    try:
+        data = request.json or {}
+
+        if 'nama' not in data:
+            return jsonify({'error': 'Missing required field: nama'}), 400
+
+        nama_clean = str(data['nama']).strip()
+        if not nama_clean:
+            return jsonify({'error': 'Nama tidak boleh kosong'}), 400
+
+        existing = db.dataProduk.find_one({'nama': nama_clean})
+        if existing:
+            return jsonify({'error': 'Nama already exists'}), 400
+
+        new_id = get_next_id('dataProduk')
+        item_data = {
+            'id': new_id,
+            'nama': nama_clean,
+            'mengurangiStok': _parse_mengurangi_stok_produk(data.get('mengurangiStok'), True),
+        }
+
+        result = db.dataProduk.insert_one(item_data)
+        item_data['_id'] = result.inserted_id
+
+        return jsonify(json_serialize(item_data)), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/dataProduk/<item_id>', methods=['PUT'])
+def update_dataProduk(item_id):
+    try:
+        data = request.json or {}
+
+        try:
+            item = db.dataProduk.find_one({'_id': ObjectId(item_id)})
+        except Exception:
+            item = db.dataProduk.find_one({'id': int(item_id)}) or \
+                  db.dataProduk.find_one({'nama': item_id})
+
+        if not item:
+            return jsonify({'error': 'dataProduk not found'}), 404
+
+        if 'nama' in data:
+            nama_clean = str(data['nama']).strip()
+            if not nama_clean:
+                return jsonify({'error': 'Nama tidak boleh kosong'}), 400
+            existing = db.dataProduk.find_one({
+                'nama': nama_clean,
+                '_id': {'$ne': item['_id']},
+            })
+            if existing:
+                return jsonify({'error': 'Nama already exists'}), 400
+
+        update_data = {}
+        if 'nama' in data:
+            update_data['nama'] = str(data['nama']).strip()
+        if 'mengurangiStok' in data:
+            update_data['mengurangiStok'] = _parse_mengurangi_stok_produk(
+                data.get('mengurangiStok'), True
+            )
+
+        if update_data:
+            db.dataProduk.update_one({'_id': item['_id']}, {'$set': update_data})
+
+        updated = db.dataProduk.find_one({'_id': item['_id']})
+        return jsonify(json_serialize(updated)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/dataProduk/<item_id>', methods=['DELETE'])
+def delete_dataProduk(item_id):
+    try:
+        try:
+            item = db.dataProduk.find_one({'_id': ObjectId(item_id)})
+        except Exception:
+            item = db.dataProduk.find_one({'id': int(item_id)}) or \
+                  db.dataProduk.find_one({'nama': item_id})
+
+        if not item:
+            return jsonify({'error': 'dataProduk not found'}), 404
+
+        db.dataProduk.delete_one({'_id': item['_id']})
+        return jsonify({'message': 'dataProduk deleted successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 # ==================== DATA PROSES ENDPOINTS (Khusus dengan tahapanStatus) ====================
 @app.route('/api/dataProses', methods=['GET'])
@@ -4901,13 +5036,30 @@ def _normalize_tipe_produk_for_match(tp):
 _TIPE_PRODUK_COL_RE = re.compile(r'\bcol[a-z]*')
 
 
+def _find_data_produk_by_nama(tp):
+    """Cari dokumen master dataProduk by nama (case/whitespace insensitive)."""
+    norm = _normalize_tipe_produk_for_match(tp)
+    if not norm:
+        return None
+    try:
+        for doc in db.dataProduk.find():
+            if _normalize_tipe_produk_for_match(doc.get('nama')) == norm:
+                return doc
+    except Exception as e:
+        print(f"⚠️ [DATA PRODUK LOOKUP] {e}")
+    return None
+
+
 def _is_tipe_produk_invoice_only(tp):
     """Tipe produk hanya-invoice (tidak memotong stok hasil produksi).
 
-    Saat ini mencakup `Roasted Beans` dan `Argopuro Walida Collective`.
-    Pencocokan toleran terhadap variasi whitespace/case dan ejaan ringan
-    untuk produk Argopuro Walida (mis. "Colective", "Collection").
+    Prioritas: flag `mengurangiStok` di Kelola Data → tab Produk.
+    Fallback legacy: Roasted Beans & Argopuro Walida Collective (dokumen lama tanpa field).
     """
+    doc = _find_data_produk_by_nama(tp)
+    if doc is not None and 'mengurangiStok' in doc:
+        return not _parse_mengurangi_stok_produk(doc.get('mengurangiStok'), True)
+
     norm = _normalize_tipe_produk_for_match(tp)
     if not norm:
         return False

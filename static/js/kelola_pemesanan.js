@@ -14,14 +14,13 @@ let currentPembeliEditId = null;
 let masterProsesNames = [];
 let masterJenisKopiNames = [];
 let masterProdukNames = [];
+/** Map nama produk (normalisasi) → { nama, mengurangiStok } dari Kelola Data */
+let masterProdukByNorm = new Map();
 
 /**
- * Tipe produk yang hanya untuk invoice (tanpa pengurangan stok).
- * Saat ini: Roasted Beans dan Argopuro Walida Collective.
- * Dicocokkan case-insensitive setelah trim + normalisasi whitespace
- * (mis. non-breaking space, tab, spasi ganda) agar tahan typo ejaan ringan.
+ * Tipe produk legacy invoice-only (fallback jika belum ada flag di master data).
  */
-const INVOICE_ONLY_TIPE_PRODUK = new Set([
+const INVOICE_ONLY_TIPE_PRODUK_LEGACY = new Set([
   "roasted beans",
   "argopuro walida collective",
 ]);
@@ -33,13 +32,28 @@ function normalizeTipeProdukForMatch(tipe) {
     .toLowerCase();
 }
 
+function refreshMasterProdukLookup(produkList) {
+  masterProdukByNorm = new Map();
+  (produkList || []).forEach((p) => {
+    const nama = (p.nama || "").trim();
+    if (!nama) return;
+    masterProdukByNorm.set(normalizeTipeProdukForMatch(nama), {
+      nama,
+      mengurangiStok: p.mengurangiStok !== false,
+    });
+  });
+}
+
 function isTipeProdukInvoiceOnly(tipe) {
   const norm = normalizeTipeProdukForMatch(tipe);
   if (!norm) return false;
-  if (INVOICE_ONLY_TIPE_PRODUK.has(norm)) return true;
-  // Toleransi variasi ejaan untuk "Argopuro Walida Collective" (mis. "Colective",
-  // "Collection", trailing word, dst). Tetap aman: hanya nama yang mengandung
-  // tiga kata kunci ini yang dianggap invoice-only.
+
+  const meta = masterProdukByNorm.get(norm);
+  if (meta) {
+    return meta.mengurangiStok === false;
+  }
+
+  if (INVOICE_ONLY_TIPE_PRODUK_LEGACY.has(norm)) return true;
   if (
     norm.includes("argopuro") &&
     norm.includes("walida") &&
@@ -1238,6 +1252,7 @@ async function loadMasterDataOptions() {
       .filter(Boolean);
 
     const produk = await window.API.MasterData.produk.getAll();
+    refreshMasterProdukLookup(produk);
     masterProdukNames = (produk || [])
       .map((p) => (p.nama || "").trim())
       .filter(Boolean)

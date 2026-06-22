@@ -166,7 +166,7 @@ async function displayProduk(options = {}) {
   if (dataProduk.length === 0) {
     tableBody.innerHTML = `
       <tr>
-        <td colspan="3" class="text-center py-4 text-muted">
+        <td colspan="4" class="text-center py-4 text-muted">
           <i class="bi bi-inbox fs-1 d-block mb-2"></i>
           Tidak ada data produk
         </td>
@@ -177,10 +177,16 @@ async function displayProduk(options = {}) {
 
   tableBody.innerHTML = dataProduk
     .map(
-      (item, index) => `
+      (item, index) => {
+        const kurangiStok = item.mengurangiStok !== false;
+        const stokBadge = kurangiStok
+          ? '<span class="badge bg-success">Ya</span>'
+          : '<span class="badge bg-secondary">Tidak (invoice-only)</span>';
+        return `
     <tr>
       <td>${index + 1}</td>
       <td><span class="badge bg-info">${item.nama}</span></td>
+      <td class="text-center">${stokBadge}</td>
       <td class="text-center">
         <button class="btn btn-sm btn-warning btn-action"           onclick="editProduk(${
           item.id || item._id || `'${item._id}'`
@@ -194,7 +200,8 @@ async function displayProduk(options = {}) {
         </button>
       </td>
     </tr>
-  `,
+  `;
+      },
     )
     .join("");
 }
@@ -208,6 +215,8 @@ function openModalProduk(mode = "add", id = null) {
     label.textContent = "Tambah Produk";
     form.reset();
     document.getElementById("produkId").value = "";
+    const chk = document.getElementById("produkMengurangiStok");
+    if (chk) chk.checked = true;
   } else {
     label.textContent = "Edit Produk";
   }
@@ -226,6 +235,8 @@ async function editProduk(id) {
 
     document.getElementById("produkId").value = item.id || item._id;
     document.getElementById("namaProduk").value = item.nama;
+    const chk = document.getElementById("produkMengurangiStok");
+    if (chk) chk.checked = item.mengurangiStok !== false;
     openModalProduk("edit", id);
   } catch (error) {
     console.error("Error loading produk for edit:", error);
@@ -244,6 +255,9 @@ async function saveProduk() {
 
   const id = document.getElementById("produkId").value;
   const nama = document.getElementById("namaProduk").value.trim();
+  const mengurangiStok = document.getElementById("produkMengurangiStok")
+    ? document.getElementById("produkMengurangiStok").checked
+    : true;
 
   // Validasi duplikasi
   const existing = dataProduk.find(
@@ -271,7 +285,7 @@ async function saveProduk() {
       throw new Error(errorMsg);
     }
 
-    const data = { nama };
+    const data = { nama, mengurangiStok };
     if (id) {
       // Edit via API (MongoDB ONLY)
       console.log("🔄 Updating produk via API:", id);
