@@ -166,6 +166,63 @@ function dashboardPemesananIsComplete(p) {
   return String(p?.statusPemesanan || "").trim() === "Complete";
 }
 
+function dashboardBarisPembayaranLunasTrue(raw) {
+  if (raw === undefined || raw === null) return true;
+  if (typeof raw === "boolean") return raw;
+  const s = String(raw).trim().toLowerCase();
+  if (["false", "0", "no", "tidak", "belum lunas", "belum"].includes(s))
+    return false;
+  return true;
+}
+
+function dashboardSumPembayaranKloterPemesanan(p) {
+  if (!p) return 0;
+  const agg = parseFloat(p.totalPembayaranKloter);
+  if (Number.isFinite(agg) && agg > 0) return Math.round(agg * 100) / 100;
+  const rows = p.kloter || p.items;
+  let s = 0;
+  if (Array.isArray(rows)) {
+    rows.forEach((r) => {
+      const v = parseFloat(r?.jumlahPembayaranKloter);
+      if (!Number.isFinite(v) || v <= 0) return;
+      if (!dashboardBarisPembayaranLunasTrue(r?.pembayaranKloterLunas)) return;
+      s += v;
+    });
+  }
+  const extra = p.pembayaranBertahapBaris;
+  if (Array.isArray(extra)) {
+    extra.forEach((it) => {
+      const v = parseFloat(it?.jumlahRp);
+      if (!Number.isFinite(v) || v <= 0) return;
+      if (!dashboardBarisPembayaranLunasTrue(it?.terminLunas)) return;
+      s += v;
+    });
+  }
+  return Math.round(s * 100) / 100;
+}
+
+function dashboardNilaiPemasukanDariPemesanan(p) {
+  const sb = String(p?.statusPembayaran || "").trim();
+  if (sb === "Lunas") return parseFloat(p.totalHarga) || 0;
+  if (sb === "Pembayaran Bertahap")
+    return dashboardSumPembayaranKloterPemesanan(p);
+  return 0;
+}
+
+function dashboardCalculatePemasukanStats(pemesananRows) {
+  const rows = dashboardEnsureArray(pemesananRows);
+  let totalPemasukan = 0;
+  let countTransaksi = 0;
+  rows.forEach((p) => {
+    const nilai = dashboardNilaiPemasukanDariPemesanan(p);
+    if (nilai > 0) {
+      totalPemasukan += nilai;
+      countTransaksi += 1;
+    }
+  });
+  return { totalPemasukan, countTransaksi };
+}
+
 function bindDashboardChartPeriodFilters() {
   const bahanSel = document.getElementById("dashboardBahanPeriodeFilter");
   const prodSel = document.getElementById("dashboardProduksiPeriodeFilter");
@@ -230,7 +287,8 @@ async function calculateStatistics() {
     hasilProduksi = [],
     pemasok = [],
     sanitasi = [],
-    keuangan = [];
+    keuangan = [],
+    pemesanan = [];
 
   try {
     if (window.API) {
@@ -243,10 +301,16 @@ async function calculateStatistics() {
       pemasok = window.API.Pemasok ? await window.API.Pemasok.getAll() : [];
       sanitasi = window.API.Sanitasi ? await window.API.Sanitasi.getAll() : [];
       keuangan = window.API.Keuangan ? await window.API.Keuangan.getAll() : [];
+      pemesanan = window.API.Pemesanan
+        ? await window.API.Pemesanan.getAll()
+        : [];
     }
   } catch (error) {
     console.error("Error loading data from API:", error);
   }
+
+  if (pemesanan && Array.isArray(pemesanan.data)) pemesanan = pemesanan.data;
+  if (!Array.isArray(pemesanan)) pemesanan = [];
 
   // Fallback to localStorage
   if (users.length === 0)
@@ -280,6 +344,8 @@ async function calculateStatistics() {
   } else {
     console.warn("⚠️ Dashboard - Tidak ada data keuangan ditemukan");
   }
+
+  const pemasukanStats = dashboardCalculatePemasukanStats(pemesanan);
 
   // Hitung statistik
   const stats = {
@@ -329,6 +395,8 @@ async function calculateStatistics() {
       const nilai = parseFloat(k.nilai) || 0;
       return sum + nilai;
     }, 0),
+    totalPemasukan: pemasukanStats.totalPemasukan,
+    totalTransaksiPemasukan: pemasukanStats.countTransaksi,
 
     // Statistik Sanitasi
     sanitasiComplete: sanitasi.filter((s) => s.status === "Complete").length,
@@ -435,6 +503,13 @@ async function displayStatisticsCards(animate = false) {
       icon: "bi-shield-check",
       color: "secondary",
       subtitle: `${stats.sanitasiComplete} Complete, ${stats.sanitasiUncomplete} Uncomplete`,
+    },
+    {
+      title: "Total Pemasukan",
+      value: `Rp ${stats.totalPemasukan.toLocaleString("id-ID")}`,
+      icon: "bi-arrow-up-circle",
+      color: "success",
+      subtitle: `${stats.totalTransaksiPemasukan.toLocaleString("id-ID")} transaksi lunas & cicilan`,
     },
     {
       title: "Total Pengeluaran",
@@ -561,6 +636,7 @@ function getPreviousValue(title) {
     "Hasil Produksi": previousStats.totalHasilProduksi,
     "Total Pemasok": previousStats.totalPemasok,
     "Total Sanitasi": previousStats.totalSanitasi,
+    "Total Pemasukan": previousStats.totalPemasukan,
     "Total Pengeluaran": previousStats.totalPengeluaran,
   };
 
