@@ -355,6 +355,7 @@ def validate_sequential_tahapan_dengan_master(master_proses, status_tahapan_baru
             'Pengeringan Awal (Para - Para)': 'Pengeringan Awal',
             'Pengeringan Awal kedua (Para - Para)': 'Pengeringan Awal',
             'Fermentasi 2': 'Fermentasi 2',
+            'Penjemuran Darkroom': 'Penjemuran Darkroom',
             'Pulping 2': 'Pulping 2',
             'Pengeringan Akhir': 'Pengeringan Akhir',
             'Pengeringan Akhir (Pengeringan Lantai)': 'Pengeringan Akhir',
@@ -370,7 +371,7 @@ def validate_sequential_tahapan_dengan_master(master_proses, status_tahapan_baru
         # Daftar urutan tahapan (sesuai urutan logis proses basah → pengeringan para-para → siklus kedua → pengeringan lantai → …)
         urutan_tahapan = [
             'Sortasi', 'Pengeringan Awal Pertama', 'Fermentasi', 'Pulping', 'Pencucian',
-            'Pengeringan Awal', 'Fermentasi 2', 'Pulping 2', 'Pengeringan Akhir',
+            'Pengeringan Awal', 'Fermentasi 2', 'Penjemuran Darkroom', 'Pulping 2', 'Pengeringan Akhir',
             'Hulling', 'Hand Sortasi', 'Grinding', 'Pengemasan',
         ]
         
@@ -1332,7 +1333,7 @@ def _upsert_catatan_per_tahapan(existing, nama_tahapan, catatan, tanggal_sekaran
 # Roasting disisipkan sebelum Pengemasan untuk data legacy.
 _URUTAN_TAHAPAN_PRODUKSI_SORT = (
     'Sortasi', 'Pengeringan Awal Pertama', 'Fermentasi', 'Pulping', 'Pencucian',
-    'Pengeringan Awal', 'Fermentasi 2', 'Pulping 2', 'Pengeringan Akhir',
+    'Pengeringan Awal', 'Fermentasi 2', 'Penjemuran Darkroom', 'Pulping 2', 'Pengeringan Akhir',
     'Hulling', 'Hand Sortasi', 'Grinding', 'Roasting', 'Pengemasan',
 )
 _URUTAN_TAHAPAN_PRODUKSI_SORT_INDEX = {n: i for i, n in enumerate(_URUTAN_TAHAPAN_PRODUKSI_SORT)}
@@ -1353,6 +1354,7 @@ _PRODUKSI_STATUS_LABEL_KE_KANON_SORT = {
     'Pencucian': 'Pencucian',
     'Pengeringan Awal': 'Pengeringan Awal',
     'Fermentasi 2': 'Fermentasi 2',
+    'Penjemuran Darkroom': 'Penjemuran Darkroom',
     'Pulping 2': 'Pulping 2',
     'Pengeringan Akhir': 'Pengeringan Akhir',
     'Grinding': 'Grinding',

@@ -21,6 +21,7 @@ const ALL_TAHAPAN = {
   Pencucian: "Pencucian",
   "Pengeringan Awal": "Pengeringan Awal kedua (Para - Para)",
   "Fermentasi 2": "Fermentasi 2",
+  "Penjemuran Darkroom": "Penjemuran Darkroom",
   "Pulping 2": "Pengupasan Kulit Tanduk (Hulling) Pertama",
   "Pengeringan Akhir": "Pengeringan Akhir (Pengeringan Lantai)",
   Hulling: "Pengupasan Kulit Tanduk (Hulling) Kedua",
