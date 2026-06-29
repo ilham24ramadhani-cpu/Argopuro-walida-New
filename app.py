@@ -5740,6 +5740,97 @@ def update_pemesanan(pemesanan_id):
         print(f"❌ [PEMESANAN UPDATE] ERROR: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+def _find_pemesanan_by_route_id(pemesanan_id):
+    """Cari dokumen pemesanan dari id route (ObjectId, idPembelian, atau id numerik)."""
+    pemesanan = None
+    try:
+        pemesanan = db.pemesanan.find_one({'_id': ObjectId(pemesanan_id)})
+    except Exception:
+        pass
+    if not pemesanan:
+        pemesanan = db.pemesanan.find_one({'idPembelian': pemesanan_id})
+    if not pemesanan:
+        try:
+            pemesanan = db.pemesanan.find_one({'id': int(pemesanan_id)})
+        except (TypeError, ValueError):
+            pass
+    return pemesanan
+
+
+def _revert_pemesanan_complete_to_ordering(pemesanan):
+    """
+    Batalkan Complete → Ordering: hapus jejak ordering & hasilProduksi ordering,
+    sehingga stok kembali seperti sebelum diproses. Status pembayaran tidak diubah.
+    """
+    cur = (pemesanan.get('statusPemesanan') or '').strip()
+    if cur != 'Complete':
+        return None, 'Pemesanan belum berstatus Complete'
+
+    id_pb = pemesanan.get('idPembelian')
+    if not id_pb:
+        return None, 'idPembelian tidak ditemukan pada pemesanan'
+
+    ordering_docs = list(db.ordering.find({'idPembelian': id_pb}))
+    invoice_only = any(o.get('invoiceOnly') for o in ordering_docs)
+
+    del_hp = db.hasilProduksi.delete_many({
+        'idPembelian': id_pb,
+        'isFromOrdering': {'$in': [True, 1]},
+    })
+    del_ord = db.ordering.delete_many({'idPembelian': id_pb})
+
+    db.pemesanan.update_one(
+        {'_id': pemesanan['_id']},
+        {'$set': {
+            'statusPemesanan': 'Ordering',
+            'updatedAt': datetime.now(),
+        }},
+    )
+
+    updated = db.pemesanan.find_one({'_id': pemesanan['_id']})
+    meta = {
+        'hasilProduksiRemoved': del_hp.deleted_count,
+        'orderingRemoved': del_ord.deleted_count,
+        'invoiceOnly': invoice_only,
+    }
+    return updated, meta
+
+
+@app.route('/api/pemesanan/<pemesanan_id>/undo-complete', methods=['POST'])
+def undo_pemesanan_complete(pemesanan_id):
+    """Batalkan status Complete — kembalikan ke Ordering dan restore stok (jika pernah dikurangi)."""
+    try:
+        print(f"↩️ [UNDO COMPLETE] Attempting undo for: {pemesanan_id}")
+        pemesanan = _find_pemesanan_by_route_id(pemesanan_id)
+        if not pemesanan:
+            return jsonify({'error': 'Pemesanan not found'}), 404
+
+        updated, err_or_meta = _revert_pemesanan_complete_to_ordering(pemesanan)
+        if err_or_meta and isinstance(err_or_meta, str):
+            return jsonify({'error': err_or_meta}), 400
+
+        meta = err_or_meta or {}
+        msg = 'Pemesanan dikembalikan ke Ordering.'
+        if meta.get('invoiceOnly'):
+            msg += ' (Invoice-only — stok tidak pernah dikurangi.)'
+        elif meta.get('hasilProduksiRemoved', 0) > 0:
+            msg += f" Stok dikembalikan ({meta['hasilProduksiRemoved']} baris alokasi dihapus)."
+        else:
+            msg += ' Jejak ordering dihapus.'
+
+        print(f"✅ [UNDO COMPLETE] {pemesanan.get('idPembelian')}: {meta}")
+        return jsonify({
+            'success': True,
+            'message': msg,
+            'pemesanan': json_serialize(updated),
+            **meta,
+        }), 200
+    except Exception as e:
+        print(f"❌ [UNDO COMPLETE] ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/pemesanan/<pemesanan_id>', methods=['DELETE'])
 def delete_pemesanan(pemesanan_id):
     """Delete pemesanan"""

@@ -180,9 +180,11 @@ function updatePemesananBulkToolbar() {
   const countEl = document.getElementById("pemesananSelectedCount");
   const btnComplete = document.getElementById("btnBulkCompletePemesanan");
   const btnDelete = document.getElementById("btnBulkDeletePemesanan");
+  const btnUndo = document.getElementById("btnBulkUndoCompletePemesanan");
   if (countEl) countEl.textContent = String(count);
   if (btnComplete) btnComplete.disabled = count === 0;
   if (btnDelete) btnDelete.disabled = count === 0;
+  if (btnUndo) btnUndo.disabled = count === 0;
 
   const selectAll = document.getElementById("selectAllPemesanan");
   if (!selectAll) return;
@@ -439,6 +441,141 @@ async function bulkDeletePemesanan() {
 
   if (window.showNotification && ok.length && !failed.length) {
     window.showNotification("delete", "Pemesanan", "success");
+  } else if (summary) {
+    alert(summary.trim());
+  }
+}
+
+async function undoCompletePemesanan(id) {
+  const p = findPemesananInCache(id);
+  const label = p?.idPembelian || id;
+  if (p && p.statusPemesanan !== "Complete") {
+    alert("Hanya pemesanan berstatus Complete yang bisa di-undo.");
+    return;
+  }
+
+  if (
+    !confirm(
+      `Batalkan Complete untuk "${label}"?\n\nStatus kembali ke Ordering` +
+        (pemesananIsInvoiceOnly(p)
+          ? " (invoice-only, stok tidak pernah dikurangi)."
+          : " dan stok yang pernah dikurangi akan dikembalikan.") +
+        "\n\nStatus pembayaran tidak diubah.",
+    )
+  ) {
+    return;
+  }
+
+  try {
+    const result = await window.API.Pemesanan.undoComplete(id);
+    if (result?.pemesanan) upsertPemesananInCache(result.pemesanan);
+
+    if (window.showNotification) {
+      window.showNotification(
+        "update",
+        "Pemesanan",
+        "success",
+        result?.message || "Pemesanan dikembalikan ke Ordering.",
+      );
+    } else {
+      alert(result?.message || "Pemesanan dikembalikan ke Ordering.");
+    }
+
+    await loadPemesanan();
+    await loadStokProduksi();
+    await loadStokData();
+    await loadOrderingData();
+    window.dispatchEvent(new CustomEvent("hasilProduksiUpdated"));
+    window.dispatchEvent(
+      new CustomEvent("dataUpdated", { detail: { type: "hasilProduksi" } }),
+    );
+  } catch (error) {
+    const errMsg = error?.data?.error || error?.message || "Gagal undo Complete";
+    if (window.showNotification) {
+      window.showNotification("update", "Pemesanan", "error", errMsg);
+    } else {
+      alert(`❌ ${errMsg}`);
+    }
+  }
+}
+
+async function bulkUndoCompletePemesanan() {
+  const docs = getSelectedPemesananDocs();
+  if (docs.length === 0) {
+    alert("Pilih minimal satu pemesanan.");
+    return;
+  }
+
+  const toUndo = docs.filter((p) => p.statusPemesanan === "Complete");
+  const notComplete = docs.length - toUndo.length;
+  if (toUndo.length === 0) {
+    alert("Tidak ada pemesanan Complete yang dipilih.");
+    return;
+  }
+
+  const msg =
+    `Batalkan Complete untuk ${toUndo.length} pemesanan?` +
+    (notComplete > 0
+      ? `\n(${notComplete} yang bukan Complete akan dilewati.)`
+      : "") +
+    "\n\nStatus kembali ke Ordering; stok dikembalikan jika pernah dikurangi. Status pembayaran tidak diubah.";
+  if (!confirm(msg)) return;
+
+  const btn = document.getElementById("btnBulkUndoCompletePemesanan");
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.prevHtml = btn.innerHTML;
+    btn.innerHTML =
+      '<span class="spinner-border spinner-border-sm me-1"></span>Memproses...';
+  }
+
+  const ok = [];
+  const failed = [];
+
+  for (const p of toUndo) {
+    const rowId = getPemesananRowId(p);
+    const label = p.idPembelian || rowId;
+    try {
+      const result = await window.API.Pemesanan.undoComplete(rowId);
+      if (result?.pemesanan) upsertPemesananInCache(result.pemesanan);
+      ok.push(label);
+      selectedPemesananIds.delete(rowId);
+    } catch (err) {
+      const errMsg = err?.data?.error || err?.message || "Gagal undo";
+      failed.push(`${label}: ${errMsg}`);
+    }
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    if (btn.dataset.prevHtml) {
+      btn.innerHTML = btn.dataset.prevHtml;
+      delete btn.dataset.prevHtml;
+    }
+  }
+
+  updatePemesananBulkToolbar();
+  await loadPemesanan();
+  await loadStokProduksi();
+  await loadStokData();
+  await loadOrderingData();
+  window.dispatchEvent(new CustomEvent("hasilProduksiUpdated"));
+  window.dispatchEvent(
+    new CustomEvent("dataUpdated", { detail: { type: "hasilProduksi" } }),
+  );
+
+  let summary = "";
+  if (ok.length) summary += `✅ Dikembalikan ke Ordering: ${ok.length} pemesanan\n`;
+  if (failed.length)
+    summary += `❌ Gagal (${failed.length}):\n${failed.join("\n")}`;
+
+  if (window.showNotification && ok.length && !failed.length) {
+    window.showNotification(
+      "update",
+      "Pemesanan",
+      "success",
+      `${ok.length} pemesanan dikembalikan ke Ordering.`,
+    );
   } else if (summary) {
     alert(summary.trim());
   }
@@ -1903,6 +2040,16 @@ function applyFilterPemesanan() {
             ${p.statusPemesanan === "Complete" ? "disabled" : ""}>
             <i class="bi bi-gear"></i>
           </button>
+          ${
+            p.statusPemesanan === "Complete"
+              ? `<button
+            class="btn btn-sm btn-secondary btn-action me-1"
+            onclick="undoCompletePemesanan('${p.idPembelian || p.id || p._id}')"
+            title="Batalkan Complete (kembali ke Ordering)">
+            <i class="bi bi-arrow-counterclockwise"></i>
+          </button>`
+              : ""
+          }
           <button 
             class="btn btn-sm btn-danger btn-action" 
             onclick="deletePemesanan('${p.idPembelian || p.id || p._id}')"
@@ -3574,6 +3721,8 @@ document.addEventListener("DOMContentLoaded", async function () {
   window.togglePemesananSelection = togglePemesananSelection;
   window.bulkCompletePemesanan = bulkCompletePemesanan;
   window.bulkDeletePemesanan = bulkDeletePemesanan;
+  window.undoCompletePemesanan = undoCompletePemesanan;
+  window.bulkUndoCompletePemesanan = bulkUndoCompletePemesanan;
   window.toggleNegaraField = toggleNegaraField;
   window.calculateTotalHarga = calculateTotalHarga;
   window.syncPembayaranKloterColumnsVisibility = syncPembayaranKloterColumnsVisibility;

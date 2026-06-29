@@ -936,6 +936,10 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
       return await apiCall(`/pemesanan/${id}`, "DELETE");
     },
 
+    async undoComplete(id) {
+      return await apiCall(`/pemesanan/${id}/undo-complete`, "POST");
+    },
+
     async getStok() {
       // MONGODB ONLY - NO FALLBACK
       return await apiCall("/pemesanan/stok");
