@@ -70,6 +70,11 @@ const checklistTemplates = {
     "Produk tidak langsung menyentuh lantai",
     "Adanya pemisahan bahan baku dan produk jadi",
     "Tidak ada bahan kimia di gudang pangan",
+    "Penerangan cukup",
+    "Langit-langit bersih",
+    "Pintu dan jendela bersih",
+    "Rak penyimpanan bersih",
+    "Kelembaban gudang sesuai",
   ],
   peralatan: [
     "Alat & mesin bersih",
@@ -91,6 +96,22 @@ const checklistTemplates = {
     "Bebas genangan & sarang nyamuk",
     "Tidak ada tumpukan bahan atau benda asing",
     "Pest control",
+    "Saluran luar bersih",
+    "Tempat sampah tertutup",
+    "Tidak ada debu berlebihan",
+  ],
+};
+
+/** Input manual (bukan checklist) per tipe sanitasi. */
+const sanitasiManualInputs = {
+  gudang: [
+    {
+      key: "suhu",
+      label: "Suhu",
+      unit: "°C",
+      placeholder: "Contoh: 25",
+      step: "0.1",
+    },
   ],
 };
 
@@ -252,24 +273,18 @@ window.changeTipeSanitasi = function () {
   }
 
   // Get existing checklist values if editing (support both id and _id)
-  const existingChecklist = currentEditId
+  const existingRecord = currentEditId
     ? sanitasi.find(
         (s) =>
           s.id === currentEditId ||
           s._id === currentEditId ||
           String(s._id) === String(currentEditId)
-      )?.checklist || {}
-    : {};
+      )
+    : null;
+  const existingChecklist = existingRecord?.checklist || {};
 
   // Get existing foto data if editing (support both id and _id)
-  const existingFotos = currentEditId
-    ? sanitasi.find(
-        (s) =>
-          s.id === currentEditId ||
-          s._id === currentEditId ||
-          String(s._id) === String(currentEditId)
-      )?.fotos || {}
-    : {};
+  const existingFotos = existingRecord?.fotos || {};
 
   const checklistHTML = checklistItems
     .map((item, index) => {
@@ -327,7 +342,41 @@ window.changeTipeSanitasi = function () {
     })
     .join("");
 
-  checklistContent.innerHTML = checklistHTML;
+  const manualFields = sanitasiManualInputs[tipe] || [];
+  const manualInputsHTML =
+    manualFields.length > 0
+      ? `
+      <div class="mt-4 pt-3 border-top">
+        <p class="fw-semibold small text-muted text-uppercase mb-3">Input Manual</p>
+        ${manualFields
+          .map((field) => {
+            const val =
+              existingRecord && existingRecord[field.key] != null
+                ? existingRecord[field.key]
+                : "";
+            return `
+          <div class="mb-3">
+            <label for="sanitasiManual_${field.key}" class="form-label fw-semibold">
+              ${field.label}${field.unit ? ` (${field.unit})` : ""}
+            </label>
+            <input
+              type="number"
+              class="form-control"
+              id="sanitasiManual_${field.key}"
+              name="sanitasiManual_${field.key}"
+              placeholder="${field.placeholder || ""}"
+              step="${field.step || "any"}"
+              value="${val !== "" ? val : ""}"
+              required
+            />
+            <small class="text-muted">Diisi manual, bukan checklist</small>
+          </div>`;
+          })
+          .join("")}
+      </div>`
+      : "";
+
+  checklistContent.innerHTML = checklistHTML + manualInputsHTML;
   console.log("✅ Checklist HTML rendered:", checklistItems.length, "items");
 
   // Verify checkboxes were actually rendered
@@ -376,6 +425,33 @@ window.updateStatus = function () {
   }
 };
 const updateStatus = window.updateStatus;
+
+function collectSanitasiManualFieldValues(tipe) {
+  const values = {};
+  const fields = sanitasiManualInputs[tipe] || [];
+  fields.forEach((field) => {
+    const el = document.getElementById(`sanitasiManual_${field.key}`);
+    if (!el || el.value === "") return;
+    const num = parseFloat(el.value);
+    values[field.key] = Number.isFinite(num) ? num : el.value;
+  });
+  return values;
+}
+
+function validateSanitasiManualFields(tipe) {
+  const fields = sanitasiManualInputs[tipe] || [];
+  for (const field of fields) {
+    const el = document.getElementById(`sanitasiManual_${field.key}`);
+    if (!el || el.value === "" || !Number.isFinite(parseFloat(el.value))) {
+      showAlert(
+        `${field.label} wajib diisi untuk tipe sanitasi ini`,
+        "warning"
+      );
+      return false;
+    }
+  }
+  return true;
+}
 
 // Toggle foto input berdasarkan checkbox - Make available globally
 window.toggleFotoInput = function (itemId, isChecked) {
@@ -687,6 +763,11 @@ window.viewDetail = async function (id) {
         ? '<span class="badge bg-success">Complete</span>'
         : '<span class="badge bg-warning">Uncomplete</span>';
 
+    const manualInfo =
+      data.tipe === "gudang" && data.suhu != null && data.suhu !== ""
+        ? `<p><strong>Suhu:</strong> ${data.suhu}°C</p>`
+        : "";
+
     const detailHtml = `
     <div class="row">
       <div class="col-md-6">
@@ -695,6 +776,7 @@ window.viewDetail = async function (id) {
         <p><strong>Tipe Sanitasi:</strong> ${tipeSanitasiNames[data.tipe]}</p>
         <p><strong>Nama Petugas:</strong> ${data.namaPetugas}</p>
         <p><strong>Status:</strong> ${statusBadge}</p>
+        ${manualInfo}
       </div>
       <div class="col-md-12">
         <p><strong>Checklist & Foto Bukti:</strong></p>
@@ -748,6 +830,10 @@ window.saveSanitasi = async function () {
   const tipe = document.getElementById("tipeSanitasi").value;
   if (!tipe) {
     showAlert("Pilih tipe sanitasi terlebih dahulu", "warning");
+    return;
+  }
+
+  if (!validateSanitasiManualFields(tipe)) {
     return;
   }
 
@@ -848,6 +934,11 @@ async function saveData(foto, fotos) {
   const status =
     allChecked && checkboxes.length > 0 ? "Complete" : "Uncomplete";
 
+  const manualValues = collectSanitasiManualFieldValues(tipe);
+  if (!validateSanitasiManualFields(tipe)) {
+    return;
+  }
+
   try {
     // Prepare data WITHOUT id (backend will generate it)
     const data = {
@@ -855,10 +946,15 @@ async function saveData(foto, fotos) {
       waktu: waktu,
       tipe: tipe,
       namaPetugas: namaPetugas,
-      fotos: fotos || {}, // Store fotos per checklist item
+      fotos: fotos || {},
       checklist: checklist,
       status: status,
     };
+    if (tipe === "gudang") {
+      Object.assign(data, manualValues);
+    } else {
+      data.suhu = null;
+    }
 
     if (currentEditId) {
       // Edit mode - Update via API (MongoDB ONLY)

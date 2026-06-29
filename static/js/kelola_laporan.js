@@ -1955,6 +1955,14 @@ const LAPORAN_REKAP_CONFIG = {
         label: "Checklist",
         value: (item) => getChecklistSummary(item.checklist) || "-",
       },
+      {
+        label: "Suhu (°C)",
+        align: "center",
+        value: (item) =>
+          item.tipe === "gudang" && item.suhu != null && item.suhu !== ""
+            ? `${item.suhu}°C`
+            : "-",
+      },
     ],
     filterKey: "gmp",
     dataset: () => sanitasi,
@@ -5176,12 +5184,19 @@ function displaySkpGmp() {
           const tanggalWaktu = item.waktu
             ? `${formatDate(item.tanggal)} ${item.waktu}`
             : formatDate(item.tanggal);
+          const keteranganParts = [];
+          if (tipe === "gudang" && item.suhu != null && item.suhu !== "") {
+            keteranganParts.push(`Suhu: ${item.suhu}°C`);
+          }
+          const chk = getChecklistSummary(item.checklist);
+          if (chk && chk !== "—") keteranganParts.push(chk);
+          const keterangan = keteranganParts.join(" · ") || "—";
           return `<tr>
             <td>${index + 1}</td>
             <td>${tanggalWaktu}</td>
             <td>${item.namaPetugas || "—"}</td>
             <td>${statusBadge}</td>
-            <td>${getChecklistSummary(item.checklist) || "—"}</td>
+            <td>${keterangan}</td>
             <td class="text-center">
               <button class="btn btn-sm btn-outline-primary" onclick="generateSanitasiPDF(${item.id})">
                 <i class="bi bi-file-pdf me-1"></i>Detail
@@ -5885,6 +5900,9 @@ function generateSanitasiPDF(id) {
     ["Nama Petugas", item.namaPetugas || "—"],
     ["Status", item.status || "—"],
   ];
+  if (item.tipe === "gudang" && item.suhu != null && item.suhu !== "") {
+    pairsSan.push(["Suhu (°C)", `${item.suhu}°C`]);
+  }
   y = pdfRenderKeyValueTable(doc, y, pairsSan, { title: "Ringkasan" });
 
   if (item.checklist) {

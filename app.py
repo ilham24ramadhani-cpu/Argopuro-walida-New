@@ -4277,7 +4277,8 @@ def create_sanitasi():
             'namaPetugas': data.get('namaPetugas'),
             'fotos': data.get('fotos', {}),
             'checklist': data.get('checklist', {}),
-            'status': data.get('status', 'Uncomplete')
+            'status': data.get('status', 'Uncomplete'),
+            'suhu': data.get('suhu'),
         }
         
         print(f"🔵 [SANITASI CREATE] Inserting to MongoDB collection 'sanitasi': {sanitasi_data}")
@@ -4305,7 +4306,7 @@ def update_sanitasi(sanitasi_id):
             return jsonify({'error': 'Sanitasi not found'}), 404
         
         update_data = {}
-        for field in ['tanggal', 'waktu', 'tipe', 'namaPetugas', 'fotos', 'checklist', 'status']:
+        for field in ['tanggal', 'waktu', 'tipe', 'namaPetugas', 'fotos', 'checklist', 'status', 'suhu']:
             if field in data:
                 update_data[field] = data[field]
         
