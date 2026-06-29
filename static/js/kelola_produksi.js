@@ -1686,7 +1686,7 @@ function showHasilRendemenDiTabelKelolaProduksi() {
 async function displayProduksi(options = {}) {
   const reloadData = options.reload !== false;
   const showRendemenCol = showHasilRendemenDiTabelKelolaProduksi();
-  const tableColspan = showRendemenCol ? 14 : 13;
+  const tableColspan = showRendemenCol ? 15 : 14;
   console.log("🔄 displayProduksi() called", { reloadData });
 
   if (reloadData) {
@@ -1875,6 +1875,7 @@ async function displayProduksi(options = {}) {
       ${rendemenTd}
       <td><span class="badge ${(window.getProsesPengolahanBadgeClass || ((a) => 'bg-secondary'))(prosesLabel, p.idProses)}">${prosesLabel}</span></td>
       <td>${p.kadarAir || "-"}%</td>
+      <td>${p.suhu != null && p.suhu !== "" ? `${p.suhu}°C` : "-"}</td>
       <td>${p.varietas || "-"}</td>
       <td>${new Date(p.tanggalMasuk).toLocaleDateString("id-ID")}</td>
       <td>${new Date(p.tanggalSekarang).toLocaleDateString("id-ID")}</td>
@@ -2507,6 +2508,11 @@ window.editProduksi = async function editProduksi(id) {
     } else {
       setElementValue("kadarAir", "");
     }
+    if (p.suhu !== null && p.suhu !== undefined) {
+      setElementValue("suhu", p.suhu);
+    } else {
+      setElementValue("suhu", "");
+    }
     // Toggle kadar air field berdasarkan status tahapan (untuk set required/optional)
     if (window.toggleKadarAirField) toggleKadarAirField();
     setElementValue("varietas", p.varietas);
@@ -2911,6 +2917,18 @@ window.saveProduksi = async function saveProduksi() {
       kadarAir = parseFloat(produksiLama.kadarAir);
     }
     console.log("📝 kadarAir:", kadarAir);
+
+    const suhuElement = document.getElementById("suhu");
+    let suhu = null;
+    if (suhuElement && suhuElement.value && suhuElement.value.trim() !== "") {
+      suhu = parseFloat(suhuElement.value);
+      if (isNaN(suhu)) {
+        alert("Suhu harus berupa angka yang valid.");
+        if (suhuElement) suhuElement.focus();
+        return;
+      }
+    }
+    console.log("📝 suhu:", suhu);
     
     // Validasi kadar air wajib untuk Pengeringan Awal & Akhir
     if (statusTahapan && (statusTahapan.includes("Pengeringan Awal") || statusTahapan.includes("Pengeringan Akhir"))) {
@@ -3505,6 +3523,7 @@ window.saveProduksi = async function saveProduksi() {
         prosesPengolahan || produksiLama?.prosesPengolahan || "",
       ),
       kadarAir: kadarAir !== null && !isNaN(kadarAir) ? parseFloat(kadarAir) : null,
+      suhu: suhu !== null && !isNaN(suhu) ? parseFloat(suhu) : null,
       varietas: String(varietas),
       tanggalMasuk: String(tanggalMasuk),
       tanggalSekarang: String(tanggalSekarang),
@@ -3604,6 +3623,7 @@ window.saveProduksi = async function saveProduksi() {
             beratTerkini: produksiLama.beratTerkini,
             beratAkhir: produksiLama.beratAkhir,
             kadarAir: produksiLama.kadarAir,
+            suhu: produksiLama.suhu ?? null,
           });
         }
 
@@ -3647,6 +3667,7 @@ window.saveProduksi = async function saveProduksi() {
           beratTerkini: beratTerkini,
           beratAkhir: beratAkhir,
           kadarAir: kadarAir,
+          suhu: suhu,
         },
       ];
 

@@ -429,6 +429,7 @@
                       </th>
                       <th scope="col">Proses Pengolahan</th>
                       <th scope="col">Kadar Air (%)</th>
+                      <th scope="col">Suhu (°C)</th>
                       <th scope="col">Varietas</th>
                       <th scope="col">Tanggal Masuk</th>
                       <th scope="col">Tanggal Sekarang</th>
@@ -685,7 +686,7 @@
               </div>
               <div class="row">
                 <!-- Field Kadar Air (selalu terlihat, bisa diisi untuk semua tahapan) -->
-                <div class="col-md-12 mb-3" id="kadarAirField">
+                <div class="col-md-6 mb-3" id="kadarAirField">
                   <label for="kadarAir" class="form-label"
                     >Kadar Air (%) <span class="text-danger" id="kadarAirAsterisk" style="display: none;">*</span></label
                   >
@@ -701,6 +702,23 @@
                   <small class="text-muted" id="kadarAirInfo">
                     <i class="bi bi-info-circle"></i>
                     Kadar air dapat diinputkan untuk semua tahapan. Wajib diisi untuk tahapan Pengeringan Awal dan Pengeringan Akhir.
+                  </small>
+                </div>
+                <!-- Field Suhu (opsional, bisa diisi untuk semua tahapan) -->
+                <div class="col-md-6 mb-3" id="suhuField">
+                  <label for="suhu" class="form-label"
+                    >Suhu (°C) <span class="text-muted fw-normal">(opsional)</span></label
+                  >
+                  <input
+                    type="number"
+                    class="form-control"
+                    id="suhu"
+                    placeholder="Masukkan suhu"
+                    step="0.1"
+                  />
+                  <small class="text-muted" id="suhuInfo">
+                    <i class="bi bi-info-circle"></i>
+                    Suhu dapat dicatat di setiap tahapan produksi. Tidak wajib diisi.
                   </small>
                 </div>
               </div>

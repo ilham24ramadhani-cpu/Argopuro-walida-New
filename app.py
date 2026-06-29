@@ -241,6 +241,112 @@ def get_next_id_produksi_preview():
     seq = get_next_id_preview(counter_key)
     return f"PRD-{yyyymm}-{str(seq).zfill(4)}"
 
+
+def normalize_haccp_payload(haccp_raw):
+    """Normalize HACCP data to full 5-module schema (backward compatible)."""
+    if not haccp_raw or not isinstance(haccp_raw, dict):
+        return None
+
+    hi = haccp_raw.get('hazardInspection')
+    if not isinstance(hi, dict):
+        legacy_hama_jamur = parse_bool_payload(haccp_raw.get('bebasHamaJamur'), False)
+        bebas_hama = parse_bool_payload(
+            haccp_raw.get('bebasHama'), legacy_hama_jamur
+        )
+        bebas_jamur = parse_bool_payload(
+            haccp_raw.get('bebasJamur'), legacy_hama_jamur
+        )
+        kondisi_fisik = parse_bool_payload(
+            haccp_raw.get('kondisiFisik'),
+            parse_bool_payload(haccp_raw.get('kondisiBaik'), False),
+        )
+        hi = {
+            'bebasBendaAsing': parse_bool_payload(haccp_raw.get('bebasBendaAsing'), False),
+            'bebasHama': bebas_hama,
+            'bebasJamur': bebas_jamur,
+            'kondisiFisik': kondisi_fisik,
+        }
+    else:
+        hi = {
+            'bebasBendaAsing': parse_bool_payload(hi.get('bebasBendaAsing'), False),
+            'bebasHama': parse_bool_payload(hi.get('bebasHama'), False),
+            'bebasJamur': parse_bool_payload(hi.get('bebasJamur'), False),
+            'kondisiFisik': parse_bool_payload(hi.get('kondisiFisik'), False),
+        }
+
+    all_pass = all(hi.values())
+    hi['status'] = 'Lolos' if all_pass else 'Tidak Lolos'
+
+    ccp_rows = haccp_raw.get('ccpMonitoring') or []
+    if not isinstance(ccp_rows, list):
+        ccp_rows = []
+
+    ca = haccp_raw.get('correctiveAction')
+    if ca is not None and not isinstance(ca, dict):
+        ca = None
+
+    verification = haccp_raw.get('verification') or {}
+    if not isinstance(verification, dict):
+        verification = {}
+
+    return {
+        'hazardInspection': hi,
+        'ccpMonitoring': ccp_rows,
+        'correctiveAction': ca,
+        'verification': verification,
+        'bebasBendaAsing': hi['bebasBendaAsing'],
+        'bebasHama': hi['bebasHama'],
+        'bebasJamur': hi['bebasJamur'],
+        'bebasHamaJamur': hi['bebasHama'] and hi['bebasJamur'],
+        'kondisiFisik': hi['kondisiFisik'],
+        'kondisiBaik': hi['kondisiFisik'],
+        'status': hi['status'],
+    }
+
+
+def _hazard_inspection_lolos(hi):
+    if not isinstance(hi, dict):
+        return False
+    return all([
+        parse_bool_payload(hi.get('bebasBendaAsing'), False),
+        parse_bool_payload(hi.get('bebasHama'), False),
+        parse_bool_payload(hi.get('bebasJamur'), False),
+        parse_bool_payload(hi.get('kondisiFisik'), False),
+    ])
+
+
+def sync_haccp_record(sumber, ref_id, haccp_data, petugas='', tanggal=None):
+    """Upsert audit record in haccp collection (modul Record)."""
+    if not haccp_data or not ref_id:
+        return
+    normalized = normalize_haccp_payload(haccp_data)
+    if not normalized:
+        return
+
+    tanggal = tanggal or datetime.now().strftime('%Y-%m-%d')
+    now_iso = datetime.now().isoformat()
+    existing = db.haccp.find_one({'sumber': sumber, 'refId': str(ref_id)})
+
+    record = {
+        'sumber': sumber,
+        'refId': str(ref_id),
+        'tanggal': tanggal,
+        'petugas': petugas or '',
+        'hazardInspection': normalized['hazardInspection'],
+        'ccpMonitoring': normalized.get('ccpMonitoring') or [],
+        'correctiveAction': normalized.get('correctiveAction'),
+        'verification': normalized.get('verification') or {},
+        'updatedAt': now_iso,
+    }
+
+    if existing:
+        db.haccp.update_one({'_id': existing['_id']}, {'$set': record})
+    else:
+        record['id'] = get_next_id('haccp')
+        record['createdAt'] = now_iso
+        db.haccp.insert_one(record)
+
+
 def _int_proses_id(v):
     try:
         if v is None or v == '':
@@ -1302,6 +1408,32 @@ def _normalize_catatan_produksi(raw):
     return s
 
 
+def _parse_suhu_celsius_optional(raw):
+    """Parse suhu (°C) opsional; None jika kosong atau tidak valid."""
+    if raw is None:
+        return None
+    if isinstance(raw, str) and not raw.strip():
+        return None
+    try:
+        val = float(raw)
+        if val != val:  # NaN
+            return None
+        return val
+    except (TypeError, ValueError):
+        return None
+
+
+def _suhu_equal(a, b):
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return False
+    try:
+        return abs(float(a) - float(b)) < 1e-9
+    except (TypeError, ValueError):
+        return a == b
+
+
 def _upsert_catatan_per_tahapan(existing, nama_tahapan, catatan, tanggal_sekarang):
     """
     Menyimpan catatan per nama tahapan. Entri dengan nama tahapan yang sama diganti
@@ -1692,6 +1824,8 @@ def create_produksi():
         # Kadar air bisa diinputkan untuk semua tahapan
         kadar_air_history = kadar_air_value
         
+        suhu_value = _parse_suhu_celsius_optional(data.get('suhu'))
+
         historyTahapan = [{
             'namaTahapan': data['statusTahapan'],  # Nama tahapan
             'statusTahapan': data['statusTahapan'],
@@ -1700,7 +1834,8 @@ def create_produksi():
             'beratAwal': data['beratAwal'],
             'beratTerkini': float(beratTerkini),
             'beratAkhir': float(beratAkhir) if beratAkhir else None,
-            'kadarAir': kadar_air_history  # Kadar air bisa diinputkan untuk semua tahapan
+            'kadarAir': kadar_air_history,  # Kadar air bisa diinputkan untuk semua tahapan
+            'suhu': suhu_value,  # Suhu (°C) opsional per tahapan
         }]
         foto_tahapan_baru = _sanitize_foto_tahapan_path(data.get('fotoTahapan'))
         if foto_tahapan_baru:
@@ -1719,6 +1854,7 @@ def create_produksi():
             'idProses': pid_proses,
             'prosesPengolahan': proses_pp,
             'kadarAir': kadar_air_value,  # Kadar air bisa diinputkan untuk semua tahapan
+            'suhu': suhu_value,  # Suhu (°C) opsional per tahapan
             'varietas': data['varietas'],
             'tanggalMasuk': data['tanggalMasuk'],
             'tanggalSekarang': data['tanggalSekarang'],
@@ -2021,9 +2157,14 @@ def update_produksi(produksi_id):
         statusChanged = produksi.get('statusTahapan') != data['statusTahapan']
         beratTerkiniChanged = produksi.get('beratTerkini') != float(beratTerkini)
         kadarAirChanged = produksi.get('kadarAir') != float(kadar_air) if kadar_air else False
+        if 'suhu' in data:
+            suhu_value = _parse_suhu_celsius_optional(data.get('suhu'))
+        else:
+            suhu_value = produksi.get('suhu')
+        suhuChanged = not _suhu_equal(produksi.get('suhu'), suhu_value)
         
-        # Add to history if status changed or if this is a weight/kadar air update for the same stage
-        if statusChanged or beratTerkiniChanged or kadarAirChanged:
+        # Add to history if status changed or if this is a weight/kadar air/suhu update for the same stage
+        if statusChanged or beratTerkiniChanged or kadarAirChanged or suhuChanged:
             # Tentukan kadar air untuk history
             # Gunakan kadar air baru jika ada, jika tidak gunakan kadar air lama
             kadar_air_history = None
@@ -2043,6 +2184,7 @@ def update_produksi(produksi_id):
                 'beratTerkini': produksi.get('beratTerkini'),
                 'beratAkhir': produksi.get('beratAkhir'),
                 'kadarAir': kadar_air_history,  # Kadar air (bisa diinputkan untuk semua tahapan)
+                'suhu': produksi.get('suhu'),  # Suhu (°C) opsional per tahapan
                 'catatan': _normalize_catatan_produksi(produksi.get('catatan')),
                 'pengguna': 'System',  # TODO: Ambil dari session jika ada
                 'userId': None  # TODO: Ambil dari session jika ada
@@ -2105,6 +2247,7 @@ def update_produksi(produksi_id):
             'idProses': pid_proses,
             'prosesPengolahan': proses_pp,
             'kadarAir': kadar_air_value,
+            'suhu': suhu_value,
             'varietas': data['varietas'],
             'tanggalMasuk': data['tanggalMasuk'],
             'tanggalSekarang': data['tanggalSekarang'],
@@ -2477,7 +2620,7 @@ def create_bahan():
         
         # HACCP if provided
         if 'haccp' in data:
-            bahan_data['haccp'] = data['haccp']
+            bahan_data['haccp'] = normalize_haccp_payload(data['haccp'])
 
         bahan_data['lunas'] = parse_bool_payload(data.get('lunas'), False)
         

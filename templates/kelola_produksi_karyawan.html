@@ -390,6 +390,7 @@
                       <th scope="col">Berat Akhir (kg)</th>
                       <th scope="col">Proses Pengolahan</th>
                       <th scope="col">Kadar Air (%)</th>
+                      <th scope="col">Suhu (°C)</th>
                       <th scope="col">Varietas</th>
                       <th scope="col">Tanggal Masuk</th>
                       <th scope="col">Tanggal Sekarang</th>
@@ -523,10 +524,15 @@
                 </div>
               </div>
               <div class="row">
-                <div class="col-md-12 mb-3" id="kadarAirField">
+                <div class="col-md-6 mb-3" id="kadarAirField">
                   <label for="kadarAir" class="form-label">Kadar Air (%) <span class="text-danger" id="kadarAirAsterisk" style="display: none;">*</span></label>
                   <input type="number" class="form-control" id="kadarAir" placeholder="Masukkan kadar air" min="0" max="100" step="0.1" />
                   <small class="text-muted" id="kadarAirInfo">Wajib untuk tahapan Pengeringan Awal dan Pengeringan Akhir.</small>
+                </div>
+                <div class="col-md-6 mb-3" id="suhuField">
+                  <label for="suhu" class="form-label">Suhu (°C) <span class="text-muted fw-normal">(opsional)</span></label>
+                  <input type="number" class="form-control" id="suhu" placeholder="Masukkan suhu" step="0.1" />
+                  <small class="text-muted" id="suhuInfo">Suhu dapat dicatat di setiap tahapan. Tidak wajib diisi.</small>
                 </div>
               </div>
               <div class="row">

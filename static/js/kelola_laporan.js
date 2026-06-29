@@ -342,6 +342,12 @@ function buildAlurProduksiTableRows(item, options = {}) {
     if (v == null || v === "") return "—";
     return `${v}%`;
   };
+  const fmtSuhu = (v) => {
+    if (v == null || v === "") return "—";
+    const n = typeof v === "number" ? v : parseFloat(v);
+    if (!Number.isFinite(n)) return "—";
+    return `${n}°C`;
+  };
   const fmtRendemen = (hasilKg) => {
     if (!PR) return "—";
     const b = PR.safeNum(item.beratAwal);
@@ -362,6 +368,7 @@ function buildAlurProduksiTableRows(item, options = {}) {
       beratAkhir: fmtKg(item.beratAkhir),
       rendemen: fmtRendemen(hk),
       kadar: fmtKadar(item.kadarAir),
+      suhu: fmtSuhu(item.suhu),
       catatan: (item.catatan && String(item.catatan).trim()) || "—",
       fotoSrc: fotoU,
       fotoPdf: fotoU ? "Ada" : "—",
@@ -385,6 +392,7 @@ function buildAlurProduksiTableRows(item, options = {}) {
       beratAkhir: fmtKg(h.beratAkhir),
       rendemen: fmtRendemen(hk),
       kadar: fmtKadar(h.kadarAir),
+      suhu: fmtSuhu(h.suhu),
       catatan: (h.catatan && String(h.catatan).trim()) || "—",
       fotoSrc: fotoU,
       fotoPdf: fotoU ? "Ada" : "—",
@@ -401,6 +409,7 @@ function buildAlurProduksiTableRows(item, options = {}) {
     beratAkhir: fmtKg(item.beratAkhir),
     rendemen: fmtRendemen(hkCur),
     kadar: fmtKadar(item.kadarAir),
+    suhu: fmtSuhu(item.suhu),
     catatan: (item.catatan && String(item.catatan).trim()) || "—",
     fotoSrc: fotoCur,
     fotoPdf: fotoCur ? "Ada" : "—",
@@ -489,8 +498,9 @@ function pdfRenderKeyValueTable(doc, y, pairs, options = {}) {
  */
 async function pdfRenderAlurProduksiTable(doc, y, rows) {
   if (!rows || rows.length === 0) return y;
-  const hw = [5, 30, 20, 12, 12, 11, 9, 14, 57];
-  const n = 9;
+  const hw = [5, 28, 18, 11, 11, 10, 8, 8, 13, 58];
+  const n = 10;
+  const fotoColIdx = 8;
   const x = [20];
   for (let i = 0; i < n; i++) x.push(x[i] + hw[i]);
   const lineH = 2.75;
@@ -510,6 +520,7 @@ async function pdfRenderAlurProduksiTable(doc, y, rows) {
     "B. akhir",
     "Rendemen",
     "Kadar",
+    "Suhu",
     "Foto",
     "Catatan",
   ];
@@ -519,7 +530,7 @@ async function pdfRenderAlurProduksiTable(doc, y, rows) {
     doc.setFont(undefined, isHeader ? "bold" : "normal");
     doc.setTextColor(0, 0, 0);
     const cellLines = cells.map((text, i) => {
-      if (i === 7 && fotoImg) {
+      if (i === fotoColIdx && fotoImg) {
         return [""];
       }
       return doc.splitTextToSize(String(text ?? "—"), hw[i] - 1.5);
@@ -544,7 +555,7 @@ async function pdfRenderAlurProduksiTable(doc, y, rows) {
       } else {
         doc.rect(x[i], rowTop, hw[i], rowH, "S");
       }
-      if (i === 7 && fotoImg) {
+      if (i === fotoColIdx && fotoImg) {
         const imgW = Math.min(fotoBoxMm, hw[i] - 2);
         const imgH = imgW;
         const ix = x[i] + (hw[i] - imgW) / 2;
@@ -577,6 +588,7 @@ async function pdfRenderAlurProduksiTable(doc, y, rows) {
       r.beratAkhir,
       r.rendemen != null ? r.rendemen : "—",
       r.kadar,
+      r.suhu,
       fi ? "\u00a0" : "—",
       r.catatan,
     ];
@@ -600,6 +612,7 @@ function buildAlurProduksiTableHtml(item) {
     <th scope="col" class="text-nowrap">B. akhir</th>
     <th scope="col" class="text-nowrap" title="N banding 1: kg bahan per 1 kg hasil tahap (dua angka di belakang koma)">Rendemen</th>
     <th scope="col" class="text-nowrap">Kadar</th>
+    <th scope="col" class="text-nowrap">Suhu</th>
     <th scope="col" class="text-center text-nowrap">Foto</th>
     <th scope="col">Catatan</th>
   </tr>`;
@@ -618,6 +631,7 @@ function buildAlurProduksiTableHtml(item) {
       <td class="text-nowrap">${escapeHtmlLaporan(r.beratAkhir)}</td>
       <td class="text-nowrap small">${escapeHtmlLaporan(r.rendemen != null ? r.rendemen : "—")}</td>
       <td class="text-nowrap">${escapeHtmlLaporan(r.kadar)}</td>
+      <td class="text-nowrap">${escapeHtmlLaporan(r.suhu)}</td>
       <td class="text-center align-middle p-2">${fotoCell}</td>
       <td class="small text-break">${escapeHtmlLaporan(r.catatan)}</td>
     </tr>`;
@@ -1660,6 +1674,21 @@ const LAPORAN_REKAP_CONFIG = {
           return k > 0 ? k : null;
         },
         excelNumFmt: "0.00",
+      },
+      {
+        label: "Suhu",
+        align: "center",
+        value: (item) =>
+          item.suhu != null && item.suhu !== "" ? `${item.suhu}°C` : "-",
+        excelValue: (item) => {
+          if (item.suhu == null || item.suhu === "") return null;
+          const n =
+            typeof item.suhu === "number"
+              ? item.suhu
+              : safeNumber(String(item.suhu).replace(/°C/gi, "").trim());
+          return Number.isFinite(n) ? n : null;
+        },
+        excelNumFmt: "0.0",
       },
       {
         label: "Tanggal Masuk",
@@ -4558,9 +4587,14 @@ function buildTimelineSteps(item, bahanById) {
   steps.push({
     title: "Proses Pengolahan",
     subtitle: prosesLabel,
-    details: item.kadarAir
-      ? `Kadar air ${item.kadarAir}%`
-      : "Kadar air belum diinput",
+    details: [
+      item.kadarAir ? `Kadar air ${item.kadarAir}%` : "Kadar air belum diinput",
+      item.suhu != null && item.suhu !== ""
+        ? `Suhu ${item.suhu}°C`
+        : "Suhu belum diinput",
+    ]
+      .filter(Boolean)
+      .join(" • "),
   });
 
   steps.push({
@@ -4765,6 +4799,7 @@ function displayProduksi() {
       <td class="text-nowrap small" title="${titleR}">${escapeHtmlLaporan(cellRendemenId)}</td>
       <td><span class="badge ${(window.getProsesPengolahanBadgeClass || ((a) => 'bg-secondary'))(prosesTampilan, item.idProses)}">${prosesTampilan}</span></td>
       <td>${item.kadarAir ? item.kadarAir + "%" : "-"}</td>
+      <td>${item.suhu != null && item.suhu !== "" ? item.suhu + "°C" : "-"}</td>
       <td>${item.varietas || "-"}</td>
       <td>${formatDate(item.tanggalMasuk)}</td>
       <td>${formatDate(item.tanggalSekarang)}</td>
@@ -5007,6 +5042,7 @@ async function generateProduksiPDF(id) {
     ["Rendemen (per ID produksi)", rndPerId],
     ["Proses Pengolahan", prosesTampilanPdf],
     ["Kadar Air", item.kadarAir ? `${item.kadarAir}%` : "—"],
+    ["Suhu", item.suhu != null && item.suhu !== "" ? `${item.suhu}°C` : "—"],
     ["Varietas", item.varietas || "—"],
     ["Tanggal Masuk", formatDate(item.tanggalMasuk)],
     ["Tanggal Sekarang", formatDate(item.tanggalSekarang)],
@@ -5062,7 +5098,7 @@ async function generateProduksiPDF(id) {
   doc.setFont(undefined, "normal");
   doc.setTextColor(80, 80, 80);
   doc.text(
-    "Tiap baris: rendemen = N banding 1 (dua desimal), bahan per 1 kg green beans (pengemasan); pixel tidak di penyebut; kadar air, catatan.",
+    "Tiap baris: rendemen = N banding 1 (dua desimal), bahan per 1 kg green beans (pengemasan); pixel tidak di penyebut; kadar air, suhu, catatan.",
     20,
     y
   );
@@ -5366,6 +5402,20 @@ async function generateHasilProduksiPDF(id) {
     doc.setFont(undefined, "normal");
     doc.text(
       `${produksiData.kadarAir ? produksiData.kadarAir + "%" : "-"}`,
+      60,
+      y
+    );
+    y += 10;
+
+    doc.setFont(undefined, "bold");
+    doc.text("Suhu:", 20, y);
+    doc.setFont(undefined, "normal");
+    doc.text(
+      `${
+        produksiData.suhu != null && produksiData.suhu !== ""
+          ? produksiData.suhu + "°C"
+          : "-"
+      }`,
       60,
       y
     );
@@ -6354,6 +6404,12 @@ async function generateDataKemasanPDF(id) {
           "Kadar Air",
           produksiData.kadarAir ? `${produksiData.kadarAir}%` : "—",
         ],
+        [
+          "Suhu",
+          produksiData.suhu != null && produksiData.suhu !== ""
+            ? `${produksiData.suhu}°C`
+            : "—",
+        ],
         ["Varietas", produksiData.varietas || "—"],
         ["Tanggal Masuk", formatDate(produksiData.tanggalMasuk)],
         ["Tanggal Sekarang", formatDate(produksiData.tanggalSekarang)],
@@ -6376,7 +6432,7 @@ async function generateDataKemasanPDF(id) {
       detailDoc.setFont(undefined, "normal");
       detailDoc.setTextColor(80, 80, 80);
       detailDoc.text(
-        "Tiap baris: tahapan, tanggal, berat, kadar, catatan.",
+        "Tiap baris: tahapan, tanggal, berat, kadar, suhu, catatan.",
         20,
         detailY
       );
