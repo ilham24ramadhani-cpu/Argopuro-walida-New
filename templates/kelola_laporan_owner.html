@@ -347,15 +347,15 @@
             <li class="nav-item" role="presentation">
               <button
                 class="nav-link"
-                id="sanitasi-tab"
+                id="skp-tab"
                 data-bs-toggle="tab"
-                data-bs-target="#sanitasi"
+                data-bs-target="#skp"
                 type="button"
                 role="tab"
-                aria-controls="sanitasi"
+                aria-controls="skp"
                 aria-selected="false"
               >
-                <i class="bi bi-shield-check me-2"></i>Laporan Sanitasi
+                <i class="bi bi-shield-check me-2"></i>Laporan Standarisasi Keamanan Pangan
               </button>
             </li>
             <li class="nav-item" role="presentation">
@@ -777,129 +777,136 @@
               </div>
             </div>
 
-            <!-- Tab Sanitasi -->
+            <!-- Tab Standarisasi Keamanan Pangan (HACCP & GMP) -->
             <div
               class="tab-pane fade"
-              id="sanitasi"
+              id="skp"
               role="tabpanel"
-              aria-labelledby="sanitasi-tab"
+              aria-labelledby="skp-tab"
             >
-              <div class="row gy-3 gx-3 align-items-end mb-3 filter-bar">
-                <div class="col-md-4">
-                  <label
-                    for="sanitasiFilterMode"
-                    class="form-label small text-muted mb-1"
-                    >Filter Waktu</label
-                  >
-                  <select
-                    id="sanitasiFilterMode"
-                    class="form-select form-select-sm"
-                    aria-label="Filter waktu sanitasi"
-                  >
-                    <option value="all">Semua</option>
-                    <option value="daily">Harian</option>
-                    <option value="monthly">Bulanan</option>
-                    <option value="month_only">Bulan saja (semua tahun)</option>
-                    <option value="yearly">Tahunan</option>
-                  </select>
-                </div>
-                <div class="col-md-4">
-                  <label
-                    for="sanitasiFilterValue"
-                    class="form-label small text-muted mb-1"
-                    >Nilai Filter</label
-                  >
-                  <input
-                    type="date"
-                    id="sanitasiFilterValue"
-                    class="form-control form-control-sm"
-                    aria-label="Nilai filter sanitasi"
-                    disabled
-                  />
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small text-muted mb-1 invisible"
-                    >Reset</label
-                  >
-                  <button
-                    id="sanitasiFilterReset"
-                    class="btn btn-outline-secondary btn-sm w-100"
-                    type="button"
-                  >
-                    Reset
-                  </button>
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label small text-muted mb-1 invisible"
-                    >Export rekap</label
-                  >
-                  <div class="btn-group w-100">
-                    <button
-                      class="btn btn-primary btn-sm dropdown-toggle w-100"
-                      type="button"
-                      data-bs-toggle="dropdown"
-                      aria-expanded="false"
-                      aria-label="Export rekap sanitasi"
-                    >
-                      <i class="bi bi-download me-1"></i>Export
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
-                      <li>
-                        <button
-                          type="button"
-                          class="dropdown-item"
-                          onclick="exportRekapView('sanitasi')"
-                        >
-                          <i class="bi bi-eye text-primary me-2"></i>
-                          Lihat rekap
-                        </button>
-                      </li>
-                      <li>
-                        <button
-                          type="button"
-                          class="dropdown-item"
-                          onclick="exportRekapPdf('sanitasi')"
-                        >
-                          <i class="bi bi-file-earmark-pdf text-danger me-2"></i
-                          >PDF (cetak / simpan)
-                        </button>
-                      </li>
-                      <li>
-                        <button
-                          type="button"
-                          class="dropdown-item"
-                          onclick="exportRekapExcel('sanitasi')"
-                        >
-                          <i
-                            class="bi bi-file-earmark-spreadsheet text-success me-2"
-                          ></i
-                          >Excel (.xlsx)
-                        </button>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
+              <div
+                class="alert alert-info d-flex align-items-start mb-3 shadow-sm py-2"
+                role="alert"
+              >
+                <i class="bi bi-info-circle me-2 mt-1"></i>
+                <p class="mb-0 small">
+                  Laporan standarisasi keamanan pangan terdiri dari
+                  <strong>HACCP</strong> (monitoring suhu, kadar air, dan ceklis
+                  per lot produksi per tahapan) dan
+                  <strong>GMP</strong> (data sanitasi per kategori tipe).
+                </p>
               </div>
-              <div class="card shadow-sm">
-                <div class="card-body">
-                  <div class="table-responsive">
-                    <table class="table table-hover align-middle">
-                      <thead class="table-light">
-                        <tr>
-                          <th scope="col">No</th>
-                          <th scope="col">Tanggal</th>
-                          <th scope="col">Tipe Sanitasi</th>
-                          <th scope="col">Petugas</th>
-                          <th scope="col">Status</th>
-                          <th scope="col">Keterangan</th>
-                          <th scope="col" class="text-center">Lihat Detail</th>
-                        </tr>
-                      </thead>
-                      <tbody id="tableSanitasi">
-                        <!-- Data akan diisi oleh JavaScript -->
-                      </tbody>
-                    </table>
+
+              <ul class="nav nav-pills mb-3" id="skpSubTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                  <button
+                    class="nav-link active"
+                    id="skp-haccp-subtab"
+                    data-bs-toggle="tab"
+                    data-bs-target="#skp-haccp-pane"
+                    type="button"
+                    role="tab"
+                    aria-controls="skp-haccp-pane"
+                    aria-selected="true"
+                  >
+                    <i class="bi bi-thermometer-half me-1"></i>HACCP
+                  </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                  <button
+                    class="nav-link"
+                    id="skp-gmp-subtab"
+                    data-bs-toggle="tab"
+                    data-bs-target="#skp-gmp-pane"
+                    type="button"
+                    role="tab"
+                    aria-controls="skp-gmp-pane"
+                    aria-selected="false"
+                  >
+                    <i class="bi bi-droplet-half me-1"></i>GMP (Sanitasi)
+                  </button>
+                </li>
+              </ul>
+
+              <div class="tab-content" id="skpSubTabContent">
+                <div
+                  class="tab-pane fade show active"
+                  id="skp-haccp-pane"
+                  role="tabpanel"
+                  aria-labelledby="skp-haccp-subtab"
+                >
+                  <div class="row gy-3 gx-3 align-items-end mb-3 filter-bar">
+                    <div class="col-md-4">
+                      <label for="haccpFilterMode" class="form-label small text-muted mb-1">Filter Waktu</label>
+                      <select id="haccpFilterMode" class="form-select form-select-sm" aria-label="Filter waktu HACCP">
+                        <option value="all">Semua</option>
+                        <option value="daily">Harian</option>
+                        <option value="monthly">Bulanan</option>
+                        <option value="month_only">Bulan saja (semua tahun)</option>
+                        <option value="yearly">Tahunan</option>
+                      </select>
+                    </div>
+                    <div class="col-md-4">
+                      <label for="haccpFilterValue" class="form-label small text-muted mb-1">Nilai Filter</label>
+                      <input type="date" id="haccpFilterValue" class="form-control form-control-sm" aria-label="Nilai filter HACCP" disabled />
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label small text-muted mb-1 invisible">Reset</label>
+                      <button id="haccpFilterReset" class="btn btn-outline-secondary btn-sm w-100" type="button">Reset</button>
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label small text-muted mb-1 invisible">Export rekap</label>
+                      <div class="btn-group w-100">
+                        <button class="btn btn-primary btn-sm dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Export rekap HACCP">
+                          <i class="bi bi-download me-1"></i>Export
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                          <li><button type="button" class="dropdown-item" onclick="exportRekapView('skp_haccp')"><i class="bi bi-eye text-primary me-2"></i>Lihat rekap</button></li>
+                          <li><button type="button" class="dropdown-item" onclick="exportRekapPdf('skp_haccp')"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>PDF (cetak / simpan)</button></li>
+                          <li><button type="button" class="dropdown-item" onclick="exportRekapExcel('skp_haccp')"><i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>Excel (.xlsx)</button></li>
+                        </ul>
+                      </div>
+                    </div>
                   </div>
+                  <div id="haccpEmptyState" class="alert alert-info d-none mb-3">Belum ada data produksi untuk laporan HACCP.</div>
+                  <div class="accordion" id="haccpLotAccordion"></div>
+                </div>
+
+                <div class="tab-pane fade" id="skp-gmp-pane" role="tabpanel" aria-labelledby="skp-gmp-subtab">
+                  <div class="row gy-3 gx-3 align-items-end mb-3 filter-bar">
+                    <div class="col-md-4">
+                      <label for="gmpFilterMode" class="form-label small text-muted mb-1">Filter Waktu</label>
+                      <select id="gmpFilterMode" class="form-select form-select-sm" aria-label="Filter waktu GMP">
+                        <option value="all">Semua</option>
+                        <option value="daily">Harian</option>
+                        <option value="monthly">Bulanan</option>
+                        <option value="month_only">Bulan saja (semua tahun)</option>
+                        <option value="yearly">Tahunan</option>
+                      </select>
+                    </div>
+                    <div class="col-md-4">
+                      <label for="gmpFilterValue" class="form-label small text-muted mb-1">Nilai Filter</label>
+                      <input type="date" id="gmpFilterValue" class="form-control form-control-sm" aria-label="Nilai filter GMP" disabled />
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label small text-muted mb-1 invisible">Reset</label>
+                      <button id="gmpFilterReset" class="btn btn-outline-secondary btn-sm w-100" type="button">Reset</button>
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label small text-muted mb-1 invisible">Export rekap</label>
+                      <div class="btn-group w-100">
+                        <button class="btn btn-primary btn-sm dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Export rekap GMP">
+                          <i class="bi bi-download me-1"></i>Export
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                          <li><button type="button" class="dropdown-item" onclick="exportRekapView('skp_gmp')"><i class="bi bi-eye text-primary me-2"></i>Lihat rekap</button></li>
+                          <li><button type="button" class="dropdown-item" onclick="exportRekapPdf('skp_gmp')"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>PDF (cetak / simpan)</button></li>
+                          <li><button type="button" class="dropdown-item" onclick="exportRekapExcel('skp_gmp')"><i class="bi bi-file-earmark-spreadsheet text-success me-2"></i>Excel (.xlsx)</button></li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  <div id="gmpCategorySections"></div>
                 </div>
               </div>
             </div>

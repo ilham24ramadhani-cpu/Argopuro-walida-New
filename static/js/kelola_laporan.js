@@ -1026,7 +1026,8 @@ async function refreshAllTables() {
     console.log("📊 Displaying all tables...");
     displayBahan();
     displayProduksi();
-    displaySanitasi();
+    displaySkpHaccp();
+    displaySkpGmp();
     displayPemasok();
     displayKeuangan();
     displayStok();
@@ -1389,7 +1390,8 @@ const tableFilters = {
     statusTahapan: "",
   },
   hasil: { mode: "all", value: "" },
-  sanitasi: { mode: "all", value: "" },
+  haccp: { mode: "all", value: "" },
+  gmp: { mode: "all", value: "" },
   keuangan: { mode: "all", value: "", jenisPengeluaran: "" },
   stok: { mode: "all", value: "" },
 };
@@ -1413,10 +1415,16 @@ const TABLE_FILTER_CONFIG = {
     resetId: "hasilFilterReset",
     getDate: (item) => item.tanggal,
   },
-  sanitasi: {
-    modeId: "sanitasiFilterMode",
-    valueId: "sanitasiFilterValue",
-    resetId: "sanitasiFilterReset",
+  haccp: {
+    modeId: "haccpFilterMode",
+    valueId: "haccpFilterValue",
+    resetId: "haccpFilterReset",
+    getDate: (item) => item.tanggalMasuk,
+  },
+  gmp: {
+    modeId: "gmpFilterMode",
+    valueId: "gmpFilterValue",
+    resetId: "gmpFilterReset",
     getDate: (item) => item.tanggal,
   },
   keuangan: {
@@ -1431,7 +1439,8 @@ const TABLE_RENDERERS = {
   bahan: () => displayBahan(),
   produksi: () => displayProduksi(),
   // hasil: () => displayHasilProduksi(), // Dihapus karena laporan hasil produksi sudah tidak digunakan
-  sanitasi: () => displaySanitasi(),
+  haccp: () => displaySkpHaccp(),
+  gmp: () => displaySkpGmp(),
   keuangan: () => displayKeuangan(),
   stok: () => displayStok(),
   pemesanan: () => displayPemesananLaporan(),
@@ -1886,14 +1895,56 @@ const LAPORAN_REKAP_CONFIG = {
       ];
     },
   },
-  sanitasi: {
-    title: "Laporan Rekap Sanitasi",
+  skp_haccp: {
+    title: "Laporan Rekap HACCP (Standarisasi Keamanan Pangan)",
     columns: [
+      { label: "ID Produksi", value: (item) => item.idProduksi || "-" },
+      {
+        label: "Proses Pengolahan",
+        value: (item) => item.prosesPengolahan || "-",
+      },
+      { label: "Tahapan", value: (item) => item.tahapan || "-" },
       { label: "Tanggal", value: (item) => formatDate(item.tanggal) },
       {
-        label: "Tipe",
+        label: "Suhu (°C)",
+        align: "center",
+        value: (item) =>
+          item.suhu != null && item.suhu !== "" ? `${item.suhu}°C` : "-",
+      },
+      {
+        label: "Kadar Air (%)",
+        align: "center",
+        value: (item) =>
+          item.kadarAir != null && item.kadarAir !== ""
+            ? `${item.kadarAir}%`
+            : "-",
+      },
+      {
+        label: "Ceklis HACCP",
+        value: (item) => formatHaccpChecklistSummary(item.haccp) || "-",
+      },
+    ],
+    filterKey: "haccp",
+    dataset: () => flattenHaccpRekapRows(getHaccpFilteredForDisplay()),
+    dateGetter: (item) => item.tanggal,
+    averages: [
+      {
+        label: "Total Lot Produksi",
+        compute: (items) => {
+          const lots = new Set(items.map((e) => e.idProduksi).filter(Boolean));
+          return lots.size || "-";
+        },
+      },
+    ],
+  },
+  skp_gmp: {
+    title: "Laporan Rekap GMP — Sanitasi (Standarisasi Keamanan Pangan)",
+    columns: [
+      {
+        label: "Tipe Sanitasi",
         value: (item) => tipeSanitasiNames[item.tipe] || item.tipe || "-",
       },
+      { label: "Tanggal", value: (item) => formatDate(item.tanggal) },
       { label: "Petugas", value: (item) => item.namaPetugas || "-" },
       {
         label: "Status",
@@ -1905,7 +1956,7 @@ const LAPORAN_REKAP_CONFIG = {
         value: (item) => getChecklistSummary(item.checklist) || "-",
       },
     ],
-    filterKey: "sanitasi",
+    filterKey: "gmp",
     dataset: () => sanitasi,
     dateGetter: (item) => item.tanggal,
     averages: [
@@ -2780,8 +2831,13 @@ function getFilteredDataForCategory(category) {
       return getProduksiFilteredForDisplay();
     case "hasil":
       return applyTableFilter("hasil", hasilProduksi, (item) => item.tanggal);
-    case "sanitasi":
-      return applyTableFilter("sanitasi", sanitasi, (item) => item.tanggal);
+    case "haccp":
+      return flattenHaccpRekapRows(getHaccpFilteredForDisplay());
+    case "skp_haccp":
+      return flattenHaccpRekapRows(getHaccpFilteredForDisplay());
+    case "gmp":
+    case "skp_gmp":
+      return applyTableFilter("gmp", sanitasi, (item) => item.tanggal);
     case "keuangan":
       return applyTableFilter("keuangan", keuangan, (item) => item.tanggal);
     case "stok":
@@ -3042,7 +3098,9 @@ function getFilterDescription(category) {
     if (fq) parts.push(`Pencarian: "${fq}"`);
     return parts.length ? parts.join(" | ") : "Filter: semua data pembeli";
   }
-  const filter = tableFilters[category];
+  const config = LAPORAN_REKAP_CONFIG[category];
+  const filterCategory = (config && config.filterKey) || category;
+  const filter = tableFilters[filterCategory];
   let timePart = "Periode: Semua";
   if (filter && filter.mode !== "all" && filter.value) {
     if (filter.mode === "daily") {
@@ -3090,7 +3148,8 @@ const REKAP_CATEGORY_FILE_SLUG = {
   bahan: "bahan_masuk",
   produksi: "produksi",
   hasil: "hasil_produksi",
-  sanitasi: "sanitasi",
+  skp_haccp: "haccp",
+  skp_gmp: "gmp_sanitasi",
   keuangan: "pengeluaran",
   stok: "stok",
   pemesanan: "pemesanan",
@@ -4833,85 +4892,406 @@ function displayProduksi() {
 
 // Fungsi displayHasilProduksi dihapus karena laporan hasil produksi sudah tidak digunakan
 
-// Display tabel sanitasi
-function displaySanitasi() {
-  // Data sudah di-load dari MongoDB di loadAllReportData()
-  // Tidak perlu reload dari localStorage
+// ==================== STANDARISASI KEAMANAN PANGAN (HACCP & GMP) ====================
 
-  const tbody = document.getElementById("tableSanitasi");
-  if (!tbody) return;
+/** Ringkasan ceklis HACCP untuk tampilan tabel/rekap. */
+function formatHaccpChecklistSummary(haccp) {
+  if (!haccp) return "—";
+  if (haccp.status) return haccp.status;
+  const items = [];
+  if (haccp.bebasBendaAsing) items.push("Bebas benda asing");
+  if (haccp.bebasHamaJamur || (haccp.bebasHama && haccp.bebasJamur))
+    items.push("Bebas hama & jamur");
+  else {
+    if (haccp.bebasHama) items.push("Bebas hama");
+    if (haccp.bebasJamur) items.push("Bebas jamur");
+  }
+  if (haccp.kondisiBaik || haccp.kondisiFisik) items.push("Kondisi baik");
+  if (items.length === 0) {
+    const hi = haccp.hazardInspection;
+    if (hi && typeof hi === "object") {
+      if (hi.bebasBendaAsing) items.push("Bebas benda asing");
+      if (hi.bebasHama && hi.bebasJamur) items.push("Bebas hama & jamur");
+      if (hi.kondisiFisik) items.push("Kondisi baik");
+      if (hi.status) return hi.status;
+    }
+    return "Belum lengkap";
+  }
+  return items.join(", ");
+}
 
-  tbody.innerHTML = "";
+/** Badge HTML status HACCP. */
+function haccpStatusBadgeHtml(haccp) {
+  const summary = formatHaccpChecklistSummary(haccp);
+  const lolos =
+    summary === "Lolos" ||
+    (haccp &&
+      haccp.bebasBendaAsing &&
+      (haccp.bebasHamaJamur || (haccp.bebasHama && haccp.bebasJamur)) &&
+      (haccp.kondisiBaik || haccp.kondisiFisik));
+  const cls = lolos ? "bg-success" : "bg-warning text-dark";
+  return `<span class="badge ${cls}">${escapeHtmlLaporan(summary)}</span>`;
+}
 
-  if (sanitasi.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="7" class="text-center text-muted py-4">
-          <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-          Tidak ada data sanitasi
-        </td>
-      </tr>
-    `;
+/** Baris tahapan HACCP per lot produksi (history + status saat ini). */
+function buildHaccpTahapanRows(item) {
+  const rows = [];
+  const hist = Array.isArray(item.historyTahapan) ? item.historyTahapan : [];
+  const fmtSuhu = (v) =>
+    v != null && v !== "" && Number.isFinite(parseFloat(v))
+      ? `${parseFloat(v)}°C`
+      : "—";
+  const fmtKadar = (v) =>
+    v != null && v !== "" ? `${v}%` : "—";
+
+  hist.forEach((h) => {
+    const tahapan =
+      h.statusTahapan ||
+      h.namaTahapan ||
+      h.statusTahapanSebelumnya ||
+      "—";
+    rows.push({
+      tahapan,
+      tanggal: h.tanggal,
+      suhu: h.suhu,
+      kadarAir: h.kadarAir,
+      haccp: h.haccp || null,
+      isCurrent: false,
+    });
+  });
+
+  rows.push({
+    tahapan: item.statusTahapan || "—",
+    tanggal: item.tanggalSekarang || item.tanggalMasuk,
+    suhu: item.suhu,
+    kadarAir: item.kadarAir,
+    haccp: item.haccp || null,
+    isCurrent: true,
+  });
+
+  return rows;
+}
+
+/** Flatten baris HACCP untuk rekap export (satu baris per tahapan per lot). */
+function flattenHaccpRekapRows(produksiList) {
+  if (!Array.isArray(produksiList)) return [];
+  const bahanMap = getBahanMapForLaporan();
+  const rows = [];
+  produksiList.forEach((item) => {
+    const proses = getProsesPengolahanTampilanLaporan(item, bahanMap);
+    buildHaccpTahapanRows(item).forEach((row) => {
+      rows.push({
+        idProduksi: item.idProduksi || "—",
+        prosesPengolahan: proses,
+        tahapan: row.isCurrent ? `${row.tahapan} (saat ini)` : row.tahapan,
+        tanggal: row.tanggal,
+        suhu: row.suhu,
+        kadarAir: row.kadarAir,
+        haccp: row.haccp || item.haccp || null,
+      });
+    });
+  });
+  return rows;
+}
+
+/** Filter produksi untuk laporan HACCP (berdasarkan tanggal masuk). */
+function getHaccpFilteredForDisplay() {
+  let data = applyTableFilter(
+    "haccp",
+    produksi,
+    (item) => item.tanggalMasuk
+  );
+  if (typeof window.sortProduksiDocumentsByTahapanThenId === "function") {
+    return window.sortProduksiDocumentsByTahapanThenId(data);
+  }
+  return data;
+}
+
+/** Render accordion HACCP per lot produksi. */
+function displaySkpHaccp() {
+  const wrapper = document.getElementById("haccpLotAccordion");
+  const emptyState = document.getElementById("haccpEmptyState");
+  if (!wrapper) return;
+
+  const filteredList = getHaccpFilteredForDisplay();
+  const bahanById = getBahanMapForLaporan();
+
+  if (filteredList.length === 0) {
+    wrapper.innerHTML = "";
+    emptyState?.classList.remove("d-none");
     return;
   }
 
+  emptyState?.classList.add("d-none");
+
+  const sorted = [...filteredList].sort((a, b) => {
+    const dateA =
+      parseValidDate(a.tanggalSekarang) || parseValidDate(a.tanggalMasuk);
+    const dateB =
+      parseValidDate(b.tanggalSekarang) || parseValidDate(b.tanggalMasuk);
+    return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
+  });
+
+  wrapper.innerHTML = sorted
+    .map((item, index) => {
+      const lotId = item.idProduksi || `lot-${item.id || index}`;
+      const accId = `haccp-lot-${item.id || index}`;
+      const proses = getProsesPengolahanTampilanLaporan(item, bahanById);
+      const tahapanRows = buildHaccpTahapanRows(item);
+
+      const tableRows = tahapanRows
+        .map((row, ri) => {
+          const haccpCell = row.haccp
+            ? haccpStatusBadgeHtml(row.haccp)
+            : item.haccp && row.isCurrent
+              ? haccpStatusBadgeHtml(item.haccp)
+              : '<span class="text-muted">—</span>';
+          const suhuStr =
+            row.suhu != null && row.suhu !== ""
+              ? `${row.suhu}°C`
+              : "—";
+          const kadarStr =
+            row.kadarAir != null && row.kadarAir !== ""
+              ? `${row.kadarAir}%`
+              : "—";
+          const tahapanLabel = row.isCurrent
+            ? `${escapeHtmlLaporan(row.tahapan)} <span class="badge bg-primary-subtle text-primary ms-1">Saat ini</span>`
+            : escapeHtmlLaporan(row.tahapan);
+          return `<tr>
+            <td>${ri + 1}</td>
+            <td>${tahapanLabel}</td>
+            <td>${formatDate(row.tanggal)}</td>
+            <td class="text-center">${suhuStr}</td>
+            <td class="text-center">${kadarStr}</td>
+            <td>${haccpCell}</td>
+          </tr>`;
+        })
+        .join("");
+
+      return `
+        <div class="accordion-item mb-3 shadow-sm">
+          <h2 class="accordion-header" id="heading-${accId}">
+            <button
+              class="accordion-button ${index === 0 ? "" : "collapsed"}"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#collapse-${accId}"
+              aria-expanded="${index === 0 ? "true" : "false"}"
+              aria-controls="collapse-${accId}"
+            >
+              <div class="w-100 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <span class="badge bg-primary fw-semibold">${escapeHtmlLaporan(lotId)}</span>
+                  <span class="badge ${(window.getStatusTahapanBadgeClass || (() => 'bg-secondary'))(item.statusTahapan)}">${escapeHtmlLaporan(item.statusTahapan || "—")}</span>
+                  <small class="text-muted">${escapeHtmlLaporan(proses)}</small>
+                </div>
+                <small class="text-muted">${formatDate(item.tanggalMasuk)}</small>
+              </div>
+            </button>
+          </h2>
+          <div
+            id="collapse-${accId}"
+            class="accordion-collapse collapse ${index === 0 ? "show" : ""}"
+            aria-labelledby="heading-${accId}"
+            data-bs-parent="#haccpLotAccordion"
+          >
+            <div class="accordion-body p-0">
+              <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th scope="col" style="width:3rem">No</th>
+                      <th scope="col">Tahapan Produksi</th>
+                      <th scope="col">Tanggal</th>
+                      <th scope="col" class="text-center">Suhu (°C)</th>
+                      <th scope="col" class="text-center">Kadar Air (%)</th>
+                      <th scope="col">Ceklis HACCP</th>
+                    </tr>
+                  </thead>
+                  <tbody>${tableRows}</tbody>
+                </table>
+              </div>
+              <div class="p-3 border-top bg-light">
+                <button class="btn btn-sm btn-primary" onclick="generateHaccpPDF(${item.id})">
+                  <i class="bi bi-file-pdf me-1"></i>Lihat Detail PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    })
+    .join("");
+}
+
+/** Urutan tipe sanitasi untuk GMP. */
+const GMP_TIPE_ORDER = ["gudang", "peralatan", "toilet", "lingkungan"];
+
+/** Render GMP (sanitasi) per kategori tipe. */
+function displaySkpGmp() {
+  const container = document.getElementById("gmpCategorySections");
+  if (!container) return;
+
   const filteredSanitasi = applyTableFilter(
-    "sanitasi",
+    "gmp",
     sanitasi,
     (item) => item.tanggal
   );
 
   if (filteredSanitasi.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="7" class="text-center text-muted py-4">
-          <i class="bi bi-funnel d-block mb-2"></i>
-          Tidak ada data sesuai filter.
-        </td>
-      </tr>
-    `;
+    container.innerHTML = `
+      <div class="alert alert-info mb-0">
+        <i class="bi bi-inbox me-2"></i>Tidak ada data sanitasi (GMP) sesuai filter.
+      </div>`;
     return;
   }
 
-  // Sort berdasarkan tanggal dan waktu (terbaru dulu)
-  const sortedSanitasi = [...filteredSanitasi].sort((a, b) => {
-    const dateA = new Date(`${a.tanggal} ${a.waktu || "00:00"}`);
-    const dateB = new Date(`${b.tanggal} ${b.waktu || "00:00"}`);
-    return dateB - dateA;
+  const byTipe = {};
+  filteredSanitasi.forEach((item) => {
+    const t = item.tipe || "lainnya";
+    if (!byTipe[t]) byTipe[t] = [];
+    byTipe[t].push(item);
   });
 
-  // Gunakan innerHTML dengan map.join()
-  tbody.innerHTML = sortedSanitasi
-    .map((item, index) => {
-      const statusBadge =
-        item.status === "Complete"
-          ? '<span class="badge bg-success">Complete</span>'
-          : '<span class="badge bg-warning">Uncomplete</span>';
+  const tipeKeys = [
+    ...GMP_TIPE_ORDER.filter((k) => byTipe[k]),
+    ...Object.keys(byTipe).filter((k) => !GMP_TIPE_ORDER.includes(k)),
+  ];
 
-      // Format tanggal dan waktu
-      const tanggalWaktu = item.waktu
-        ? `${formatDate(item.tanggal)} ${item.waktu}`
-        : formatDate(item.tanggal);
+  container.innerHTML = tipeKeys
+    .map((tipe) => {
+      const items = [...byTipe[tipe]].sort((a, b) => {
+        const dateA = new Date(`${a.tanggal} ${a.waktu || "00:00"}`);
+        const dateB = new Date(`${b.tanggal} ${b.waktu || "00:00"}`);
+        return dateB - dateA;
+      });
+      const label = tipeSanitasiNames[tipe] || tipe;
+      const completeCount = items.filter((i) => i.status === "Complete").length;
+
+      const rows = items
+        .map((item, index) => {
+          const statusBadge =
+            item.status === "Complete"
+              ? '<span class="badge bg-success">Complete</span>'
+              : '<span class="badge bg-warning">Uncomplete</span>';
+          const tanggalWaktu = item.waktu
+            ? `${formatDate(item.tanggal)} ${item.waktu}`
+            : formatDate(item.tanggal);
+          return `<tr>
+            <td>${index + 1}</td>
+            <td>${tanggalWaktu}</td>
+            <td>${item.namaPetugas || "—"}</td>
+            <td>${statusBadge}</td>
+            <td>${getChecklistSummary(item.checklist) || "—"}</td>
+            <td class="text-center">
+              <button class="btn btn-sm btn-outline-primary" onclick="generateSanitasiPDF(${item.id})">
+                <i class="bi bi-file-pdf me-1"></i>Detail
+              </button>
+            </td>
+          </tr>`;
+        })
+        .join("");
 
       return `
-      <tr>
-      <td>${index + 1}</td>
-      <td>${tanggalWaktu}</td>
-      <td>${tipeSanitasiNames[item.tipe] || item.tipe || "-"}</td>
-      <td>${item.namaPetugas || "-"}</td>
-      <td>${statusBadge}</td>
-      <td>${getChecklistSummary(item.checklist) || "-"}</td>
-      <td class="text-center">
-          <button class="btn btn-sm btn-primary" onclick="generateSanitasiPDF(${
-            item.id
-          })">
-          <i class="bi bi-file-pdf me-1"></i>Lihat Detail
-        </button>
-      </td>
-      </tr>
-    `;
+        <div class="card shadow-sm mb-4">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h6 class="fw-bold mb-0">
+              <i class="bi bi-droplet me-2 text-primary"></i>${escapeHtmlLaporan(label)}
+            </h6>
+            <span class="badge bg-secondary">${items.length} entri · ${completeCount} selesai</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th scope="col">No</th>
+                    <th scope="col">Tanggal</th>
+                    <th scope="col">Petugas</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Keterangan</th>
+                    <th scope="col" class="text-center">Detail</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
     })
     .join("");
+}
+
+// Generate PDF HACCP per lot produksi
+async function generateHaccpPDF(id) {
+  const item = produksi.find((p) => p.id === id);
+  if (!item) return;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const bahanById = getBahanMapForLaporan();
+  const proses = getProsesPengolahanTampilanLaporan(item, bahanById);
+
+  doc.setFontSize(18);
+  doc.text("LAPORAN HACCP — STANDARISASI KEAMANAN PANGAN", 105, 20, {
+    align: "center",
+  });
+  doc.setFontSize(12);
+  doc.text("Argopuro Walida", 105, 30, { align: "center" });
+  doc.line(20, 35, 190, 35);
+
+  let y = 48;
+  const pairs = [
+    ["ID Produksi (Lot)", item.idProduksi || "—"],
+    ["Proses Pengolahan", proses],
+    ["Status Tahapan", item.statusTahapan || "—"],
+    ["Tanggal Masuk", formatDate(item.tanggalMasuk)],
+    ["Tanggal Terakhir", formatDate(item.tanggalSekarang)],
+    ["Ceklis HACCP (Lot)", formatHaccpChecklistSummary(item.haccp)],
+  ];
+  y = pdfRenderKeyValueTable(doc, y, pairs, { title: "Ringkasan Lot" });
+
+  const tahapanRows = buildHaccpTahapanRows(item);
+  if (tahapanRows.length > 0) {
+    if (y > 220) {
+      doc.addPage();
+      y = 20;
+    }
+    doc.setFontSize(11);
+    doc.setFont(undefined, "bold");
+    doc.text("Monitoring per Tahapan Produksi", 20, y);
+    y += 7;
+    const matrix = [
+      ["No", "Tahapan", "Tanggal", "Suhu", "Kadar Air", "HACCP"],
+      ...tahapanRows.map((row, i) => [
+        String(i + 1),
+        row.isCurrent ? `${row.tahapan} (saat ini)` : row.tahapan,
+        formatDate(row.tanggal),
+        row.suhu != null && row.suhu !== "" ? `${row.suhu}°C` : "—",
+        row.kadarAir != null && row.kadarAir !== "" ? `${row.kadarAir}%` : "—",
+        formatHaccpChecklistSummary(row.haccp || (row.isCurrent ? item.haccp : null)),
+      ]),
+    ];
+    y = pdfRenderTableFromMatrix(doc, y, matrix, [8, 38, 28, 16, 18, 62]);
+  }
+
+  if (y > 240) {
+    doc.addPage();
+    y = 20;
+  } else {
+    y += 10;
+  }
+  doc.line(20, y, 190, y);
+  doc.setFontSize(10);
+  doc.text(`Dicetak pada: ${new Date().toLocaleString("id-ID")}`, 20, y + 10);
+
+  const pdfBlob = doc.output("blob");
+  const pdfUrl = URL.createObjectURL(pdfBlob);
+  window.open(pdfUrl, "_blank");
+}
+
+// Display tabel sanitasi — diganti oleh displaySkpGmp (GMP)
+function displaySanitasi() {
+  displaySkpGmp();
 }
 
 // Fungsi untuk mendapatkan summary checklist
@@ -5490,7 +5870,7 @@ function generateSanitasiPDF(id) {
 
   // Header
   doc.setFontSize(18);
-  doc.text("LAPORAN DETAIL SANITASI", 105, 20, { align: "center" });
+  doc.text("LAPORAN DETAIL GMP — SANITASI", 105, 20, { align: "center" });
   doc.setFontSize(12);
   doc.text("Argopuro Walida", 105, 30, { align: "center" });
   doc.line(20, 35, 190, 35);
