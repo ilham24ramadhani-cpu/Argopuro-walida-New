@@ -66,12 +66,17 @@ const checklistTemplates = {
     "Saluran air lancar",
     "Ventilasi berfungsi dan bersih",
     "Ruangan tidak ada hama & hewan",
+    "Bahan baku tersusun rapi",
+    "Produk tidak langsung menyentuh lantai",
+    "Adanya pemisahan bahan baku dan produk jadi",
+    "Tidak ada bahan kimia di gudang pangan",
   ],
   peralatan: [
     "Alat & mesin bersih",
     "Tidak ada sisa bahan produksi atau benda asing",
     "Alat dalam kondisi baik & normal",
     "Air bersih",
+    "Tidak ada karat",
   ],
   toilet: [
     "Toilet bersih & tidak berbau",

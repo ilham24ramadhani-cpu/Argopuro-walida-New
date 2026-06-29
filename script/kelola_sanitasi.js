@@ -27,7 +27,11 @@ async function loadSanitasiData() {
               "Dinding bersih tanpa jamur": true,
               "Saluran air lancar": true,
               "Ventilasi berfungsi dan bersih": true,
-              "Ruangan tidak ada hama & hewan": true
+              "Ruangan tidak ada hama & hewan": true,
+              "Bahan baku tersusun rapi": true,
+              "Produk tidak langsung menyentuh lantai": true,
+              "Adanya pemisahan bahan baku dan produk jadi": true,
+              "Tidak ada bahan kimia di gudang pangan": true
             },
             status: "Complete"
           },
@@ -42,7 +46,8 @@ async function loadSanitasiData() {
               "Alat & mesin bersih": true,
               "Tidak ada sisa bahan produksi atau benda asing": true,
               "Alat dalam kondisi baik & normal": false,
-              "Air bersih": true
+              "Air bersih": true,
+              "Tidak ada karat": true
             },
             status: "Uncomplete"
           }
@@ -63,13 +68,18 @@ const checklistTemplates = {
     "Dinding bersih tanpa jamur",
     "Saluran air lancar",
     "Ventilasi berfungsi dan bersih",
-    "Ruangan tidak ada hama & hewan"
+    "Ruangan tidak ada hama & hewan",
+    "Bahan baku tersusun rapi",
+    "Produk tidak langsung menyentuh lantai",
+    "Adanya pemisahan bahan baku dan produk jadi",
+    "Tidak ada bahan kimia di gudang pangan"
   ],
   peralatan: [
     "Alat & mesin bersih",
     "Tidak ada sisa bahan produksi atau benda asing",
     "Alat dalam kondisi baik & normal",
-    "Air bersih"
+    "Air bersih",
+    "Tidak ada karat"
   ],
   toilet: [
     "Toilet bersih & tidak berbau",
