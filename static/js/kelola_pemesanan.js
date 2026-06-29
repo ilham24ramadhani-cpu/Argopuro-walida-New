@@ -10,6 +10,9 @@ let currentDeleteId = null;
 let currentEditPreservesComplete = false;
 let pembeliMasterList = [];
 let currentPembeliEditId = null;
+/** Mode Action: checkbox + bulk Complete / Hapus di tab Data Pemesanan */
+let pemesananActionMode = false;
+let selectedPemesananIds = new Set();
 /** Opsi master untuk baris kloter (diisi loadMasterDataOptions) */
 let masterProsesNames = [];
 let masterJenisKopiNames = [];
@@ -139,6 +142,306 @@ function findPemesananInCache(id) {
     (pemesanan || []).find((item) => pemesananMatchesId(item, id)) ||
     null
   );
+}
+
+function getPemesananRowId(p) {
+  return String(p.idPembelian || p.id || p._id || "").trim();
+}
+
+function togglePemesananActionMode(force) {
+  const next =
+    typeof force === "boolean" ? force : !pemesananActionMode;
+  pemesananActionMode = next;
+  if (!next) {
+    selectedPemesananIds.clear();
+  }
+
+  const toolbar = document.getElementById("pemesananBulkToolbar");
+  const toggleBtn = document.getElementById("btnTogglePemesananActionMode");
+  if (toolbar) toolbar.classList.toggle("d-none", !next);
+  if (toggleBtn) {
+    toggleBtn.classList.toggle("btn-primary", next);
+    toggleBtn.classList.toggle("btn-outline-primary", !next);
+    toggleBtn.innerHTML = next
+      ? '<i class="bi bi-ui-checks me-1"></i>Action (aktif)'
+      : '<i class="bi bi-ui-checks me-1"></i>Action';
+  }
+
+  document.querySelectorAll(".pemesanan-select-col").forEach((el) => {
+    el.classList.toggle("d-none", !next);
+  });
+
+  updatePemesananBulkToolbar();
+  applyFilterPemesanan();
+}
+
+function updatePemesananBulkToolbar() {
+  const count = selectedPemesananIds.size;
+  const countEl = document.getElementById("pemesananSelectedCount");
+  const btnComplete = document.getElementById("btnBulkCompletePemesanan");
+  const btnDelete = document.getElementById("btnBulkDeletePemesanan");
+  if (countEl) countEl.textContent = String(count);
+  if (btnComplete) btnComplete.disabled = count === 0;
+  if (btnDelete) btnDelete.disabled = count === 0;
+
+  const selectAll = document.getElementById("selectAllPemesanan");
+  if (!selectAll) return;
+
+  const visibleIds = getVisiblePemesananRowIds();
+  if (visibleIds.length === 0) {
+    selectAll.checked = false;
+    selectAll.indeterminate = false;
+    return;
+  }
+  const selectedVisible = visibleIds.filter((id) =>
+    selectedPemesananIds.has(id),
+  ).length;
+  selectAll.checked =
+    selectedVisible > 0 && selectedVisible === visibleIds.length;
+  selectAll.indeterminate =
+    selectedVisible > 0 && selectedVisible < visibleIds.length;
+}
+
+function getVisiblePemesananRowIds() {
+  const searchTerm = document.getElementById("searchPemesanan")
+    ? document.getElementById("searchPemesanan").value.toLowerCase()
+    : "";
+  const filterProses = document.getElementById("filterProsesPemesanan")
+    ? document.getElementById("filterProsesPemesanan").value
+    : "";
+  const filterPembayaran = document.getElementById(
+    "filterStatusPembayaranPemesanan",
+  )
+    ? document.getElementById("filterStatusPembayaranPemesanan").value
+    : "";
+  const filterStatusPemesanan = document.getElementById("filterStatusPemesanan")
+    ? document.getElementById("filterStatusPemesanan").value
+    : "";
+
+  return pemesananData
+    .filter((p) => {
+      const matchSearch =
+        !searchTerm ||
+        (p.idPembelian && p.idPembelian.toLowerCase().includes(searchTerm)) ||
+        (p.namaPembeli && p.namaPembeli.toLowerCase().includes(searchTerm));
+      const matchProses = pemesananMatchesProsesPengolahanFilter(
+        p,
+        filterProses,
+      );
+      const statusBayar = String(p.statusPembayaran || "Belum Lunas").trim();
+      const matchPembayaran =
+        !filterPembayaran || statusBayar === filterPembayaran;
+      const matchStatusPemesanan =
+        !filterStatusPemesanan ||
+        String(p.statusPemesanan || "").trim() === filterStatusPemesanan;
+      return (
+        matchSearch &&
+        matchProses &&
+        matchPembayaran &&
+        matchStatusPemesanan
+      );
+    })
+    .map((p) => getPemesananRowId(p))
+    .filter(Boolean);
+}
+
+function toggleSelectAllPemesanan(checked) {
+  const visibleIds = getVisiblePemesananRowIds();
+  if (checked) {
+    visibleIds.forEach((id) => selectedPemesananIds.add(id));
+  } else {
+    visibleIds.forEach((id) => selectedPemesananIds.delete(id));
+  }
+  applyFilterPemesanan();
+}
+
+function togglePemesananSelection(rowId, checked) {
+  const id = String(rowId || "").trim();
+  if (!id) return;
+  if (checked) selectedPemesananIds.add(id);
+  else selectedPemesananIds.delete(id);
+  updatePemesananBulkToolbar();
+  applyFilterPemesanan();
+}
+
+function getSelectedPemesananDocs() {
+  return [...selectedPemesananIds]
+    .map((id) => findPemesananInCache(id))
+    .filter(Boolean);
+}
+
+async function bulkCompletePemesanan() {
+  const docs = getSelectedPemesananDocs();
+  if (docs.length === 0) {
+    alert("Pilih minimal satu pemesanan.");
+    return;
+  }
+
+  const toProcess = docs.filter((p) => p.statusPemesanan !== "Complete");
+  const alreadyComplete = docs.length - toProcess.length;
+  if (toProcess.length === 0) {
+    alert("Semua pemesanan terpilih sudah berstatus Complete.");
+    return;
+  }
+
+  const msg =
+    `Selesaikan (Complete) ${toProcess.length} pemesanan?` +
+    (alreadyComplete > 0
+      ? `\n(${alreadyComplete} yang sudah Complete akan dilewati.)`
+      : "") +
+    "\n\nStok akan dikurangi otomatis (FIFO), sama seperti Proses Ordering.";
+  if (!confirm(msg)) return;
+
+  const btn = document.getElementById("btnBulkCompletePemesanan");
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.prevHtml = btn.innerHTML;
+    btn.innerHTML =
+      '<span class="spinner-border spinner-border-sm me-1"></span>Memproses...';
+  }
+
+  await loadStokData();
+
+  const tanggalOrdering = new Date().toISOString().split("T")[0];
+  const ok = [];
+  const failed = [];
+  const skipped = [];
+
+  for (const p of toProcess) {
+    const rowId = getPemesananRowId(p);
+    const label = p.idPembelian || rowId;
+
+    const stokErr = await validateOrderingStok(p, "");
+    if (stokErr) {
+      failed.push(`${label}: ${stokErr.replace(/\n/g, " ")}`);
+      continue;
+    }
+
+    try {
+      const payload = buildOrderingProsesPayload(p, tanggalOrdering, "");
+      const result = await window.API.Ordering.proses(payload);
+      if (result?.success || result?.alreadyProcessed || result?.invoiceOnly) {
+        ok.push(label);
+        if (result?.alreadyProcessed && !result?.statusRepaired) {
+          skipped.push(`${label}: sudah pernah diproses`);
+        }
+      } else {
+        ok.push(label);
+      }
+    } catch (err) {
+      const errMsg =
+        err?.data?.error || err?.message || "Gagal memproses ordering";
+      failed.push(`${label}: ${errMsg}`);
+    }
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    if (btn.dataset.prevHtml) {
+      btn.innerHTML = btn.dataset.prevHtml;
+      delete btn.dataset.prevHtml;
+    }
+  }
+
+  selectedPemesananIds.clear();
+  updatePemesananBulkToolbar();
+
+  await loadPemesanan();
+  await loadStokProduksi();
+  await loadStokData();
+  await loadOrderingData();
+  window.dispatchEvent(new CustomEvent("hasilProduksiUpdated"));
+  window.dispatchEvent(
+    new CustomEvent("dataUpdated", { detail: { type: "hasilProduksi" } }),
+  );
+
+  let summary = "";
+  if (ok.length) summary += `✅ Berhasil: ${ok.length} pemesanan\n`;
+  if (skipped.length)
+    summary += `ℹ️ ${skipped.join("\n")}\n`;
+  if (failed.length)
+    summary += `❌ Gagal (${failed.length}):\n${failed.join("\n")}`;
+
+  if (window.showNotification && ok.length && !failed.length) {
+    window.showNotification(
+      "update",
+      "Pemesanan",
+      "success",
+      `${ok.length} pemesanan diselesaikan (Complete).`,
+    );
+  } else if (summary) {
+    alert(summary.trim());
+  }
+}
+
+async function bulkDeletePemesanan() {
+  const docs = getSelectedPemesananDocs();
+  if (docs.length === 0) {
+    alert("Pilih minimal satu pemesanan.");
+    return;
+  }
+
+  const completeOnes = docs.filter((p) => p.statusPemesanan === "Complete");
+  const deletable = docs.filter((p) => p.statusPemesanan !== "Complete");
+  if (deletable.length === 0) {
+    alert(
+      "Tidak ada pemesanan yang bisa dihapus. Pemesanan Complete tidak dapat dihapus.",
+    );
+    return;
+  }
+
+  let msg = `Hapus ${deletable.length} pemesanan terpilih?`;
+  if (completeOnes.length) {
+    msg += `\n(${completeOnes.length} pemesanan Complete akan dilewati.)`;
+  }
+  if (!confirm(msg)) return;
+
+  const btn = document.getElementById("btnBulkDeletePemesanan");
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.prevHtml = btn.innerHTML;
+    btn.innerHTML =
+      '<span class="spinner-border spinner-border-sm me-1"></span>Menghapus...';
+  }
+
+  const ok = [];
+  const failed = [];
+
+  for (const p of deletable) {
+    const rowId = getPemesananRowId(p);
+    const label = p.idPembelian || rowId;
+    try {
+      await window.API.Pemesanan.delete(rowId);
+      ok.push(label);
+      selectedPemesananIds.delete(rowId);
+    } catch (err) {
+      const errMsg = err?.data?.error || err?.message || "Gagal menghapus";
+      failed.push(`${label}: ${errMsg}`);
+    }
+  }
+
+  if (btn) {
+    btn.disabled = false;
+    if (btn.dataset.prevHtml) {
+      btn.innerHTML = btn.dataset.prevHtml;
+      delete btn.dataset.prevHtml;
+    }
+  }
+
+  updatePemesananBulkToolbar();
+  await loadPemesanan();
+  await loadStokProduksi();
+
+  let summary = "";
+  if (ok.length) summary += `✅ Terhapus: ${ok.length} pemesanan\n`;
+  if (failed.length)
+    summary += `❌ Gagal (${failed.length}):\n${failed.join("\n")}`;
+
+  if (window.showNotification && ok.length && !failed.length) {
+    window.showNotification("delete", "Pemesanan", "success");
+  } else if (summary) {
+    alert(summary.trim());
+  }
 }
 
 /** Gabungkan dokumen hasil PUT/POST ke cache lokal — hindari GET /api/pemesanan penuh. */
@@ -1505,19 +1808,35 @@ function applyFilterPemesanan() {
     if (filteredPemesanan.length === 0) {
       tableBody.innerHTML = `
         <tr>
-          <td colspan="12" class="text-center py-4 text-muted">
+          <td colspan="${pemesananActionMode ? 13 : 12}" class="text-center py-4 text-muted">
             <i class="bi bi-inbox fs-1 d-block mb-2"></i>
             Tidak ada data pemesanan
           </td>
         </tr>
       `;
+      updatePemesananBulkToolbar();
       return;
     }
 
     tableBody.innerHTML = filteredPemesanan
       .map(
-        (p, index) => `
-      <tr>
+        (p, index) => {
+          const rowId = getPemesananRowId(p);
+          const isSelected = selectedPemesananIds.has(rowId);
+          const selectCell = pemesananActionMode
+            ? `<td class="pemesanan-select-col text-center">
+            <input
+              type="checkbox"
+              class="form-check-input pemesanan-row-check"
+              data-row-id="${escapeHtmlAttr(rowId)}"
+              ${isSelected ? "checked" : ""}
+              onchange="togglePemesananSelection('${escapeHtmlAttr(rowId)}', this.checked)"
+            />
+          </td>`
+            : "";
+          return `
+      <tr${isSelected && pemesananActionMode ? ' class="table-active"' : ""}>
+        ${selectCell}
         <td>${index + 1}</td>
         <td><strong>${p.idPembelian || "-"}</strong></td>
         <td>${p.namaPembeli || "-"}</td>
@@ -1593,13 +1912,16 @@ function applyFilterPemesanan() {
           </button>
         </td>
       </tr>
-    `)
+    `;
+        },
+      )
       .join("");
+    updatePemesananBulkToolbar();
   } catch (error) {
     console.error("❌ Error displaying pemesanan:", error);
     tableBody.innerHTML = `
         <tr>
-          <td colspan="12" class="text-center py-4 text-danger">
+          <td colspan="${pemesananActionMode ? 13 : 12}" class="text-center py-4 text-danger">
             <i class="bi bi-exclamation-triangle fs-1 d-block mb-2"></i>
             Error menampilkan data: ${error.message}
           </td>
@@ -3247,6 +3569,11 @@ document.addEventListener("DOMContentLoaded", async function () {
   window.deletePemesanan = deletePemesanan;
   window.openInvoice = openInvoice;
   window.applyFilterPemesanan = applyFilterPemesanan;
+  window.togglePemesananActionMode = togglePemesananActionMode;
+  window.toggleSelectAllPemesanan = toggleSelectAllPemesanan;
+  window.togglePemesananSelection = togglePemesananSelection;
+  window.bulkCompletePemesanan = bulkCompletePemesanan;
+  window.bulkDeletePemesanan = bulkDeletePemesanan;
   window.toggleNegaraField = toggleNegaraField;
   window.calculateTotalHarga = calculateTotalHarga;
   window.syncPembayaranKloterColumnsVisibility = syncPembayaranKloterColumnsVisibility;
