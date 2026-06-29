@@ -3624,6 +3624,13 @@ window.saveProduksi = async function saveProduksi() {
             beratAkhir: produksiLama.beratAkhir,
             kadarAir: produksiLama.kadarAir,
             suhu: produksiLama.suhu ?? null,
+            haccp: produksiLama.haccp
+              ? {
+                  bebasBendaAsing: Boolean(produksiLama.haccp.bebasBendaAsing),
+                  bebasHamaJamur: Boolean(produksiLama.haccp.bebasHamaJamur),
+                  kondisiBaik: Boolean(produksiLama.haccp.kondisiBaik),
+                }
+              : null,
           });
         }
 
@@ -3668,6 +3675,13 @@ window.saveProduksi = async function saveProduksi() {
           beratAkhir: beratAkhir,
           kadarAir: kadarAir,
           suhu: suhu,
+          haccp: haccp
+            ? {
+                bebasBendaAsing: Boolean(haccp.bebasBendaAsing),
+                bebasHamaJamur: Boolean(haccp.bebasHamaJamur),
+                kondisiBaik: Boolean(haccp.kondisiBaik),
+              }
+            : null,
         },
       ];
 

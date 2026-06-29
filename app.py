@@ -1836,6 +1836,7 @@ def create_produksi():
             'beratAkhir': float(beratAkhir) if beratAkhir else None,
             'kadarAir': kadar_air_history,  # Kadar air bisa diinputkan untuk semua tahapan
             'suhu': suhu_value,  # Suhu (°C) opsional per tahapan
+            'haccp': normalize_haccp_payload(data.get('haccp')),
         }]
         foto_tahapan_baru = _sanitize_foto_tahapan_path(data.get('fotoTahapan'))
         if foto_tahapan_baru:
@@ -2185,6 +2186,7 @@ def update_produksi(produksi_id):
                 'beratAkhir': produksi.get('beratAkhir'),
                 'kadarAir': kadar_air_history,  # Kadar air (bisa diinputkan untuk semua tahapan)
                 'suhu': produksi.get('suhu'),  # Suhu (°C) opsional per tahapan
+                'haccp': normalize_haccp_payload(produksi.get('haccp')),
                 'catatan': _normalize_catatan_produksi(produksi.get('catatan')),
                 'pengguna': 'System',  # TODO: Ambil dari session jika ada
                 'userId': None  # TODO: Ambil dari session jika ada

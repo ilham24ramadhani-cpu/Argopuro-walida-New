@@ -4995,7 +4995,7 @@ function flattenHaccpRekapRows(produksiList) {
         tanggal: row.tanggal,
         suhu: row.suhu,
         kadarAir: row.kadarAir,
-        haccp: row.haccp || item.haccp || null,
+        haccp: row.haccp || (row.isCurrent ? item.haccp : null) || null,
       });
     });
   });
@@ -5051,9 +5051,7 @@ function displaySkpHaccp() {
         .map((row, ri) => {
           const haccpCell = row.haccp
             ? haccpStatusBadgeHtml(row.haccp)
-            : item.haccp && row.isCurrent
-              ? haccpStatusBadgeHtml(item.haccp)
-              : '<span class="text-muted">—</span>';
+            : '<span class="text-muted">—</span>';
           const suhuStr =
             row.suhu != null && row.suhu !== ""
               ? `${row.suhu}°C`
