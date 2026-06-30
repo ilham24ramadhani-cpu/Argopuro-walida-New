@@ -23,6 +23,7 @@ function getPemesananKloterLinesFromDoc(p) {
   if (Array.isArray(rows) && rows.length > 0) {
     const mapped = rows.map((r) => ({
       tipeProduk: r.tipeProduk || "",
+      varietas: r.varietas || "",
       jenisKopi: r.jenisKopi || "",
       prosesPengolahan: r.prosesPengolahan || "",
       beratKg:
@@ -44,6 +45,7 @@ function getPemesananKloterLinesFromDoc(p) {
   return [
     {
       tipeProduk: p.tipeProduk || "",
+      varietas: p.varietas || "",
       jenisKopi: p.jenisKopi || "",
       prosesPengolahan: p.prosesPengolahan || "",
       beratKg: p.jumlahPesananKg != null ? p.jumlahPesananKg : "",
@@ -783,7 +785,14 @@ function pdfPembayaranBertahapRowsForInvoice(p) {
   lines.forEach((row) => {
     const jj = parseFloat(row.jumlahPembayaranKloter) || 0;
     if (jj > 0) {
-      const desk = `${row.tipeProduk || "-"} · ${row.jenisKopi || "-"} · ${row.prosesPengolahan || "-"}`;
+      const desk = [
+        row.tipeProduk,
+        row.varietas,
+        row.jenisKopi,
+        row.prosesPengolahan,
+      ]
+        .filter((x) => x && String(x).trim())
+        .join(" · ") || "-";
       out.push({ catatan: desk, jumlahRp: jj, terminLunas: true });
     }
   });
@@ -1138,7 +1147,15 @@ function pdfDrawInvoiceBody(doc, p, y, opts) {
   };
 
   invLines.forEach((row) => {
-    const desk = `${row.tipeProduk || "-"} - ${row.jenisKopi || "-"} - ${row.prosesPengolahan || "-"}`;
+    const desk =
+      [
+        row.tipeProduk,
+        row.varietas,
+        row.jenisKopi,
+        row.prosesPengolahan,
+      ]
+        .filter((x) => x && String(x).trim())
+        .join(" - ") || "-";
     const itemLines = doc.splitTextToSize(desk, W_ITEM);
     const nLines = Math.max(itemLines.length, 1);
     const rowHApprox = CELL_PAD_V * 2 + nLines * LH + 2;

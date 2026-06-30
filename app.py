@@ -5268,7 +5268,7 @@ def _finalize_pemesanan_invoice_only(id_pembelian, pemesanan, line_items, tangga
 def _normalize_pemesanan_kloter_from_body(data):
     """
     Normalisasi array `kloter` (model utama) atau `items` (kompatibel lama).
-    Tiap kloter: tipeProduk, jenisKopi, prosesPengolahan, beratKg, hargaPerKg,
+    Tiap kloter: tipeProduk, varietas (opsional, input manual), jenisKopi, prosesPengolahan, beratKg, hargaPerKg,
     subtotal; jumlahPesananKg disamakan dengan beratKg untuk alur stok/ordering.
     Opsional: jumlahPembayaranKloter (Rp) untuk pembayaran bertahap per kloter.
     Mengembalikan (list_atau_None, pesan_error_atau_None).
@@ -5288,6 +5288,7 @@ def _normalize_pemesanan_kloter_from_body(data):
         if not isinstance(it, dict):
             return None, f'Kloter {idx + 1}: format tidak valid'
         tp = (it.get('tipeProduk') or '').strip()
+        varietas = (it.get('varietas') or '').strip()
         jk = (it.get('jenisKopi') or '').strip()
         pr = (it.get('prosesPengolahan') or '').strip()
         jm = _berat_kg_dari_baris_pemesanan(it)
@@ -5316,6 +5317,8 @@ def _normalize_pemesanan_kloter_from_body(data):
             'subtotal': sub,
             'jumlahPesananKg': jm,
         }
+        if varietas:
+            row_out['varietas'] = varietas[:200]
         if pay > 0:
             row_out['jumlahPembayaranKloter'] = round(pay, 2)
             row_out['pembayaranKloterLunas'] = _pembayaran_kloter_lunas_true(it)
@@ -5396,6 +5399,7 @@ def pemesanan_items_from_doc(doc):
                 continue
             lines.append({
                 'tipeProduk': (row.get('tipeProduk') or '').strip(),
+                'varietas': (row.get('varietas') or '').strip(),
                 'jenisKopi': (row.get('jenisKopi') or '').strip(),
                 'prosesPengolahan': (row.get('prosesPengolahan') or '').strip(),
                 'beratKg': jm,
@@ -5410,6 +5414,7 @@ def pemesanan_items_from_doc(doc):
         return []
     return [{
         'tipeProduk': (doc.get('tipeProduk') or '').strip(),
+        'varietas': (doc.get('varietas') or '').strip(),
         'jenisKopi': (doc.get('jenisKopi') or '').strip(),
         'prosesPengolahan': (doc.get('prosesPengolahan') or '').strip(),
         'beratKg': jm,

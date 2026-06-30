@@ -978,15 +978,16 @@
                 </h6>
                 <p class="small text-muted mb-3">
                   Satu <strong>ID pembelian</strong> dapat berisi beberapa kloter.
-                  Tiap kloter mencatat <strong>tipe produk</strong>, <strong>jenis kopi</strong>,
-                  <strong>proses pengolahan</strong>, <strong>berat (kg)</strong>, dan
-                  <strong>harga per kg</strong>.
+                  Tiap kloter mencatat <strong>tipe produk</strong>, <strong>varietas</strong>,
+                  <strong>jenis kopi</strong>, <strong>proses pengolahan</strong>,
+                  <strong>berat (kg)</strong>, dan <strong>harga per kg</strong>.
                 </p>
                 <div class="table-responsive">
                   <table class="table table-sm table-bordered align-middle mb-2">
                     <thead class="table-light">
                       <tr>
                         <th>Tipe produk</th>
+                        <th>Varietas</th>
                         <th>Jenis kopi</th>
                         <th>Proses</th>
                         <th class="text-end" style="min-width: 6rem">Berat (kg)</th>
@@ -998,6 +999,7 @@
                     <tbody id="tbodyKloterPemesanan"></tbody>
                   </table>
                 </div>
+                <datalist id="varietasListPemesanan"></datalist>
                 <button
                   type="button"
                   class="btn btn-outline-primary btn-sm"
@@ -1323,13 +1325,14 @@
                           <span id="displayTipePemesanan">-</span>
                         </p>
                         <p class="mb-2 small text-muted mb-0">
-                          <strong>Kloter produk</strong> (per baris: tipe, jenis kopi, proses, berat, harga/kg, subtotal)
+                          <strong>Kloter produk</strong> (per baris: tipe, varietas, jenis kopi, proses, berat, harga/kg, subtotal)
                         </p>
                         <div class="table-responsive">
                           <table class="table table-sm table-bordered mb-0">
                             <thead class="table-light">
                               <tr>
                                 <th>Tipe</th>
+                                <th>Varietas</th>
                                 <th>Jenis kopi</th>
                                 <th>Proses</th>
                                 <th class="text-end">Berat (kg)</th>
@@ -1338,7 +1341,7 @@
                               </tr>
                             </thead>
                             <tbody id="tbodyOrderingKloterPreview">
-                              <tr><td colspan="6" class="text-muted small">—</td></tr>
+                              <tr><td colspan="7" class="text-muted small">—</td></tr>
                             </tbody>
                           </table>
                         </div>

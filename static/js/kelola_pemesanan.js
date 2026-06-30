@@ -17,6 +17,7 @@ let selectedPemesananIds = new Set();
 let masterProsesNames = [];
 let masterJenisKopiNames = [];
 let masterProdukNames = [];
+let masterVarietasNames = [];
 /** Map nama produk (normalisasi) → { nama, mengurangiStok } dari Kelola Data */
 let masterProdukByNorm = new Map();
 
@@ -806,7 +807,7 @@ function ringkasProdukUntukTabel(p) {
   }
   if (lines.length === 1) {
     const L = lines[0];
-    const bits = [L.tipeProduk, L.jenisKopi, L.prosesPengolahan].filter(
+    const bits = [L.tipeProduk, L.varietas, L.jenisKopi, L.prosesPengolahan].filter(
       Boolean,
     );
     return bits.join(" · ") || p.tipeProduk || "—";
@@ -849,6 +850,14 @@ function buildProsesOptionsHtml(selected) {
   return html;
 }
 
+function refreshVarietasDatalistPemesanan() {
+  const datalist = document.getElementById("varietasListPemesanan");
+  if (!datalist) return;
+  datalist.innerHTML = masterVarietasNames
+    .map((nama) => `<option value="${escapeHtmlAttr(nama)}"></option>`)
+    .join("");
+}
+
 function updateKloterRowSubtotal(tr) {
   const b = parseFloat(tr.querySelector(".kloter-berat")?.value || 0);
   const h = parseFloat(tr.querySelector(".kloter-harga")?.value || 0);
@@ -877,6 +886,7 @@ function addKloterRow(initial = {}) {
   const tb = document.getElementById("tbodyKloterPemesanan");
   if (!tb) return;
   const tipe = (initial.tipeProduk || "").trim();
+  const varietas = (initial.varietas || "").trim();
   const jk = (initial.jenisKopi || "").trim();
   const pr = (initial.prosesPengolahan || "").trim();
   const berat =
@@ -889,6 +899,7 @@ function addKloterRow(initial = {}) {
   tr.className = "kloter-row";
   tr.innerHTML = `
     <td><select class="form-select form-select-sm kloter-tipe" required>${buildTipeProdukOptionsHtml(tipe)}</select></td>
+    <td><input type="text" class="form-control form-control-sm kloter-varietas" list="varietasListPemesanan" placeholder="Pilih atau ketik" value="${escapeHtmlAttr(varietas)}" /></td>
     <td><select class="form-select form-select-sm kloter-jenis" required>${buildJenisKopiOptionsHtml(jk)}</select></td>
     <td><select class="form-select form-select-sm kloter-proses" required>${buildProsesOptionsHtml(pr)}</select></td>
     <td><input type="number" class="form-control form-control-sm kloter-berat text-end" placeholder="0" min="0" step="0.01" value="${berat === "" ? "" : escapeHtmlAttr(String(berat))}" required /></td>
@@ -948,7 +959,7 @@ function pembayaranBertahapBarisUntukFormDariDoc(p) {
   lines.forEach((L, i) => {
     const j = parseFloat(L.jumlahPembayaranKloter);
     if (Number.isFinite(j) && j > 0) {
-      const cat = [L.tipeProduk, L.jenisKopi, L.prosesPengolahan].filter(Boolean).join(" · ") || `Kloter ${i + 1}`;
+      const cat = [L.tipeProduk, L.varietas, L.jenisKopi, L.prosesPengolahan].filter(Boolean).join(" · ") || `Kloter ${i + 1}`;
       out.push({ catatan: cat, jumlahRp: j, terminLunas: true });
     }
   });
@@ -1092,17 +1103,20 @@ function collectKloterFromForm() {
   const out = [];
   tb.querySelectorAll("tr.kloter-row").forEach((tr) => {
     const tipe = (tr.querySelector(".kloter-tipe")?.value || "").trim();
+    const varietas = (tr.querySelector(".kloter-varietas")?.value || "").trim();
     const jk = (tr.querySelector(".kloter-jenis")?.value || "").trim();
     const pr = (tr.querySelector(".kloter-proses")?.value || "").trim();
     const berat = parseFloat(tr.querySelector(".kloter-berat")?.value || 0);
     const hp = parseFloat(tr.querySelector(".kloter-harga")?.value || 0);
-    out.push({
+    const row = {
       tipeProduk: tipe,
       jenisKopi: jk,
       prosesPengolahan: pr,
       beratKg: berat,
       hargaPerKg: hp,
-    });
+    };
+    if (varietas) row.varietas = varietas;
+    out.push(row);
   });
   return out;
 }
@@ -1697,6 +1711,17 @@ async function loadMasterDataOptions() {
       .map((p) => (p.nama || "").trim())
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b, "id"));
+
+    if (window.API.MasterData.varietas) {
+      const varietas = await window.API.MasterData.varietas.getAll();
+      masterVarietasNames = (varietas || [])
+        .map((v) => (v.namaVarietas || v.nama || "").trim())
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, "id", { sensitivity: "base" }));
+    } else {
+      masterVarietasNames = [];
+    }
+    refreshVarietasDatalistPemesanan();
 
     refreshKloterTipeProdukSelects();
 
@@ -2358,13 +2383,17 @@ async function savePemesanan(cetakInvoice) {
   const statusPembayaran =
     document.getElementById("statusPembayaran")?.value || "Belum Lunas";
 
-  const kloterPayload = kloterRaw.map((k) => ({
-    tipeProduk: k.tipeProduk,
-    jenisKopi: k.jenisKopi,
-    prosesPengolahan: k.prosesPengolahan,
-    beratKg: k.beratKg,
-    hargaPerKg: k.hargaPerKg,
-  }));
+  const kloterPayload = kloterRaw.map((k) => {
+    const row = {
+      tipeProduk: k.tipeProduk,
+      jenisKopi: k.jenisKopi,
+      prosesPengolahan: k.prosesPengolahan,
+      beratKg: k.beratKg,
+      hargaPerKg: k.hargaPerKg,
+    };
+    if (k.varietas) row.varietas = k.varietas;
+    return row;
+  });
 
   let biayaPajak = parseFloat(
     document.getElementById("biayaPajak")?.value || 0,
@@ -2892,6 +2921,7 @@ async function loadPemesananDataForOrdering() {
               : '<span class="text-muted">—</span>';
           return `<tr>
             <td>${escapeHtmlAttr(L.tipeProduk || "—")}</td>
+            <td>${escapeHtmlAttr(L.varietas || "—")}</td>
             <td>${escapeHtmlAttr(L.jenisKopi || "—")}</td>
             <td>${escapeHtmlAttr(L.prosesPengolahan || "—")}</td>
             <td class="text-end">${w.toLocaleString("id-ID")}</td>
@@ -3099,7 +3129,7 @@ async function validateOrderingStok(pemesananDoc, idProduksiPilihan) {
       ? parseFloat(stokRow.stokTersedia ?? stokRow.totalBerat ?? 0) || 0
       : 0;
     if (!stokRow || ada < need - 1e-9) {
-      return `Kloter ${i + 1} (${L.tipeProduk || "-"} · ${L.jenisKopi || "-"} · ${L.prosesPengolahan || "-"}): stok tidak mencukupi atau kombinasi tidak ada di Kelola Stok.\nTersedia: ${ada.toLocaleString("id-ID")} kg, dibutuhkan: ${need.toLocaleString("id-ID")} kg`;
+      return `Kloter ${i + 1} (${[L.tipeProduk, L.varietas, L.jenisKopi, L.prosesPengolahan].filter(Boolean).join(" · ") || "-"}): stok tidak mencukupi atau kombinasi tidak ada di Kelola Stok.\nTersedia: ${ada.toLocaleString("id-ID")} kg, dibutuhkan: ${need.toLocaleString("id-ID")} kg`;
     }
   }
   return null;
@@ -3739,12 +3769,12 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   window.addEventListener("dataMasterUpdated", async (event) => {
     const t = event?.detail?.type;
-    if (t && t !== "produk") return;
+    if (t && t !== "produk" && t !== "varietas") return;
     try {
       await loadMasterDataOptions();
-      console.log("✅ Master tipe produk diperbarui dari Kelola Data");
+      console.log("✅ Master data pemesanan diperbarui dari Kelola Data");
     } catch (e) {
-      console.warn("Gagal refresh master tipe produk:", e);
+      console.warn("Gagal refresh master data pemesanan:", e);
     }
   });
 
