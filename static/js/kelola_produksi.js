@@ -28,7 +28,7 @@ async function loadProduksiData() {
     }
 
     console.log("✅ Using API.Produksi.getAll()");
-    produksi = await window.API.Produksi.getAll();
+    produksi = await window.API.Produksi.getAll({ lite: true });
     console.log(`✅ Loaded ${produksi.length} produksi records from MongoDB`);
 
     if (!Array.isArray(produksi)) {
@@ -44,6 +44,31 @@ async function loadProduksiData() {
     produksi = [];
     throw error;
   }
+}
+
+function mergeProduksiSavedIntoCache(savedDoc) {
+  if (!savedDoc) return;
+  const keyOf = (x) =>
+    String(x?._id ?? x?.id ?? x?.idProduksi ?? "");
+  const savedKey = keyOf(savedDoc);
+  const idx = produksi.findIndex((x) => keyOf(x) === savedKey);
+  if (idx >= 0) {
+    produksi[idx] = savedDoc;
+  } else {
+    produksi.push(savedDoc);
+  }
+  if (typeof window.sortProduksiDocumentsByTahapanThenId === "function") {
+    produksi = window.sortProduksiDocumentsByTahapanThenId(produksi);
+  }
+}
+
+function setSaveProduksiButtonLoading(loading) {
+  const saveBtn = document.getElementById("btnSaveProduksi");
+  if (!saveBtn) return;
+  saveBtn.disabled = !!loading;
+  saveBtn.innerHTML = loading
+    ? '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Menyimpan…'
+    : "Simpan";
 }
 
 // Sisa berat per kombinasi idBahan + proses (atah legacy tanpa proses di query)
@@ -2311,16 +2336,26 @@ window.openModal = async function openModal(mode = "add") {
 // Fungsi untuk edit produksi (mendaftarkan ke window untuk akses dari HTML)
 window.editProduksi = async function editProduksi(id) {
   try {
-    // Reload data produksi dari MongoDB sebelum edit
     await loadProduksiData();
 
-    const p = produksi.find(
+    let p = produksi.find(
       (item) =>
         item.id === parseInt(id) || item.idProduksi === id || item._id === id,
     );
     if (!p) {
       alert("Data produksi tidak ditemukan!");
       return;
+    }
+
+    // Muat dokumen lengkap (history, catatan per tahapan, dll.) untuk form edit
+    if (window.API?.Produksi?.getById) {
+      try {
+        const fullId = p._id || p.id || p.idProduksi;
+        const full = await window.API.Produksi.getById(fullId);
+        if (full) p = full;
+      } catch (e) {
+        console.warn("⚠️ getById gagal, pakai data dari daftar:", e);
+      }
     }
 
     currentEditId = id;
@@ -2721,10 +2756,12 @@ window.saveProduksi = async function saveProduksi() {
       `🔄 saveProduksi() - Mode: ${isEditMode ? "UPDATE" : "CREATE"}`,
     );
 
-    // Reload data produksi untuk mendapatkan data terbaru (penting untuk edit mode)
-    console.log("🔄 Reloading produksi data...");
-    await loadProduksiData();
-    console.log("✅ Produksi data reloaded");
+    // Reload data produksi hanya untuk edit mode (add mode tidak perlu fetch ulang)
+    if (isEditMode) {
+      console.log("🔄 Reloading produksi data for edit...");
+      await loadProduksiData();
+      console.log("✅ Produksi data reloaded");
+    }
 
     // Get produksi lama untuk edit mode
     let produksiLama = null;
@@ -3509,6 +3546,7 @@ window.saveProduksi = async function saveProduksi() {
     }
     console.log("✅ API.Produksi available");
     console.log("🔄 Preparing produksi data for save...");
+    setSaveProduksiButtonLoading(true);
     const finalBeratAwal = parseFloat(beratAwal) || 0;
 
     const produksiData = {
@@ -3658,6 +3696,7 @@ window.saveProduksi = async function saveProduksi() {
         produksiData,
       );
       console.log("✅ Produksi updated in MongoDB:", updateResult);
+      mergeProduksiSavedIntoCache(updateResult);
       
       // Tampilkan notifikasi update
       if (window.showNotification) {
@@ -3690,6 +3729,7 @@ window.saveProduksi = async function saveProduksi() {
       console.log("🔄 Creating produksi via API (backend will generate ID)");
       const result = await window.API.Produksi.create(produksiData);
       console.log("✅ Produksi created in MongoDB:", result);
+      mergeProduksiSavedIntoCache(result);
       
       // Tampilkan notifikasi create
       if (window.showNotification) {
@@ -3699,8 +3739,6 @@ window.saveProduksi = async function saveProduksi() {
 
     console.log("✅ Save operation completed successfully");
 
-    await loadProduksiData();
-    await loadBahanOptionsProduksi();
     await displayProduksi({ reload: false });
 
     window.dispatchEvent(
@@ -3741,6 +3779,7 @@ window.saveProduksi = async function saveProduksi() {
       alert(`❌ ${errorMessage}`);
     }
   } finally {
+    setSaveProduksiButtonLoading(false);
     console.log("🏁 saveProduksi() completed");
   }
 };

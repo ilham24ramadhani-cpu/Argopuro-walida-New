@@ -717,10 +717,11 @@ def _status_tambah_bahan_dikunci(status_tahapan):
     return 'Pengemasan' in s
 
 
-def _sisa_bahan_line(bahan_doc, id_bahan, proses_pengolahan=None, id_proses=None):
+def _sisa_bahan_line(bahan_doc, id_bahan, proses_pengolahan=None, id_proses=None, produksi_docs=None):
     """
     Sisa berat untuk kombinasi idBahan + proses (atau legacy: satu pool per idBahan).
     id_proses atau nama (proses_pengolahan) — id diprioritaskan.
+    produksi_docs: daftar produksi yang sudah di-load (hindari scan berulang ke MongoDB).
     Returns (sisa_float, error_message or None).
     """
     lines = bahan_doc.get('prosesBahan') or []
@@ -758,12 +759,13 @@ def _sisa_bahan_line(bahan_doc, id_bahan, proses_pengolahan=None, id_proses=None
             id_bahan,
             id_proses=line_ip,
             nama_proses=line_nama,
+            produksi_docs=produksi_docs,
         )
         cap = float(line.get('jumlahBeratProses', 0) or 0)
         return max(0.0, cap - used), None
     # Legacy: satu pool stok per idBahan
     cap = float(bahan_doc.get('jumlah', 0) or 0)
-    used = _total_digunakan_bahan_proses(id_bahan)
+    used = _total_digunakan_bahan_proses(id_bahan, produksi_docs=produksi_docs)
     return max(0.0, cap - used), None
 
 
@@ -1539,12 +1541,42 @@ def get_next_id_produksi():
         print(f"❌ [PRODUKSI NEXT-ID] ERROR: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+def _slim_produksi_doc_for_list(doc):
+    """Kurangi payload untuk tabel daftar (tanpa foto, HACCP riwayat, kloter detail)."""
+    if not doc or not isinstance(doc, dict):
+        return doc
+    out = dict(doc)
+    out.pop('catatanPerTahapan', None)
+    out.pop('beratTerkiniDetailKloter', None)
+    out.pop('fotoTahapan', None)
+    hist = out.get('historyTahapan')
+    if isinstance(hist, list):
+        slim_hist = []
+        for h in hist:
+            if not isinstance(h, dict):
+                continue
+            slim_hist.append({
+                k: h[k]
+                for k in (
+                    'statusTahapan', 'namaTahapan', 'statusTahapanSebelumnya',
+                    'beratAwal', 'beratTerkini', 'beratAkhir', 'kadarAir',
+                    'tanggal', 'tanggalUpdate',
+                )
+                if k in h
+            })
+        out['historyTahapan'] = slim_hist
+    return out
+
+
 @app.route('/api/produksi', methods=['GET'])
 def get_produksi():
-    """Get all produksi data"""
+    """Get all produksi data. ?lite=1 mengurangi payload untuk tabel daftar."""
     try:
+        lite = request.args.get('lite', '').strip().lower() in ('1', 'true', 'yes')
         produksi = list(db.produksi.find())
         produksi.sort(key=_produksi_sort_key)
+        if lite:
+            produksi = [_slim_produksi_doc_for_list(p) for p in produksi]
         print(f"📊 [PRODUKSI GET] Retrieved {len(produksi)} documents from MongoDB collection 'produksi'")
         return jsonify(json_serialize(produksi)), 200
     except Exception as e:
@@ -1657,7 +1689,8 @@ def create_produksi():
         master_proses_doc, pid_proses, proses_pp, err_proses = _resolve_proses_dari_payload(data)
         if err_proses:
             return jsonify({'error': err_proses}), 400
-        used_globally = _all_id_bahan_terpakai_produksi(None)
+        all_produksi = list(db.produksi.find({}))
+        used_globally = _all_id_bahan_terpakai_produksi(None, all_produksi)
 
         berat_awal_req = float(data['beratAwal'])
         alokasi_rows = data.get('alokasiBeratBahan')
@@ -1723,7 +1756,9 @@ def create_produksi():
                     )
                 if not line:
                     return jsonify({'error': f'Proses "{proses_pp}" tidak terdaftar pada bahan {bid}'}), 400
-                sisa, err = _sisa_bahan_line(bahan_one, bid, proses_pp, id_proses=pid_proses)
+                sisa, err = _sisa_bahan_line(
+                    bahan_one, bid, proses_pp, id_proses=pid_proses, produksi_docs=all_produksi,
+                )
                 if err:
                     return jsonify({'error': f'{bid}: {err}'}), 400
                 if need > (sisa or 0) + 1e-4:
@@ -1734,7 +1769,7 @@ def create_produksi():
                         'beratDiminta': need,
                     }), 400
             else:
-                sisa, err = _sisa_bahan_line(bahan_one, bid, None)
+                sisa, err = _sisa_bahan_line(bahan_one, bid, None, produksi_docs=all_produksi)
                 if err:
                     return jsonify({'error': f'{bid}: {err}'}), 400
                 if need > (sisa or 0) + 1e-4:
@@ -1987,6 +2022,7 @@ def update_produksi(produksi_id):
         master_proses_doc, pid_proses, proses_pp, err_proses = _resolve_proses_dari_payload(data)
         if err_proses:
             return jsonify({'error': err_proses}), 400
+        all_produksi = list(db.produksi.find({}))
         for bid in new_set:
             need = float(new_map.get(bid, 0) or 0)
             if need <= 0:
@@ -2018,7 +2054,9 @@ def update_produksi(produksi_id):
                     )
                 if not line:
                     return jsonify({'error': f'Proses "{proses_pp}" tidak terdaftar pada bahan {bid}'}), 400
-                sisa, err = _sisa_bahan_line(bahan_one, bid, proses_pp, id_proses=pid_proses)
+                sisa, err = _sisa_bahan_line(
+                    bahan_one, bid, proses_pp, id_proses=pid_proses, produksi_docs=all_produksi,
+                )
                 if err:
                     return jsonify({'error': f'{bid}: {err}'}), 400
                 room = (sisa or 0) + (old_w if bid in old_set else 0)
@@ -2034,7 +2072,7 @@ def update_produksi(produksi_id):
                         'beratDiminta': need,
                     }), 400
             else:
-                sisa, err = _sisa_bahan_line(bahan_one, bid, None)
+                sisa, err = _sisa_bahan_line(bahan_one, bid, None, produksi_docs=all_produksi)
                 if err:
                     return jsonify({'error': f'{bid}: {err}'}), 400
                 room = (sisa or 0) + (old_w if bid in old_set else 0)

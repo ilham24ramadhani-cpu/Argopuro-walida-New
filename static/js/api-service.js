@@ -420,9 +420,11 @@ if (window.API && window.API.Bahan && window.API.Produksi && window.API.Users &&
   // ==================== PRODUKSI API ====================
   // ==================== PRODUKSI API (MONGODB ONLY - NO localStorage fallback) ====================
   const ProduksiAPI = {
-    async getAll() {
+    async getAll(options = {}) {
       // MONGODB ONLY - NO FALLBACK
-      const data = await apiCall("/produksi");
+      const lite =
+        options && (options.lite === true || options.lite === 1) ? "?lite=1" : "";
+      const data = await apiCall(`/produksi${lite}`);
       if (!Array.isArray(data)) return data;
       return typeof window.sortProduksiDocumentsByTahapanThenId === "function"
         ? window.sortProduksiDocumentsByTahapanThenId(data)
