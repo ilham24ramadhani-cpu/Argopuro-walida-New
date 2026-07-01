@@ -4698,9 +4698,15 @@ function buildTimelineSteps(item, bahanById) {
 
   if (item.haccp) {
     const checklist = [];
-    if (item.haccp.bebasBendaAsing) checklist.push("Bebas benda asing");
-    if (item.haccp.bebasHamaJamur) checklist.push("Bebas hama & jamur");
-    if (item.haccp.kondisiBaik) checklist.push("Kondisi wadah baik");
+    const h = item.haccp;
+    if (h.kontaminasiFisik || h.bebasBendaAsing)
+      checklist.push("Kontaminasi fisik (batu, logam, kayu)");
+    if (h.kontaminasiBiologis || h.bebasHamaJamur)
+      checklist.push("Kontaminasi biologis (jamur, hama)");
+    if (h.buahCacatBusuk || h.kondisiBaik || h.kondisiFisik)
+      checklist.push("Buah cacat atau busuk");
+    if (h.kontaminasiKimia)
+      checklist.push("Kontaminasi kimia (jika relevan)");
     steps.push({
       title: "HACCP Check",
       subtitle: "Kontrol Mutu",
@@ -4907,20 +4913,26 @@ function formatHaccpChecklistSummary(haccp) {
   if (!haccp) return "—";
   if (haccp.status) return haccp.status;
   const items = [];
-  if (haccp.bebasBendaAsing) items.push("Bebas benda asing");
-  if (haccp.bebasHamaJamur || (haccp.bebasHama && haccp.bebasJamur))
-    items.push("Bebas hama & jamur");
+  if (haccp.kontaminasiFisik || haccp.bebasBendaAsing)
+    items.push("Kontaminasi fisik");
+  if (haccp.kontaminasiBiologis || haccp.bebasHamaJamur || (haccp.bebasHama && haccp.bebasJamur))
+    items.push("Kontaminasi biologis");
   else {
     if (haccp.bebasHama) items.push("Bebas hama");
     if (haccp.bebasJamur) items.push("Bebas jamur");
   }
-  if (haccp.kondisiBaik || haccp.kondisiFisik) items.push("Kondisi baik");
+  if (haccp.buahCacatBusuk || haccp.kondisiBaik || haccp.kondisiFisik)
+    items.push("Buah cacat/busuk");
+  if (haccp.kontaminasiKimia) items.push("Kontaminasi kimia");
   if (items.length === 0) {
     const hi = haccp.hazardInspection;
     if (hi && typeof hi === "object") {
-      if (hi.bebasBendaAsing) items.push("Bebas benda asing");
-      if (hi.bebasHama && hi.bebasJamur) items.push("Bebas hama & jamur");
-      if (hi.kondisiFisik) items.push("Kondisi baik");
+      if (hi.kontaminasiFisik || hi.bebasBendaAsing)
+        items.push("Kontaminasi fisik");
+      if (hi.kontaminasiBiologis || (hi.bebasHama && hi.bebasJamur))
+        items.push("Kontaminasi biologis");
+      if (hi.buahCacatBusuk || hi.kondisiFisik) items.push("Buah cacat/busuk");
+      if (hi.kontaminasiKimia) items.push("Kontaminasi kimia");
       if (hi.status) return hi.status;
     }
     return "Belum lengkap";
@@ -4934,9 +4946,14 @@ function haccpStatusBadgeHtml(haccp) {
   const lolos =
     summary === "Lolos" ||
     (haccp &&
-      haccp.bebasBendaAsing &&
-      (haccp.bebasHamaJamur || (haccp.bebasHama && haccp.bebasJamur)) &&
-      (haccp.kondisiBaik || haccp.kondisiFisik));
+      (haccp.kontaminasiFisik || haccp.bebasBendaAsing) &&
+      (haccp.kontaminasiBiologis ||
+        haccp.bebasHamaJamur ||
+        (haccp.bebasHama && haccp.bebasJamur)) &&
+      (haccp.buahCacatBusuk || haccp.kondisiBaik || haccp.kondisiFisik) &&
+      (haccp.kontaminasiKimia !== false && haccp.kontaminasiKimia !== undefined
+        ? haccp.kontaminasiKimia
+        : true));
   const cls = lolos ? "bg-success" : "bg-warning text-dark";
   return `<span class="badge ${cls}">${escapeHtmlLaporan(summary)}</span>`;
 }

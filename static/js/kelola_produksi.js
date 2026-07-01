@@ -2321,9 +2321,10 @@ window.openModal = async function openModal(mode = "add") {
         kadarAirField.style.display = "block";
       }
     }
-    document.getElementById("haccpBendaAsingProduksi").checked = false;
-    document.getElementById("haccpHamaJamurProduksi").checked = false;
-    document.getElementById("haccpKondisiBaikProduksi").checked = false;
+    document.getElementById("haccpKontaminasiFisikProduksi").checked = false;
+    document.getElementById("haccpKontaminasiBiologisProduksi").checked = false;
+    document.getElementById("haccpBuahCacatBusukProduksi").checked = false;
+    document.getElementById("haccpKontaminasiKimiaProduksi").checked = false;
   } else {
     modalLabel.textContent = "Edit Produksi";
   }
@@ -2560,22 +2561,28 @@ window.editProduksi = async function editProduksi(id) {
 
     // Set HACCP checkboxes dengan null check
     if (p.haccp) {
+      const h = p.haccp;
       setElementChecked(
-        "haccpBendaAsingProduksi",
-        p.haccp.bebasBendaAsing || false,
+        "haccpKontaminasiFisikProduksi",
+        h.kontaminasiFisik || h.bebasBendaAsing || false,
       );
       setElementChecked(
-        "haccpHamaJamurProduksi",
-        p.haccp.bebasHamaJamur || false,
+        "haccpKontaminasiBiologisProduksi",
+        h.kontaminasiBiologis || h.bebasHamaJamur || false,
       );
       setElementChecked(
-        "haccpKondisiBaikProduksi",
-        p.haccp.kondisiBaik || false,
+        "haccpBuahCacatBusukProduksi",
+        h.buahCacatBusuk || h.kondisiBaik || h.kondisiFisik || false,
+      );
+      setElementChecked(
+        "haccpKontaminasiKimiaProduksi",
+        h.kontaminasiKimia || false,
       );
     } else {
-      setElementChecked("haccpBendaAsingProduksi", false);
-      setElementChecked("haccpHamaJamurProduksi", false);
-      setElementChecked("haccpKondisiBaikProduksi", false);
+      setElementChecked("haccpKontaminasiFisikProduksi", false);
+      setElementChecked("haccpKontaminasiBiologisProduksi", false);
+      setElementChecked("haccpBuahCacatBusukProduksi", false);
+      setElementChecked("haccpKontaminasiKimiaProduksi", false);
     }
 
     // Open modal first, then load options (modal must be in DOM for elements to be accessible)
@@ -3492,34 +3499,48 @@ window.saveProduksi = async function saveProduksi() {
 
     // ==================== GET HACCP CHECKBOXES (dengan null check) ====================
     console.log("🔍 Getting HACCP checkboxes...");
-    const haccpBendaAsing = getElementChecked(
-      "haccpBendaAsingProduksi",
-      produksiLama?.haccp?.bebasBendaAsing || false,
+    const haccpKontaminasiFisik = getElementChecked(
+      "haccpKontaminasiFisikProduksi",
+      produksiLama?.haccp?.kontaminasiFisik ||
+        produksiLama?.haccp?.bebasBendaAsing ||
+        false,
     );
-    const haccpHamaJamur = getElementChecked(
-      "haccpHamaJamurProduksi",
-      produksiLama?.haccp?.bebasHamaJamur || false,
+    const haccpKontaminasiBiologis = getElementChecked(
+      "haccpKontaminasiBiologisProduksi",
+      produksiLama?.haccp?.kontaminasiBiologis ||
+        produksiLama?.haccp?.bebasHamaJamur ||
+        false,
     );
-    const haccpKondisiBaik = getElementChecked(
-      "haccpKondisiBaikProduksi",
-      produksiLama?.haccp?.kondisiBaik || false,
+    const haccpBuahCacatBusuk = getElementChecked(
+      "haccpBuahCacatBusukProduksi",
+      produksiLama?.haccp?.buahCacatBusuk ||
+        produksiLama?.haccp?.kondisiBaik ||
+        false,
+    );
+    const haccpKontaminasiKimia = getElementChecked(
+      "haccpKontaminasiKimiaProduksi",
+      produksiLama?.haccp?.kontaminasiKimia || false,
     );
 
     // Validasi HACCP hanya untuk add mode atau jika checkboxes ada
     console.log("🔍 HACCP values:", {
-      haccpBendaAsing,
-      haccpHamaJamur,
-      haccpKondisiBaik,
+      haccpKontaminasiFisik,
+      haccpKontaminasiBiologis,
+      haccpBuahCacatBusuk,
+      haccpKontaminasiKimia,
     });
 
-    const haccpBendaAsingElement = document.getElementById(
-      "haccpBendaAsingProduksi",
+    const haccpKontaminasiFisikElement = document.getElementById(
+      "haccpKontaminasiFisikProduksi",
     );
-    console.log("🔍 HACCP element exists:", !!haccpBendaAsingElement);
+    console.log("🔍 HACCP element exists:", !!haccpKontaminasiFisikElement);
 
     if (
-      haccpBendaAsingElement &&
-      (!haccpBendaAsing || !haccpHamaJamur || !haccpKondisiBaik)
+      haccpKontaminasiFisikElement &&
+      (!haccpKontaminasiFisik ||
+        !haccpKontaminasiBiologis ||
+        !haccpBuahCacatBusuk ||
+        !haccpKontaminasiKimia)
     ) {
       console.error("❌ HACCP validation failed - checkboxes not all checked");
       alert(
@@ -3530,9 +3551,10 @@ window.saveProduksi = async function saveProduksi() {
     console.log("✅ HACCP validation passed");
 
     const haccp = {
-      bebasBendaAsing: haccpBendaAsing,
-      bebasHamaJamur: haccpHamaJamur,
-      kondisiBaik: haccpKondisiBaik,
+      kontaminasiFisik: haccpKontaminasiFisik,
+      kontaminasiBiologis: haccpKontaminasiBiologis,
+      buahCacatBusuk: haccpBuahCacatBusuk,
+      kontaminasiKimia: haccpKontaminasiKimia,
     };
 
     // VERIFY API AVAILABILITY - NO FALLBACK
@@ -3567,9 +3589,10 @@ window.saveProduksi = async function saveProduksi() {
       tanggalSekarang: String(tanggalSekarang),
       statusTahapan: String(statusTahapan),
       haccp: {
-        bebasBendaAsing: Boolean(haccp.bebasBendaAsing),
-        bebasHamaJamur: Boolean(haccp.bebasHamaJamur),
-        kondisiBaik: Boolean(haccp.kondisiBaik),
+        kontaminasiFisik: Boolean(haccp.kontaminasiFisik),
+        kontaminasiBiologis: Boolean(haccp.kontaminasiBiologis),
+        buahCacatBusuk: Boolean(haccp.buahCacatBusuk),
+        kontaminasiKimia: Boolean(haccp.kontaminasiKimia),
       },
       catatan: String(
         document.getElementById("catatanProduksi")?.value ?? "",
@@ -3664,9 +3687,19 @@ window.saveProduksi = async function saveProduksi() {
             suhu: produksiLama.suhu ?? null,
             haccp: produksiLama.haccp
               ? {
-                  bebasBendaAsing: Boolean(produksiLama.haccp.bebasBendaAsing),
-                  bebasHamaJamur: Boolean(produksiLama.haccp.bebasHamaJamur),
-                  kondisiBaik: Boolean(produksiLama.haccp.kondisiBaik),
+                  kontaminasiFisik: Boolean(
+                    produksiLama.haccp.kontaminasiFisik ??
+                      produksiLama.haccp.bebasBendaAsing,
+                  ),
+                  kontaminasiBiologis: Boolean(
+                    produksiLama.haccp.kontaminasiBiologis ??
+                      produksiLama.haccp.bebasHamaJamur,
+                  ),
+                  buahCacatBusuk: Boolean(
+                    produksiLama.haccp.buahCacatBusuk ??
+                      produksiLama.haccp.kondisiBaik,
+                  ),
+                  kontaminasiKimia: Boolean(produksiLama.haccp.kontaminasiKimia),
                 }
               : null,
           });
@@ -3716,9 +3749,10 @@ window.saveProduksi = async function saveProduksi() {
           suhu: suhu,
           haccp: haccp
             ? {
-                bebasBendaAsing: Boolean(haccp.bebasBendaAsing),
-                bebasHamaJamur: Boolean(haccp.bebasHamaJamur),
-                kondisiBaik: Boolean(haccp.kondisiBaik),
+                kontaminasiFisik: Boolean(haccp.kontaminasiFisik),
+                kontaminasiBiologis: Boolean(haccp.kontaminasiBiologis),
+                buahCacatBusuk: Boolean(haccp.buahCacatBusuk),
+                kontaminasiKimia: Boolean(haccp.kontaminasiKimia),
               }
             : null,
         },

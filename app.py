@@ -248,31 +248,52 @@ def normalize_haccp_payload(haccp_raw):
         return None
 
     hi = haccp_raw.get('hazardInspection')
-    if not isinstance(hi, dict):
-        legacy_hama_jamur = parse_bool_payload(haccp_raw.get('bebasHamaJamur'), False)
-        bebas_hama = parse_bool_payload(
-            haccp_raw.get('bebasHama'), legacy_hama_jamur
+    legacy_hama_jamur = parse_bool_payload(haccp_raw.get('bebasHamaJamur'), False)
+    legacy_kondisi = parse_bool_payload(
+        haccp_raw.get('kondisiBaik'),
+        parse_bool_payload(haccp_raw.get('kondisiFisik'), False),
+    )
+
+    if isinstance(hi, dict):
+        kontaminasi_fisik = parse_bool_payload(
+            hi.get('kontaminasiFisik') or hi.get('bebasBendaAsing'), False
         )
-        bebas_jamur = parse_bool_payload(
-            haccp_raw.get('bebasJamur'), legacy_hama_jamur
+        kontaminasi_biologis = parse_bool_payload(
+            hi.get('kontaminasiBiologis') or hi.get('bebasHamaJamur'),
+            parse_bool_payload(hi.get('bebasHama'), False)
+            and parse_bool_payload(hi.get('bebasJamur'), False),
         )
-        kondisi_fisik = parse_bool_payload(
-            haccp_raw.get('kondisiFisik'),
-            parse_bool_payload(haccp_raw.get('kondisiBaik'), False),
+        buah_cacat = parse_bool_payload(
+            hi.get('buahCacatBusuk') or hi.get('kondisiBaik') or hi.get('kondisiFisik'),
+            False,
         )
-        hi = {
-            'bebasBendaAsing': parse_bool_payload(haccp_raw.get('bebasBendaAsing'), False),
-            'bebasHama': bebas_hama,
-            'bebasJamur': bebas_jamur,
-            'kondisiFisik': kondisi_fisik,
-        }
+        kontaminasi_kimia = parse_bool_payload(hi.get('kontaminasiKimia'), False)
     else:
-        hi = {
-            'bebasBendaAsing': parse_bool_payload(hi.get('bebasBendaAsing'), False),
-            'bebasHama': parse_bool_payload(hi.get('bebasHama'), False),
-            'bebasJamur': parse_bool_payload(hi.get('bebasJamur'), False),
-            'kondisiFisik': parse_bool_payload(hi.get('kondisiFisik'), False),
-        }
+        kontaminasi_fisik = parse_bool_payload(
+            haccp_raw.get('kontaminasiFisik') or haccp_raw.get('bebasBendaAsing'), False
+        )
+        kontaminasi_biologis = parse_bool_payload(
+            haccp_raw.get('kontaminasiBiologis') or haccp_raw.get('bebasHamaJamur'),
+            legacy_hama_jamur
+            or (
+                parse_bool_payload(haccp_raw.get('bebasHama'), False)
+                and parse_bool_payload(haccp_raw.get('bebasJamur'), False)
+            ),
+        )
+        buah_cacat = parse_bool_payload(
+            haccp_raw.get('buahCacatBusuk')
+            or haccp_raw.get('kondisiBaik')
+            or haccp_raw.get('kondisiFisik'),
+            legacy_kondisi,
+        )
+        kontaminasi_kimia = parse_bool_payload(haccp_raw.get('kontaminasiKimia'), False)
+
+    hi = {
+        'kontaminasiFisik': kontaminasi_fisik,
+        'kontaminasiBiologis': kontaminasi_biologis,
+        'buahCacatBusuk': buah_cacat,
+        'kontaminasiKimia': kontaminasi_kimia,
+    }
 
     all_pass = all(hi.values())
     hi['status'] = 'Lolos' if all_pass else 'Tidak Lolos'
@@ -294,12 +315,14 @@ def normalize_haccp_payload(haccp_raw):
         'ccpMonitoring': ccp_rows,
         'correctiveAction': ca,
         'verification': verification,
-        'bebasBendaAsing': hi['bebasBendaAsing'],
-        'bebasHama': hi['bebasHama'],
-        'bebasJamur': hi['bebasJamur'],
-        'bebasHamaJamur': hi['bebasHama'] and hi['bebasJamur'],
-        'kondisiFisik': hi['kondisiFisik'],
-        'kondisiBaik': hi['kondisiFisik'],
+        'kontaminasiFisik': hi['kontaminasiFisik'],
+        'kontaminasiBiologis': hi['kontaminasiBiologis'],
+        'buahCacatBusuk': hi['buahCacatBusuk'],
+        'kontaminasiKimia': hi['kontaminasiKimia'],
+        'bebasBendaAsing': hi['kontaminasiFisik'],
+        'bebasHamaJamur': hi['kontaminasiBiologis'],
+        'kondisiFisik': hi['buahCacatBusuk'],
+        'kondisiBaik': hi['buahCacatBusuk'],
         'status': hi['status'],
     }
 
@@ -307,12 +330,22 @@ def normalize_haccp_payload(haccp_raw):
 def _hazard_inspection_lolos(hi):
     if not isinstance(hi, dict):
         return False
-    return all([
-        parse_bool_payload(hi.get('bebasBendaAsing'), False),
-        parse_bool_payload(hi.get('bebasHama'), False),
-        parse_bool_payload(hi.get('bebasJamur'), False),
-        parse_bool_payload(hi.get('kondisiFisik'), False),
-    ])
+    fisik = parse_bool_payload(
+        hi.get('kontaminasiFisik') or hi.get('bebasBendaAsing'), False
+    )
+    biologis = parse_bool_payload(
+        hi.get('kontaminasiBiologis') or hi.get('bebasHamaJamur'),
+        parse_bool_payload(hi.get('bebasHama'), False)
+        and parse_bool_payload(hi.get('bebasJamur'), False),
+    )
+    buah = parse_bool_payload(
+        hi.get('buahCacatBusuk') or hi.get('kondisiBaik') or hi.get('kondisiFisik'),
+        False,
+    )
+    if 'kontaminasiKimia' in hi:
+        kimia = parse_bool_payload(hi.get('kontaminasiKimia'), False)
+        return fisik and biologis and buah and kimia
+    return fisik and biologis and buah
 
 
 def sync_haccp_record(sumber, ref_id, haccp_data, petugas='', tanggal=None):

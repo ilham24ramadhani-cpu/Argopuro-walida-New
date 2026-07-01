@@ -919,9 +919,10 @@ async function openModal() {
   document.getElementById("bahanId").value = "";
   idBahanHidden.value = "";
   if (idBahanDisplay) idBahanDisplay.value = "";
-  document.getElementById("haccpBendaAsing").checked = false;
-  document.getElementById("haccpHamaJamur").checked = false;
-  document.getElementById("haccpKondisiBaik").checked = false;
+  document.getElementById("haccpKontaminasiFisik").checked = false;
+  document.getElementById("haccpKontaminasiBiologis").checked = false;
+  document.getElementById("haccpBuahCacatBusuk").checked = false;
+  document.getElementById("haccpKontaminasiKimia").checked = false;
   const lunasEl = document.getElementById("bahanLunas");
   if (lunasEl) lunasEl.checked = false;
   const hargaPerKgGlobalEl = document.getElementById("hargaPerKgGlobal");
@@ -977,13 +978,20 @@ async function editBahan(id) {
     if (idBahanDisplay) idBahanDisplay.value = b.idBahan;
 
     if (b.haccp) {
-      document.getElementById("haccpBendaAsing").checked = b.haccp.bebasBendaAsing || false;
-      document.getElementById("haccpHamaJamur").checked = b.haccp.bebasHamaJamur || false;
-      document.getElementById("haccpKondisiBaik").checked = b.haccp.kondisiBaik || false;
+      const h = b.haccp;
+      document.getElementById("haccpKontaminasiFisik").checked =
+        h.kontaminasiFisik || h.bebasBendaAsing || false;
+      document.getElementById("haccpKontaminasiBiologis").checked =
+        h.kontaminasiBiologis || h.bebasHamaJamur || false;
+      document.getElementById("haccpBuahCacatBusuk").checked =
+        h.buahCacatBusuk || h.kondisiBaik || h.kondisiFisik || false;
+      document.getElementById("haccpKontaminasiKimia").checked =
+        h.kontaminasiKimia || false;
     } else {
-      document.getElementById("haccpBendaAsing").checked = false;
-      document.getElementById("haccpHamaJamur").checked = false;
-      document.getElementById("haccpKondisiBaik").checked = false;
+      document.getElementById("haccpKontaminasiFisik").checked = false;
+      document.getElementById("haccpKontaminasiBiologis").checked = false;
+      document.getElementById("haccpBuahCacatBusuk").checked = false;
+      document.getElementById("haccpKontaminasiKimia").checked = false;
     }
     const lunasEdit = document.getElementById("bahanLunas");
     if (lunasEdit) lunasEdit.checked = !!b.lunas;
@@ -1347,11 +1355,17 @@ async function saveBahan() {
     return;
   }
 
-  const haccpBendaAsing = document.getElementById("haccpBendaAsing").checked;
-  const haccpHamaJamur = document.getElementById("haccpHamaJamur").checked;
-  const haccpKondisiBaik = document.getElementById("haccpKondisiBaik").checked;
+  const haccpKontaminasiFisik = document.getElementById("haccpKontaminasiFisik").checked;
+  const haccpKontaminasiBiologis = document.getElementById("haccpKontaminasiBiologis").checked;
+  const haccpBuahCacatBusuk = document.getElementById("haccpBuahCacatBusuk").checked;
+  const haccpKontaminasiKimia = document.getElementById("haccpKontaminasiKimia").checked;
 
-  if (!haccpBendaAsing || !haccpHamaJamur || !haccpKondisiBaik) {
+  if (
+    !haccpKontaminasiFisik ||
+    !haccpKontaminasiBiologis ||
+    !haccpBuahCacatBusuk ||
+    !haccpKontaminasiKimia
+  ) {
     alert("Semua checklist HACCP harus dicentang untuk dapat menyimpan data!");
     return;
   }
@@ -1409,9 +1423,10 @@ async function saveBahan() {
   }
 
   const haccp = {
-    bebasBendaAsing: haccpBendaAsing,
-    bebasHamaJamur: haccpHamaJamur,
-    kondisiBaik: haccpKondisiBaik,
+    kontaminasiFisik: haccpKontaminasiFisik,
+    kontaminasiBiologis: haccpKontaminasiBiologis,
+    buahCacatBusuk: haccpBuahCacatBusuk,
+    kontaminasiKimia: haccpKontaminasiKimia,
   };
 
   const lunas = document.getElementById("bahanLunas")?.checked === true;
